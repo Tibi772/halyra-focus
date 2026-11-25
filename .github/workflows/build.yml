@@ -1,0 +1,117 @@
+# Builds the Mac (.dmg, universal) and Windows (.exe) installers on every push to
+# main, runs the end-to-end self-test of the packaged app on real macOS and
+# Windows machines, and publishes the installers as release v<package.json version>.
+# The website's download buttons always point at the newest release.
+name: Build, test & release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['website-src/**', '**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test test/*.test.js
+
+  build:
+    needs: unit
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+
+      - name: Build macOS installer
+        if: runner.os == 'macOS'
+        run: npm run dist:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        run: npm run dist:win
+
+      - name: End-to-end self-test (macOS)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          export HALYRA_SELFTEST_OUT="$RUNNER_TEMP/selftest"
+          "dist/mac-universal/Halyra Focus.app/Contents/MacOS/Halyra Focus" --selftest
+          cat "$HALYRA_SELFTEST_OUT/results.json"
+      - name: End-to-end self-test (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          $env:HALYRA_SELFTEST_OUT = Join-Path $env:RUNNER_TEMP 'selftest'
+          $log = Join-Path $env:RUNNER_TEMP 'selftest-log.txt'
+          $p = Start-Process -FilePath 'dist\win-unpacked\Halyra Focus.exe' -ArgumentList '--selftest' -Wait -PassThru -RedirectStandardOutput $log
+          if (Test-Path $log) { Get-Content $log }
+          Get-Content (Join-Path $env:HALYRA_SELFTEST_OUT 'results.json')
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selftest-${{ runner.os }}
+          path: ${{ runner.temp }}/selftest/
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ runner.os }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          path: out
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          V="v$(node -p "require('./package.json').version")"
+          ls -la out
+          cat > notes.md <<NOTES
+          **Halyra Focus** — free app & website blocker for Mac and Windows.
+
+          - **Mac (Apple Silicon + Intel, macOS 12+):** HalyraFocus-mac.dmg
+          - **Windows 10/11 (64-bit):** HalyraFocus-Setup.exe
+
+          First launch — macOS: System Settings → Privacy & Security → *Open Anyway*. Windows: *More info* → *Run anyway*.
+          NOTES
+          gh release view "$V" >/dev/null 2>&1 || gh release create "$V" --title "Halyra Focus $V" --notes-file notes.md --latest
+          gh release upload "$V" out/* --clobber
+          gh release edit "$V" --latest --draft=false

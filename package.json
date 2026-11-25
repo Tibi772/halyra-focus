@@ -1,0 +1,76 @@
+{
+  "name": "halyra-focus",
+  "productName": "Halyra Focus",
+  "version": "1.0.0",
+  "description": "Free app & website blocker for Mac and Windows. Focus sessions, schedules, Pomodoro, retro themes. No account, no tracking — and you can always turn it off.",
+  "main": "src/main/main.js",
+  "author": "Halyra",
+  "license": "MIT",
+  "homepage": "https://halyrafocus.com",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "preview:ui": "node tools/ui-preview.js preview",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "site": "node website-src/build.js"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.halyra.focus",
+    "productName": "Halyra Focus",
+    "copyright": "© 2026 Halyra",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "afterPack": "build/adhoc-sign.js",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "hardenedRuntime": false,
+      "target": [
+        { "target": "dmg", "arch": ["universal"] },
+        { "target": "zip", "arch": ["universal"] }
+      ],
+      "artifactName": "HalyraFocus-mac.${ext}",
+      "minimumSystemVersion": "12.0",
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "Halyra Focus asks once for admin permission to turn on website blocking in every browser."
+      }
+    },
+    "dmg": {
+      "title": "Halyra Focus",
+      "artifactName": "HalyraFocus-mac.dmg",
+      "contents": [
+        { "x": 150, "y": 190 },
+        { "x": 390, "y": 190, "type": "link", "path": "/Applications" }
+      ],
+      "window": { "width": 540, "height": 380 }
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "artifactName": "HalyraFocus-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Halyra Focus",
+      "runAfterFinish": true,
+      "include": "build/installer.nsh"
+    }
+  }
+}

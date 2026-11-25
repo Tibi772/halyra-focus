@@ -1,0 +1,157 @@
+'use strict';
+// Boots src/main/main.js against a fake `electron` module and drives the IPC
+// handlers the way the UI does. Catches runtime errors without a real Electron.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const Module = require('module');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'hf-smoke-'));
+const handlers = {};
+const sent = [];
+let readyResolve;
+const ready = new Promise((r) => { readyResolve = r; });
+const appEvents = {};
+
+class FakeWebContents {
+  constructor() { this.listeners = {}; }
+  send(ch, data) { sent.push([ch, data]); }
+  setWindowOpenHandler() {}
+  on() {}
+  once(ev, fn) { if (ev === 'did-finish-load') fn(); }
+  isLoading() { return false; }
+}
+class FakeWindow {
+  constructor(opts) { this.opts = opts; this.webContents = new FakeWebContents(); this.visible = false; this.destroyed = false; }
+  loadFile() {}
+  once(ev, fn) { if (ev === 'ready-to-show') setImmediate(fn); }
+  on() {}
+  show() { this.visible = true; }
+  showInactive() { this.visible = true; }
+  hide() { this.visible = false; }
+  focus() {}
+  isVisible() { return this.visible; }
+  isDestroyed() { return this.destroyed; }
+  setBackgroundColor() {}
+  setTitleBarOverlay() {}
+  setAlwaysOnTop() {}
+  setIgnoreMouseEvents() {}
+  setVisibleOnAllWorkspaces() {}
+  setPosition() {}
+}
+const fakeElectron = {
+  app: {
+    isPackaged: false,
+    dock: { show() {}, hide() {} },
+    requestSingleInstanceLock: () => true,
+    whenReady: () => ready,
+    on: (ev, fn) => { appEvents[ev] = fn; },
+    getPath: () => userData,
+    getLocale: () => 'hu-HU',
+    getVersion: () => '1.0.0',
+    setLoginItemSettings() {},
+    setAppUserModelId() {},
+    setAboutPanelOptions() {},
+    quit() { this.quitCalled = true; },
+    getFileIcon: async () => ({ toDataURL: () => 'data:image/png;base64,' }),
+  },
+  BrowserWindow: FakeWindow,
+  Tray: class { setTitle() {} setToolTip(t) { this.tip = t; } setContextMenu(m) { this.menu = m; } on() {} },
+  Menu: { buildFromTemplate: (t) => t, setApplicationMenu() {} },
+  ipcMain: { handle: (ch, fn) => { handlers[ch] = fn; } },
+  nativeImage: { createFromPath: () => ({ setTemplateImage() {} }) },
+  Notification: class { static isSupported() { return true; } show() {} },
+  dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }), showSaveDialog: async () => ({ canceled: true }) },
+  shell: { openExternal() {}, readShortcutLink: () => ({}) },
+  screen: { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1440, height: 900 } }) },
+};
+
+const origLoad = Module._load;
+Module._load = function load(request, ...rest) {
+  if (request === 'electron') return fakeElectron;
+  return origLoad.call(this, request, ...rest);
+};
+const realSetInterval = global.setInterval;
+global.setInterval = (fn, ms) => { const h = realSetInterval(fn, ms); h.unref(); return h; };
+
+const call = (ch, arg) => handlers[ch]({}, arg);
+
+test('main process boots and IPC works end-to-end', async () => {
+  require('../src/main/main.js');
+  readyResolve();
+  await new Promise((r) => setTimeout(r, 50));
+
+  const st = await call('state:get');
+  assert.equal(st.lang, 'hu');
+  assert.ok(st.lists.length >= 4);
+  assert.equal(st.eval.blocking, false);
+  assert.ok(fs.existsSync(path.join(userData, 'config.json')));
+  assert.equal(st.settings.pinHash, undefined, 'pin hash never leaves main');
+
+  // add a site to a list
+  const social = st.lists[0];
+  const patch = { lists: st.lists.map((l) => (l.id === social.id ? { ...l, sites: [...l.sites, 'https://www.Example.com/x'] } : l)) };
+  let r = await call('config:set', { patch });
+  assert.equal(r.ok, true);
+  assert.ok(r.state.lists[0].sites.includes('example.com'));
+
+  // start a strict session
+  r = await call('session:start', { listIds: [social.id], minutes: 30, mode: 'strict' });
+  assert.equal(r.ok, true);
+  assert.equal(r.state.eval.blocking, true);
+  assert.equal(r.state.eval.mode, 'strict');
+  r = await call('session:start', { listIds: [social.id], minutes: 30, mode: 'flexible' });
+  assert.equal(r.error, 'active');
+
+  // removing a site while locked is refused, adding is fine
+  const st2 = await call('state:get');
+  const without = { lists: st2.lists.map((l) => (l.id === social.id ? { ...l, sites: l.sites.filter((s) => s !== 'example.com') } : l)) };
+  r = await call('config:set', { patch: without });
+  assert.equal(r.ok, false);
+  assert.equal(r.error, 'locked');
+  const more = { lists: st2.lists.map((l) => (l.id === social.id ? { ...l, sites: [...l.sites, 'another.com'] } : l)) };
+  assert.equal((await call('config:set', { patch: more })).ok, true);
+
+  // stop: locked -> emergency challenge -> wrong text denied
+  r = await call('unlock:request', {});
+  assert.equal(r.status, 'locked');
+  r = await call('unlock:emergency', {});
+  assert.equal(r.status, 'challenge');
+  assert.ok(r.challenge.length > 50);
+  assert.equal((await call('unlock:confirm', { challenge: 'nope' })).status, 'denied');
+  assert.equal((await call('app:quit')).ok, false, 'cannot quit during strict block');
+
+  // extend works
+  const before = (await call('state:get')).session.endsAt;
+  await call('session:extend', { minutes: 15 });
+  assert.equal((await call('state:get')).session.endsAt, before + 15 * 60000);
+
+  // PIN: set, then wrong pin refused
+  r = await call('pin:set', { current: '', next: '4321' });
+  assert.equal(r.ok, true);
+  assert.equal(r.state.settings.hasPin, true);
+  assert.equal((await call('pin:set', { current: '0000', next: '' })).ok, false);
+
+  // settings change + theme
+  r = await call('config:set', { patch: { settings: { theme: 'crt', lang: 'en' } } });
+  assert.equal(r.ok, true);
+  assert.equal(r.state.settings.theme, 'crt');
+  assert.equal(r.state.lang, 'en');
+
+  // normalization helper + presets + installed apps (empty on linux)
+  assert.deepEqual(await call('sites:normalize', { sites: ['HTTPS://WWW.Reddit.com/r/x', 'bad'] }), ['reddit.com']);
+  assert.ok((await call('presets:get')).length >= 6);
+  assert.ok(Array.isArray(await call('apps:installed', {})));
+
+  // state is pushed to the window
+  assert.ok(sent.some(([ch]) => ch === 'state'));
+  // will-quit handler is safe
+  appEvents['will-quit']();
+
+  // persisted config reloads cleanly
+  const saved = JSON.parse(fs.readFileSync(path.join(userData, 'config.json'), 'utf8'));
+  assert.equal(saved.session.mode, 'strict');
+  assert.ok(saved.settings.pinHash);
+});
