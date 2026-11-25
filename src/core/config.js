@@ -4,6 +4,7 @@ const { PRESETS } = require('./presets');
 const { normalizeSite } = require('./domains');
 const { parseHM } = require('./schedule');
 const { MODES } = require('./engine');
+const stylegen = require('./stylegen');
 
 const THEMES = ['midnight', 'daylight', 'crt', 'onebit', 'vapor'];
 const LANGS = ['auto', 'en', 'hu'];
@@ -42,6 +43,7 @@ function defaults(lang = 'en') {
     ],
     session: null,
     skips: {},
+    customThemes: [],
     settings: {
       lang: 'auto',
       theme: 'midnight',
@@ -58,6 +60,7 @@ function defaults(lang = 'en') {
       strictBlocksTools: false,
       pinHash: null,
       pinSalt: null,
+      aiKeyEnc: null,
       onboarded: false,
     },
   };
@@ -142,12 +145,27 @@ function sanitizeSchedules(schedules, listIds) {
   return out;
 }
 
+const isTheme = (v) => THEMES.includes(v) || /^custom:[\w-]{1,40}$/.test(String(v || ''));
+
+function sanitizeCustomThemes(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const t of list.slice(0, 24)) {
+    const clean = stylegen.sanitizeTheme(t);
+    if (!clean || seen.has(clean.id)) continue;
+    seen.add(clean.id);
+    out.push(clean);
+  }
+  return out;
+}
+
 function sanitizeSettings(input, base) {
   const i = input && typeof input === 'object' ? input : {};
   const b = base;
   return {
     lang: LANGS.includes(i.lang) ? i.lang : b.lang,
-    theme: THEMES.includes(i.theme) ? i.theme : b.theme,
+    theme: isTheme(i.theme) ? i.theme : b.theme,
     launchAtLogin: bool(i.launchAtLogin, b.launchAtLogin),
     showOverlay: bool(i.showOverlay, b.showOverlay),
     notifications: bool(i.notifications, b.notifications),
@@ -159,9 +177,10 @@ function sanitizeSettings(input, base) {
     emergencyDelaySec: int(i.emergencyDelaySec, 30, 7200, b.emergencyDelaySec),
     challengeLength: int(i.challengeLength, 30, 600, b.challengeLength),
     strictBlocksTools: bool(i.strictBlocksTools, b.strictBlocksTools),
-    // The PIN is only changed through its own IPC call, never through setConfig.
+    // The PIN and the AI key are only changed through their own IPC calls, never through setConfig.
     pinHash: b.pinHash,
     pinSalt: b.pinSalt,
+    aiKeyEnc: b.aiKeyEnc || null,
     onboarded: bool(i.onboarded, b.onboarded),
   };
 }
@@ -173,7 +192,9 @@ function mergeEditable(base, input) {
   const schedules = sanitizeSchedules('schedules' in input ? input.schedules : base.schedules, listIds);
   const settings = sanitizeSettings('settings' in input ? { ...base.settings, ...input.settings } : base.settings, base.settings);
   settings.defaultListIds = settings.defaultListIds.filter((x) => listIds.includes(x));
-  return { ...base, lists, schedules, settings };
+  const customThemes = 'customThemes' in input ? sanitizeCustomThemes(input.customThemes) : (base.customThemes || []);
+  if (settings.theme.startsWith('custom:') && !customThemes.some((t) => `custom:${t.id}` === settings.theme)) settings.theme = 'midnight';
+  return { ...base, lists, schedules, settings, customThemes };
 }
 
 /** Load-time repair: tolerate hand-edited or older files. */
@@ -184,12 +205,14 @@ function normalizeLoaded(raw, lang) {
   const merged = mergeEditable(base, {
     lists: Array.isArray(raw.lists) ? raw.lists : d.lists,
     schedules: Array.isArray(raw.schedules) ? raw.schedules : d.schedules,
+    customThemes: Array.isArray(raw.customThemes) ? raw.customThemes : [],
     settings: raw.settings || {},
   });
   if (raw.settings && typeof raw.settings.pinHash === 'string' && typeof raw.settings.pinSalt === 'string') {
     merged.settings.pinHash = raw.settings.pinHash;
     merged.settings.pinSalt = raw.settings.pinSalt;
   }
+  if (raw.settings && typeof raw.settings.aiKeyEnc === 'string') merged.settings.aiKeyEnc = raw.settings.aiKeyEnc.slice(0, 4000);
   const s = raw.session;
   merged.session = s && typeof s.endsAt === 'number' && typeof s.startedAt === 'number'
     ? {
@@ -197,6 +220,7 @@ function normalizeLoaded(raw, lang) {
       endsAt: s.endsAt,
       listIds: Array.isArray(s.listIds) ? s.listIds.filter((x) => typeof x === 'string') : [],
       mode: MODES.includes(s.mode) ? s.mode : 'flexible',
+      goal: typeof s.goal === 'string' ? s.goal.slice(0, 80) : '',
       pomodoro: s.pomodoro && s.pomodoro.work > 0 ? { work: int(s.pomodoro.work, 1, 240, 25), brk: int(s.pomodoro.brk, 0, 120, 5), cycles: int(s.pomodoro.cycles, 1, 24, 4) } : null,
     }
     : null;
@@ -223,6 +247,6 @@ function verifyPin(settings, pin) {
 }
 
 module.exports = {
-  THEMES, LANGS, VERSION, uid, defaults, presetToList, mergeEditable, normalizeLoaded,
+  THEMES, LANGS, VERSION, uid, defaults, presetToList, mergeEditable, normalizeLoaded, sanitizeCustomThemes,
   sanitizeLists, sanitizeSchedules, hashPin, verifyPin,
 };

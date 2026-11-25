@@ -289,3 +289,72 @@ test('elevation command quoting', () => {
   assert.ok(as.includes('with administrator privileges'));
   assert.ok(helper.macPlist().includes('<string>/Library/Application Support/HalyraFocus/helper.sh</string>'));
 });
+
+test('style engine: readable themes from any text', () => {
+  const sg = require('../src/core/stylegen');
+  const samples = ['neon tokiói éjszaka', 'Erdei nyugalom', 'barbie', 'Mátrix', 'arany luxus', 'gameboy', 'tengerparti naplemente', 'minimal fekete-fehér', 'qwerty zxcv', '', '🔥🔥🔥'];
+  for (const s of samples) {
+    const th = sg.generate(s);
+    const c = th.colors;
+    assert.ok(sg.contrast(c.text, c.bg) >= 7, `text contrast for ${s}`);
+    assert.ok(sg.contrast(c.muted, c.bg) >= 4.5, `muted contrast for ${s}`);
+    assert.ok(sg.contrast(c.accent, c.bg) >= 3, `accent contrast for ${s}`);
+    assert.ok(sg.contrast(c.accentInk, c.accent) >= 4.5, `button text contrast for ${s}`);
+    assert.ok(sg.contrast(c.btnInk, c.btn) >= 7, `primary button contrast for ${s}`);
+    assert.ok(sg.EFFECTS.includes(th.effect) && sg.FONTS.includes(th.font));
+  }
+  assert.equal(sg.generate('Mátrix hacker').font, 'mono');
+  assert.equal(sg.generate('gameboy').font, 'pixel');
+  assert.equal(sg.generate('barbie').mode, 'light');
+  assert.equal(sg.generate('űrbéli galaxis').effect, 'stars');
+  assert.notEqual(sg.generate('erdő', 0).colors.accent, sg.generate('erdő', 3).colors.accent, 'variations differ');
+  // AI-style spec with unreadable colours gets fixed
+  const fixed = sg.fromSpec({ mode: 'dark', bg: '#101010', text: '#151515', accent: '#121212', accent2: '#111111' });
+  assert.ok(sg.contrast(fixed.colors.text, fixed.colors.bg) >= 7);
+  assert.ok(sg.contrast(fixed.colors.accent, fixed.colors.bg) >= 3);
+  // sanitize rejects junk, keeps good themes
+  assert.equal(sg.sanitizeTheme({ colors: { bg: 'red' } }), null);
+  const kept = sg.sanitizeTheme(sg.generate('ocean'));
+  assert.ok(kept && kept.colors.bg);
+  assert.ok(sg.cssVars(kept)['--accent']);
+});
+
+test('coach: suggestions, firm lines, insights', () => {
+  const coach = require('../src/core/coach');
+  assert.equal(coach.suggestSetup('Vizsgára tanulok', 'hu').profile, 'study');
+  assert.equal(coach.suggestSetup('coding my game', 'en').profile, 'code');
+  assert.equal(coach.suggestSetup('szakdolgozatot írok', 'hu').mode, 'strict');
+  assert.equal(coach.suggestSetup('vagyok itt', 'hu').profile, 'default', 'common word "vagyok" must not trigger a profile');
+  assert.equal(coach.suggestSetup('', 'en').profile, 'default');
+  assert.match(coach.coachLine({ leftMs: 3 * 60000, totalMs: 50 * 60000 }, 'en'), /3 min/);
+  assert.match(coach.coachLine({ leftMs: 10 * 60000, totalMs: 50 * 60000 }, 'hu'), /80%/);
+  assert.match(coach.coachLine({ leftMs: 30 * 60000, totalMs: 50 * 60000, goal: 'Thesis' }, 'en'), /Thesis/);
+  assert.match(coach.coachLine({ leftMs: 30 * 60000, totalMs: 50 * 60000, streak: 4, todayMin: 5 }, 'hu'), /4 napos/);
+
+  const c = cfg.defaults('en');
+  const st = stats.emptyStats();
+  const now = MON(20, 0).getTime();
+  for (let d = 0; d < 5; d += 1) for (let i = 0; i < 2; i += 1) stats.addBlock(st, new Date(2026, 10, 23 - d, 21, 10).getTime(), 'Steam');
+  const ins = coach.insights(st, c, now, 'en');
+  const peak = ins.find((x) => x.id === 'peak');
+  assert.ok(peak, 'peak-hour insight');
+  assert.equal(peak.action.type, 'createSchedule');
+  assert.equal(peak.action.schedule.listIds[0], c.lists.find((l) => l.presetId === 'games').id);
+  assert.ok(ins.find((x) => x.id === 'noschedule'));
+});
+
+test('config keeps custom themes and validates theme choice', () => {
+  const sg = require('../src/core/stylegen');
+  const base = cfg.defaults('en');
+  const th = sg.generate('neon');
+  const m = cfg.mergeEditable(base, { customThemes: [th, { junk: true }], settings: { theme: `custom:${th.id}`, aiKeyEnc: 'hack' } });
+  assert.equal(m.customThemes.length, 1);
+  assert.equal(m.settings.theme, `custom:${th.id}`);
+  assert.equal(m.settings.aiKeyEnc, null, 'AI key cannot be set through setConfig');
+  const gone = cfg.mergeEditable(m, { customThemes: [] });
+  assert.equal(gone.settings.theme, 'midnight', 'deleted custom theme falls back');
+  const loaded = cfg.normalizeLoaded(JSON.parse(JSON.stringify({ ...m, settings: { ...m.settings, aiKeyEnc: 'enc:abc' }, session: { startedAt: 1, endsAt: 2, mode: 'flexible', listIds: [], goal: 'x'.repeat(200) } })), 'en');
+  assert.equal(loaded.settings.aiKeyEnc, 'enc:abc');
+  assert.equal(loaded.customThemes.length, 1);
+  assert.equal(loaded.session.goal.length, 80);
+});

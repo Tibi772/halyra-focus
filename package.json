@@ -1,8 +1,8 @@
 {
   "name": "halyra-focus",
   "productName": "Halyra Focus",
-  "version": "1.0.0",
-  "description": "Free app & website blocker for Mac and Windows. Focus sessions, schedules, Pomodoro, retro themes. No account, no tracking — and you can always turn it off.",
+  "version": "1.1.0",
+  "description": "Free app & website blocker for Mac and Windows. Focus sessions, schedules, Pomodoro, a smart focus coach, an AI style studio and retro themes. No account, no tracking — and you can always turn it off.",
   "main": "src/main/main.js",
   "author": "Halyra",
   "license": "MIT",

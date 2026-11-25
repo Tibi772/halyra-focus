@@ -15,6 +15,9 @@ const { expandHosts, normalizeSite } = require('../core/domains');
 const { PRESETS } = require('../core/presets');
 const { TAMPER_TOOLS } = require('../core/procmatch');
 const platform = require('./platform');
+const stylegen = require('../core/stylegen');
+const coach = require('../core/coach');
+const ai = require('./ai');
 
 const SELFTEST = process.argv.includes('--selftest');
 const SELFTEST_OUT = process.env.HALYRA_SELFTEST_OUT || path.join(require('os').tmpdir(), 'halyra-selftest');
@@ -92,8 +95,22 @@ function notify(title, body) {
 }
 
 function publicSettings() {
-  const { pinHash, pinSalt, ...rest } = config.settings;
-  return { ...rest, hasPin: Boolean(pinHash) };
+  const { pinHash, pinSalt, aiKeyEnc, ...rest } = config.settings;
+  return { ...rest, hasPin: Boolean(pinHash), hasAiKey: Boolean(aiKeyEnc) };
+}
+
+function activeCustomTheme() {
+  const th = config.settings.theme;
+  if (!th.startsWith('custom:')) return null;
+  return (config.customThemes || []).find((t) => `custom:${t.id}` === th) || null;
+}
+
+let insightsCache = { at: 0, rev: 0, list: [] };
+function currentInsights(now) {
+  if (now - insightsCache.at > 60000 || insightsCache.rev !== rev) {
+    insightsCache = { at: now, rev, list: coach.insights(stats, config, now, lang()) };
+  }
+  return insightsCache.list;
 }
 
 function fullState() {
@@ -116,6 +133,9 @@ function fullState() {
     unlock: unlocker.status(),
     helper: { ...hostsState, supported: platform.IS_MAC || platform.IS_WIN },
     stats: statsLib.summarize(stats, now),
+    customThemes: (config.customThemes || []).map((t) => ({ ...t, vars: stylegen.cssVars(t) })),
+    insights: currentInsights(now),
+    aiModel: ai.MODEL,
   };
 }
 
@@ -241,7 +261,7 @@ function stopAll() {
   tick();
 }
 
-function startSession({ listIds, minutes, mode, pomodoro }) {
+function startSession({ listIds, minutes, mode, pomodoro, goal }) {
   const now = Date.now();
   if (config.session && config.session.endsAt > now) return { ok: false, error: 'active' };
   const ids = (Array.isArray(listIds) ? listIds : []).filter((id) => config.lists.some((l) => l.id === id));
@@ -260,7 +280,7 @@ function startSession({ listIds, minutes, mode, pomodoro }) {
     const mins = Math.min(24 * 60, Math.max(1, Math.round(Number(minutes) || 25)));
     endsAt = now + mins * 60000;
   }
-  config.session = { startedAt: now, endsAt, listIds: ids, mode: m, pomodoro: pomo };
+  config.session = { startedAt: now, endsAt, listIds: ids, mode: m, pomodoro: pomo, goal: typeof goal === 'string' ? goal.trim().slice(0, 80) : '' };
   config.settings.defaultListIds = ids;
   config.settings.defaultMode = m;
   if (!pomo) config.settings.defaultMinutes = Math.round((endsAt - now) / 60000);
@@ -321,7 +341,7 @@ function applyConfigChange(partial, pin) {
   config = candidate;
   saveConfig();
   if (prevLogin !== config.settings.launchAtLogin) applyLoginItem();
-  if (prevTheme !== config.settings.theme) applyWindowTheme();
+  if (prevTheme !== config.settings.theme || 'customThemes' in (partial || {})) applyWindowTheme();
   if (prevLang !== lang()) { buildAppMenu(); updateTray(lastEval, true); }
   tick();
   return { ok: true };
@@ -348,9 +368,15 @@ const THEME_CHROME = {
   vapor: { bg: '#1b0b30', fg: '#ffe9ff' },
 };
 
+function themeChrome() {
+  const custom = activeCustomTheme();
+  if (custom) return { bg: custom.colors.bg, fg: custom.colors.text };
+  return THEME_CHROME[config.settings.theme] || THEME_CHROME.midnight;
+}
+
 function applyWindowTheme() {
   if (!win || win.isDestroyed()) return;
-  const c = THEME_CHROME[config.settings.theme] || THEME_CHROME.midnight;
+  const c = themeChrome();
   win.setBackgroundColor(c.bg);
   if (platform.IS_WIN && win.setTitleBarOverlay) {
     try { win.setTitleBarOverlay({ color: c.bg, symbolColor: c.fg, height: 40 }); } catch (_) { /* older electron */ }
@@ -358,7 +384,7 @@ function applyWindowTheme() {
 }
 
 function createWindow() {
-  const c = THEME_CHROME[config.settings.theme] || THEME_CHROME.midnight;
+  const c = themeChrome();
   win = new BrowserWindow({
     width: 1120,
     height: 760,
@@ -435,7 +461,11 @@ function showOverlay(appName, ev) {
   const area = screen.getPrimaryDisplay().workArea;
   overlay.setPosition(Math.round(area.x + (area.width - 460) / 2), Math.round(area.y + 24));
   const left = ev.endsAt ? t('overlay.leftTime', { t: fmtLeft(ev.endsAt - Date.now()) }) : '';
-  const payload = { title: t('overlay.blocked', { app: appName }), sub: t('overlay.sub', { left }), theme: config.settings.theme };
+  const custom = activeCustomTheme();
+  const payload = {
+    title: t('overlay.blocked', { app: appName }), sub: t('overlay.sub', { left }), theme: custom ? 'custom' : config.settings.theme,
+    vars: custom ? stylegen.cssVars(custom) : null, font: custom ? custom.font : null,
+  };
   const send = () => { overlay.webContents.send('overlay', payload); overlay.showInactive(); };
   if (overlay.webContents.isLoading()) overlay.webContents.once('did-finish-load', send);
   else send();
@@ -606,6 +636,104 @@ function ipc() {
     if (!data || !Array.isArray(data.lists)) return { ok: false, error: 'generic' };
     const res = applyConfigChange({ lists: data.lists, schedules: data.schedules || [], settings: data.settings || {} }, pin);
     return { ...res, state: fullState() };
+  });
+
+  // ---------------------------------------------------------------- AI & coach
+  const aiKey = () => ai.decryptKey(config.settings.aiKeyEnc);
+  handle('style:generate', async ({ prompt, seed }) => {
+    const text = String(prompt || '').trim().slice(0, 200);
+    if (!text) return { ok: false, error: 'generic' };
+    const key = aiKey();
+    if (key && !seed) {
+      try {
+        const spec = await ai.styleSpec(key, text);
+        if (spec && stylegen.fromHex(spec.accent) && stylegen.fromHex(spec.bg)) {
+          const theme = stylegen.fromSpec({ ...spec, name: spec.name || text }, { prompt: text });
+          return { ok: true, source: 'ai', theme: { ...theme, vars: stylegen.cssVars(theme) } };
+        }
+      } catch (e) {
+        const theme = stylegen.generate(text, seed || 0);
+        return { ok: true, source: 'offline', aiError: e.code || 'apiError', theme: { ...theme, vars: stylegen.cssVars(theme) } };
+      }
+    }
+    const theme = stylegen.generate(text, seed || 0);
+    return { ok: true, source: 'offline', theme: { ...theme, vars: stylegen.cssVars(theme) } };
+  });
+  handle('style:preview', ({ theme }) => {
+    const clean = stylegen.sanitizeTheme(theme);
+    return clean ? { ok: true, theme: { ...clean, vars: stylegen.cssVars(clean) } } : { ok: false };
+  });
+  handle('style:save', ({ theme, apply }) => {
+    const clean = stylegen.sanitizeTheme(theme);
+    if (!clean) return { ok: false, error: 'generic' };
+    const list = (config.customThemes || []).filter((x) => x.id !== clean.id);
+    const r = applyConfigChange({ customThemes: [clean, ...list].slice(0, 24), settings: apply ? { theme: `custom:${clean.id}` } : {} });
+    return { ...r, id: clean.id, state: fullState() };
+  });
+  handle('style:delete', ({ id }) => {
+    const list = (config.customThemes || []).filter((x) => x.id !== id);
+    const settings = config.settings.theme === `custom:${id}` ? { theme: 'midnight' } : {};
+    return { ...applyConfigChange({ customThemes: list, settings }), state: fullState() };
+  });
+  handle('ai:setKey', async ({ key }) => {
+    const k = String(key || '').trim();
+    if (!/^sk-[\w-]{20,}$/.test(k)) return { ok: false, error: 'aiKeyFormat' };
+    try { await ai.complete(k, { system: 'Reply with OK.', prompt: 'OK?', maxTokens: 5, timeoutMs: 15000 }); } catch (e) {
+      if (e.code === 'invalidKey') return { ok: false, error: 'aiInvalid' };
+      if (e.code === 'network' || e.code === 'timeout') return { ok: false, error: 'aiNetwork' };
+    }
+    config.settings.aiKeyEnc = ai.encryptKey(k);
+    saveConfig();
+    return { ok: true, state: fullState() };
+  });
+  handle('ai:removeKey', () => { config.settings.aiKeyEnc = null; saveConfig(); return { ok: true, state: fullState() }; });
+  handle('coach:suggest', async ({ goal }) => {
+    const g = String(goal || '').trim().slice(0, 160);
+    const lang0 = lang();
+    const mapPresets = (presets) => config.lists.filter((l) => presets.includes(l.presetId)).map((l) => l.id);
+    const key = aiKey();
+    if (key && g) {
+      try {
+        const r = await ai.suggest(key, g, config.lists, lang0);
+        if (r && Array.isArray(r.listIds)) {
+          const listIds = r.listIds.filter((id) => config.lists.some((l) => l.id === id));
+          if (listIds.length) {
+            const pomo = r.pomodoro && r.pomodoro.work > 0 ? { work: Math.min(120, Math.max(5, r.pomodoro.work | 0)), brk: Math.min(30, Math.max(0, r.pomodoro.brk | 0)), cycles: Math.min(12, Math.max(1, r.pomodoro.cycles | 0)) } : null;
+            return { ok: true, source: 'ai', listIds, minutes: pomo ? null : Math.min(240, Math.max(10, Number(r.minutes) || 50)), pomodoro: pomo, mode: engine.MODES.includes(r.mode) ? r.mode : 'patient', reason: String(r.reason || '').slice(0, 300) };
+          }
+        }
+      } catch (_) { /* fall back to the offline coach */ }
+    }
+    const s0 = coach.suggestSetup(g, lang0);
+    let listIds = mapPresets(s0.presets);
+    if (!listIds.length) listIds = config.lists.slice(0, 2).map((l) => l.id);
+    return { ok: true, source: 'offline', listIds, minutes: s0.minutes, pomodoro: s0.pomodoro, mode: s0.mode, reason: s0.reason };
+  });
+  handle('coach:line', () => {
+    const now = Date.now();
+    const ev = engine.evaluate(config, now);
+    const src = ev.sources.find((x) => x.type === 'session') || ev.sources[0];
+    if (!src) return { text: '' };
+    const s0 = src.type === 'session' ? config.session : null;
+    const total = s0 ? s0.endsAt - s0.startedAt : 60 * 60000;
+    const sum = statsLib.summarize(stats, now);
+    return {
+      text: coach.coachLine({
+        goal: s0 && s0.goal, leftMs: src.endsAt - now, totalMs: total, streak: sum.streak, todayMin: sum.todayMinutes,
+        phase: src.phase, phaseLeftMs: s0 && s0.pomodoro ? src.phaseEndsAt - now : null,
+      }, lang()),
+      streak: sum.streak,
+    };
+  });
+  handle('insight:apply', ({ id }) => {
+    const ins = currentInsights(Date.now()).find((x) => x.id === id);
+    if (!ins || !ins.action) return { ok: false };
+    const a = ins.action;
+    let r = { ok: false };
+    if (a.type === 'createSchedule') r = applyConfigChange({ schedules: [...config.schedules, { ...a.schedule, id: cfgLib.uid() }] });
+    if (a.type === 'enableSchedule') r = applyConfigChange({ schedules: config.schedules.map((x) => (x.id === a.id ? { ...x, enabled: true } : x)) });
+    insightsCache.at = 0;
+    return { ...r, action: a.type, state: fullState() };
   });
 
   handle('app:open-external', ({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { ok: true }; });

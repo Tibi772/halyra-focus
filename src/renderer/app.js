@@ -20,7 +20,7 @@ function h(tag, attrs, ...kids) {
     for (const [k, v] of Object.entries(attrs)) {
       if (v == null || v === false) continue;
       if (k === 'class') el.className = v;
-      else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+      else if (k === 'style' && typeof v === 'object') { for (const [sk, sv] of Object.entries(v)) { if (sk.startsWith('--')) el.style.setProperty(sk, sv); else el.style[sk] = sv; } }
       else if (k === 'html') el.innerHTML = v;
       else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v);
       else if (k === 'dataset') Object.assign(el.dataset, v);
@@ -139,8 +139,8 @@ function chime(up = true) {
 }
 
 const modalStack = [];
-function openModal(build, { wide = false, onClose } = {}) {
-  const box = h('div', { class: `modal${wide ? ' wide' : ''}` });
+function openModal(build, { wide = false, xwide = false, onClose } = {}) {
+  const box = h('div', { class: `modal${wide ? ' wide' : ''}${xwide ? ' xwide' : ''}` });
   const back = h('div', { class: 'modal-back', onmousedown: (e) => { if (e.target === back) close(); } }, box);
   const entry = { back, box, onClose, refresh: null };
   function close() {
@@ -202,12 +202,36 @@ function structKey() {
     S.helper.installed, S.helper.verified, S.unlock ? S.unlock.kind : '', ui.view, S.stats.todayBlocks, Math.floor(S.stats.todayMinutes)].join('|');
 }
 
+const CUSTOM_KEYS = new Set();
+function setVars(el, vars, track) {
+  for (const [k, v] of Object.entries(vars || {})) { el.style.setProperty(k, v); if (track) track.add(k); }
+}
+function applyTheme() {
+  const body = document.body;
+  for (const k of CUSTOM_KEYS) body.style.removeProperty(k);
+  CUSTOM_KEYS.clear();
+  delete body.dataset.effect;
+  delete body.dataset.font;
+  const th = S.settings.theme;
+  if (th.startsWith('custom:')) {
+    const ct = (S.customThemes || []).find((x) => `custom:${x.id}` === th);
+    if (ct) {
+      body.dataset.theme = 'custom';
+      setVars(body, ct.vars, CUSTOM_KEYS);
+      body.dataset.effect = ct.effect;
+      body.dataset.font = ct.font;
+      return;
+    }
+  }
+  body.dataset.theme = th.startsWith('custom:') ? 'midnight' : th;
+}
+
 function applyState(state) {
   const first = !S;
   S = state;
   t = I18N.make(S.lang);
   document.documentElement.lang = S.lang;
-  document.body.dataset.theme = S.settings.theme;
+  applyTheme();
   document.body.classList.toggle('win', S.platform === 'win32');
   document.body.classList.toggle('mac', S.platform === 'darwin');
   if (!ui.setup) {
@@ -218,6 +242,9 @@ function applyState(state) {
       pomo: { work: 25, brk: 5, cycles: 4 },
       listIds: S.settings.defaultListIds.length ? [...S.settings.defaultListIds] : S.lists.slice(0, 2).map((l) => l.id),
       mode: S.settings.defaultMode || 'flexible',
+      goal: '',
+      reason: '',
+      reasonSource: '',
     };
   }
   ui.setup.listIds = ui.setup.listIds.filter((id) => listById(id));
@@ -391,7 +418,7 @@ function listChips(selected, onToggle) {
 async function startFocus() {
   const s = ui.setup;
   if (!s.listIds.length) { toast(t('focus.noLists'), 'error'); return; }
-  const r = await api.startSession({ listIds: s.listIds, minutes: s.minutes, mode: s.mode, pomodoro: s.pomodoro ? s.pomo : null });
+  const r = await api.startSession({ listIds: s.listIds, minutes: s.minutes, mode: s.mode, pomodoro: s.pomodoro ? s.pomo : null, goal: s.goal });
   if (r.state) applyState(r.state);
   if (!r.ok) toast(t(`err.${r.error === 'noLists' ? 'generic' : r.error || 'generic'}`), 'error');
   else chime(true);
@@ -417,6 +444,11 @@ function renderFocus() {
   if (!active) {
     const s = ui.setup;
     right.append(
+      h('div', { class: 'setup-sec' }, h('div', { class: 'eyebrow' }, t('coach.goal')),
+        h('div', { class: 'row', style: { flexWrap: 'nowrap' } },
+          h('input', { class: 'input', placeholder: t('coach.goalPh'), value: s.goal, maxlength: 80, 'data-fid': 'goal', oninput: (e) => { s.goal = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') smartSetup(); } }),
+          h('button', { class: 'btn', onclick: smartSetup }, icon('sparkle'), t('coach.suggest'))),
+        s.reason ? h('div', { class: 'coach-note' }, icon('sparkle'), h('span', null, s.reason), s.reasonSource === 'ai' ? h('span', { class: 'badge' }, t('coach.ai')) : null) : null),
       h('div', { class: 'setup-sec' }, h('div', { class: 'eyebrow' }, t('focus.duration')), minutesChips(), s.pomodoro ? pomoBox() : null),
       h('div', { class: 'setup-sec' }, h('div', { class: 'eyebrow' }, t('focus.lists')),
         listChips(s.listIds, (id) => { s.listIds = s.listIds.includes(id) ? s.listIds.filter((x) => x !== id) : [...s.listIds, id]; renderAll(); })),
@@ -451,7 +483,33 @@ function renderFocus() {
     h('div', { class: 'card kpi' }, h('div', { class: 'kpi-num' }, String(fm.n), h('small', null, fm.u)), h('div', { class: 'kpi-label' }, icon('clock'), t('today.focus'))),
     h('div', { class: 'card kpi' }, h('div', { class: 'kpi-num' }, String(st.todayBlocks)), h('div', { class: 'kpi-label' }, icon('shield'), t('today.blocks'))),
     h('div', { class: 'card kpi' }, h('div', { class: 'kpi-num' }, String(st.streak)), h('div', { class: 'kpi-label' }, icon('flame'), t('today.streak')))));
+  if (!active && (S.insights || []).length) parts.push(insightsCard(S.insights.slice(0, 2)));
   return parts;
+}
+
+async function smartSetup() {
+  const s = ui.setup;
+  const r = await api.coachSuggest({ goal: s.goal });
+  if (!r || !r.ok) return;
+  s.listIds = r.listIds;
+  s.mode = r.mode;
+  if (r.pomodoro) { s.pomodoro = true; s.pomo = { ...r.pomodoro }; } else { s.pomodoro = false; s.minutes = r.minutes || 50; s.custom = ![25, 50, 90, 120].includes(s.minutes); }
+  s.reason = r.reason;
+  s.reasonSource = r.source;
+  renderAll();
+}
+
+function insightsCard(list) {
+  return h('div', { class: 'card', style: { marginTop: '16px' } },
+    h('div', { class: 'card-head' }, h('div', { class: 'card-title row', style: { gap: '8px' } }, icon('sparkle'), t('ins.title'))),
+    h('div', { class: 'stack' }, list.map((ins) => h('div', { class: 'insight' },
+      h('span', { class: 'spacer' }, ins.text),
+      ins.action ? h('button', { class: 'btn sm primary', onclick: async () => {
+        if (ins.action.type === 'startFocus') { ui.setup.pomodoro = false; ui.setup.custom = false; ui.setup.minutes = 25; await startFocus(); return; }
+        const r = await api.applyInsight({ id: ins.id });
+        if (r.state) applyState(r.state);
+        toast(r.ok ? t('ok.saved') : t('err.generic'), r.ok ? 'ok' : 'error');
+      } }, ins.action.type === 'startFocus' ? t('ins.start') : t('ins.apply')) : null))));
 }
 
 // ------------------------------------------------------------------ unlock flow
@@ -464,20 +522,30 @@ async function openUnlock() {
     pin = await askPin();
     if (pin == null) return;
   }
+  const cl = await api.coachLine();
+  ui.coach = cl && cl.text ? cl : null;
   if (ev.mode === 'flexible') {
     openModal((self) => [
       modalHead(t('unlock.title'), () => self.close()),
+      coachBlock(),
       h('p', { class: 'muted' }, t('unlock.flexible')),
-      h('div', { class: 'modal-foot' },
-        h('button', { class: 'btn', onclick: () => self.close() }, t('unlock.cancel')),
-        h('button', { class: 'btn primary', onclick: async () => { const r = await api.unlockRequest({ pin }); self.close(); handleUnlockResult(r); } }, t('unlock.confirm'))),
+      h('div', { class: 'modal-foot', style: { alignItems: 'center' } },
+        h('button', { class: 'btn sm', onclick: async () => { const r = await api.unlockRequest({ pin }); self.close(); handleUnlockResult(r); } }, t('coach.stopAnyway')),
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn accent big', onclick: () => { self.close(); chime(true); } }, icon('shield'), t('coach.stay'))),
     ]);
     return;
   }
   const r = await api.unlockRequest({ pin });
   if (handleUnlockResult(r)) return;
-  if (r.status === 'wait') openWaitModal();
+  if (r.status === 'wait') { applyState(await api.getState()); openWaitModal(); }
   else if (r.status === 'locked') openLockedModal(r, pin);
+}
+
+function coachBlock() {
+  if (!ui.coach) return null;
+  return h('div', { class: 'coach' }, h('div', { class: 'coach-ic' }, icon('flame')), h('div', null, h('b', null, ui.coach.text),
+    ui.coach.streak ? h('div', { class: 'muted small' }, `${t('today.streak')}: ${ui.coach.streak}`) : null));
 }
 
 function handleUnlockResult(r) {
@@ -487,28 +555,30 @@ function handleUnlockResult(r) {
 }
 
 function openWaitModal() {
+  const openedAt = Date.now();
   openModal((self) => {
     const u = S.unlock;
     const cd = h('div', { class: 'countdown' });
     const info = h('p', { class: 'muted', style: { textAlign: 'center' } });
-    const btn = h('button', { class: 'btn primary', onclick: async () => { const r = await api.unlockConfirm({}); self.close(); if (!handleUnlockResult(r)) toast(t('err.generic'), 'error'); } }, t('unlock.confirm'));
+    const btn = h('button', { class: 'btn sm', onclick: async () => { const r = await api.unlockConfirm({}); self.close(); if (!handleUnlockResult(r)) toast(t('err.generic'), 'error'); } }, t('coach.stopAnyway'));
     self.live = () => {
       const p = S.unlock;
-      if (!p) { self.close(); return; }
+      if (!p) { if (Date.now() - openedAt > 3000) self.close(); return; }
       const ready = S.now >= p.readyAt;
       cd.textContent = ready ? '✓' : fmtLeft(p.readyAt - S.now);
       info.textContent = ready ? t('unlock.ready', { t: fmtLeft(p.expiresAt - S.now) }) : t('unlock.waitSub');
       btn.disabled = !ready;
     };
     if (u) self.live();
-    return [modalHead(t('unlock.waitTitle'), () => { api.unlockCancel(); self.close(); }), info, cd,
-      h('div', { class: 'modal-foot' }, h('button', { class: 'btn', onclick: () => { api.unlockCancel(); self.close(); } }, t('unlock.cancel')), btn)];
+    return [modalHead(t('unlock.waitTitle'), () => { api.unlockCancel(); self.close(); }), coachBlock(), info, cd,
+      h('div', { class: 'modal-foot', style: { alignItems: 'center' } }, btn, h('span', { class: 'spacer' }), h('button', { class: 'btn accent', onclick: () => { api.unlockCancel(); self.close(); } }, icon('shield'), t('coach.stay')))];
   });
 }
 
 function openLockedModal(r, pin) {
   openModal((self) => [
     modalHead(t('unlock.lockedTitle', { time: fmtClock(r.endsAt) }), () => self.close()),
+    coachBlock(),
     h('p', { class: 'muted' }, t('unlock.lockedSub')),
     h('div', { class: 'modal-foot' },
       h('button', { class: 'btn danger', onclick: async () => { const e = await api.unlockEmergency({ pin }); self.close(); if (!handleUnlockResult(e) && e.status === 'challenge') openChallengeModal(); } }, icon('key'), t('unlock.emergency')),
@@ -770,6 +840,7 @@ function renderStats() {
   const topMax = Math.max(1, ...st.top.map((x) => x.count));
   return [
     head(t('nav.stats'), t('stats.title'), t('stats.sub')),
+    (S.insights || []).length ? h('div', { style: { marginBottom: '16px', marginTop: '-16px' } }, insightsCard(S.insights)) : null,
     h('div', { class: 'grid g4' },
       h('div', { class: 'card kpi' }, h('div', { class: 'kpi-num' }, String(fm.n), h('small', null, fm.u)), h('div', { class: 'kpi-label' }, icon('clock'), t('today.focus'))),
       h('div', { class: 'card kpi' }, h('div', { class: 'kpi-num' }, String(st.todayBlocks)), h('div', { class: 'kpi-label' }, icon('shield'), t('today.blocks'))),
@@ -801,10 +872,99 @@ function numRow(label, key, min, max, scale = 1) {
       onchange: (e) => patchConfig({ settings: { [key]: Math.max(min, Math.min(max, Number(e.target.value) || min)) * scale } }) }));
 }
 
-function themePicker(current, onPick) {
-  return h('div', { class: 'themes' }, ['midnight', 'daylight', 'crt', 'onebit', 'vapor'].map((th) => h('button', { class: `theme-card${current === th ? ' on' : ''}`, onclick: () => onPick(th) },
+function themePicker(current, onPick, withCustom) {
+  const builtIn = ['midnight', 'daylight', 'crt', 'onebit', 'vapor'].map((th) => h('button', { class: `theme-card${current === th ? ' on' : ''}`, onclick: () => onPick(th) },
     h('div', { class: `tp ${th}` }, h('i', { class: 'tp-ring' }), h('i', { class: 'tp-l1' }), h('i', { class: 'tp-l2' }), h('i', { class: 'tp-b' })),
-    h('div', { class: 'tn' }, t(`theme.${th}`)))));
+    h('div', { class: 'tn' }, t(`theme.${th}`))));
+  if (!withCustom) return h('div', { class: 'themes' }, builtIn);
+  const custom = (S.customThemes || []).map((ct) => h('button', {
+    class: `theme-card${current === `custom:${ct.id}` ? ' on' : ''}`,
+    onclick: () => onPick(`custom:${ct.id}`),
+    ondblclick: () => openStyleStudio(ct.id),
+  }, h('div', { class: 'tp custom', style: ct.vars, 'data-effect': ct.effect }, h('i', { class: 'tp-ring' }), h('i', { class: 'tp-l1' }), h('i', { class: 'tp-l2' }), h('i', { class: 'tp-b' })),
+  h('div', { class: 'tn row', style: { gap: '6px', flexWrap: 'nowrap' } }, h('span', { class: 'spacer', style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, ct.name),
+    h('span', { class: 'tp-edit', title: t('common.edit'), onclick: (e) => { e.stopPropagation(); openStyleStudio(ct.id); } }, icon('sparkle')))));
+  const add = h('button', { class: 'theme-card new-style', onclick: () => openStyleStudio(null) },
+    h('div', { class: 'tp new' }, icon('sparkle'), h('b', null, t('style.new')), h('small', null, t('style.newSub'))),
+    h('div', { class: 'tn' }, t('style.new')));
+  return h('div', { class: 'themes' }, builtIn, custom, add);
+}
+
+// ------------------------------------------------------------------ style studio
+
+function stylePreview(theme) {
+  const box = h('div', { class: 'style-preview', 'data-effect': theme.effect, 'data-font': theme.font, style: theme.vars });
+  const C = 2 * Math.PI * 34;
+  const ring = h('div', { class: 'sp-ring' });
+  ring.innerHTML = `<svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" fill="none" stroke="var(--ring-track)" stroke-width="6"/><circle cx="40" cy="40" r="34" fill="none" stroke="var(--accent)" stroke-width="6" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * 0.38}" transform="rotate(-90 40 40)"/></svg><span>24:59</span>`;
+  box.append(h('div', { class: 'sp-in' },
+    h('div', { class: 'sp-side' }, logo(20), h('div', { class: 'sp-nav on' }, icon('focus'), t('nav.focus')), h('div', { class: 'sp-nav' }, icon('lists'), t('nav.lists')), h('div', { class: 'sp-nav' }, icon('stats'), t('nav.stats'))),
+    h('div', { class: 'sp-main' },
+      h('div', { class: 'eyebrow' }, theme.name),
+      h('div', { class: 'sp-title' }, t('focus.on')),
+      h('div', { class: 'sp-row' }, ring,
+        h('div', { class: 'stack', style: { gap: '8px' } },
+          h('div', { class: 'row', style: { gap: '6px' } }, h('span', { class: 'chip on' }, '📱 Social'), h('span', { class: 'chip' }, '🎮 Games')),
+          h('div', { class: 'row', style: { gap: '6px' } }, h('span', { class: 'btn accent sm' }, t('focus.start')), h('span', { class: 'btn sm' }, '+15'))),
+      ),
+      h('div', { class: 'card sp-card' }, h('b', null, '27'), h('span', { class: 'muted small' }, t('today.blocks'))))));
+  return box;
+}
+
+function openStyleStudio(existingId) {
+  const existing = existingId ? (S.customThemes || []).find((x) => x.id === existingId) : null;
+  const st = { prompt: existing ? existing.prompt || existing.name : '', seed: 0, theme: existing ? { ...existing } : null, source: '', aiError: '', busy: false };
+  let previewHost = null;
+  const refreshPreview = () => { if (previewHost && st.theme) previewHost.replaceChildren(stylePreview(st.theme)); };
+  const tune = async (patch) => {
+    const next = { ...st.theme, ...patch, colors: { ...st.theme.colors, ...(patch.colors || {}) } };
+    const r = await api.previewStyle({ theme: next });
+    if (r.ok) { st.theme = { ...r.theme, id: st.theme.id }; refreshPreview(); }
+  };
+  openModal((self) => {
+    const generate = async (seedBump) => {
+      if (!st.prompt.trim()) { toast(t('style.empty'), 'error'); return; }
+      st.busy = true; self.render();
+      if (seedBump) st.seed += 1;
+      const r = await api.generateStyle({ prompt: st.prompt, seed: st.seed });
+      st.busy = false;
+      if (r.ok) { st.theme = existing ? { ...r.theme, id: existing.id } : r.theme; st.source = r.source; st.aiError = r.aiError || ''; }
+      self.render();
+    };
+    const th = st.theme;
+    previewHost = h('div', { class: 'sp-host' }, th ? stylePreview(th) : h('div', { class: 'sp-empty' }, icon('sparkle'), t('style.empty')));
+    const color = (key, label) => h('label', { class: 'field color-field' }, label,
+      h('input', { type: 'color', value: th.colors[key], oninput: (e) => tune({ colors: { [key]: e.target.value } }) }));
+    return [
+      modalHead(t('style.title'), () => self.close()),
+      h('div', { class: 'studio' },
+        h('div', { class: 'studio-left stack' },
+          h('textarea', { class: 'input', rows: 3, maxlength: 200, placeholder: t('style.prompt'), value: st.prompt, 'data-fid': 'style-prompt', oninput: (e) => { st.prompt = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); generate(); } } }),
+          h('div', { class: 'row', style: { gap: '6px' } }, t('style.ex').map((ex) => h('button', { class: 'chip sm-chip', onclick: () => { st.prompt = ex; st.seed = 0; generate(); } }, ex))),
+          h('div', { class: 'row' },
+            h('button', { class: 'btn accent', disabled: st.busy, onclick: () => generate() }, icon('sparkle'), st.busy ? '…' : t('style.generate')),
+            th ? h('button', { class: 'btn', disabled: st.busy, onclick: () => generate(true) }, t('style.again')) : null),
+          h('div', { class: 'muted small' }, st.source === 'ai' ? `✦ ${t('style.sourceAi')}` : st.source === 'offline' ? (st.aiError ? t('style.aiFallback') : t('style.sourceOffline')) : (S.settings.hasAiKey ? t('ai.active', { model: S.aiModel }) : t('style.aiHint'))),
+          th ? h('div', { class: 'stack tune' },
+            h('div', { class: 'eyebrow' }, t('style.tune')),
+            h('label', { class: 'field' }, t('style.name'), h('input', { class: 'input', value: th.name, maxlength: 40, onchange: (e) => tune({ name: e.target.value }) })),
+            h('div', { class: 'color-row' }, color('bg', t('style.bg')), color('text', t('style.text')), color('accent', t('style.accent')), color('accent2', t('style.accent2'))),
+            h('div', { class: 'row', style: { flexWrap: 'nowrap' } },
+              h('label', { class: 'field', style: { flex: 1 } }, t('style.font'), h('select', { class: 'select', onchange: (e) => tune({ font: e.target.value }) }, ['sans', 'pixel', 'mono', 'serif'].map((f) => h('option', { value: f, selected: th.font === f }, t(`font.${f}`))))),
+              h('label', { class: 'field', style: { flex: 1 } }, t('style.effect'), h('select', { class: 'select', onchange: (e) => tune({ effect: e.target.value }) }, ['aurora', 'grid', 'scanlines', 'sunset', 'stars', 'dots', 'none'].map((f) => h('option', { value: f, selected: th.effect === f }, t(`fx.${f}`)))))),
+            h('label', { class: 'field' }, `${t('style.radius')}`, h('input', { type: 'range', min: 0, max: 28, value: th.radius, oninput: (e) => tune({ radius: Number(e.target.value) }) }))) : null),
+        h('div', { class: 'studio-right' }, previewHost)),
+      h('div', { class: 'modal-foot' },
+        existing ? h('button', { class: 'btn danger', onclick: async () => { const r = await api.deleteStyle({ id: existing.id }); if (r.state) applyState(r.state); self.close(); } }, icon('trash'), t('style.delete')) : null,
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn', onclick: () => self.close() }, t('common.cancel')),
+        h('button', { class: 'btn primary', disabled: !th, onclick: async () => {
+          const r = await api.saveStyle({ theme: st.theme, apply: true });
+          if (r.state) applyState(r.state);
+          if (r.ok) { toast(t('style.saved')); self.close(); } else toast(t(`err.${r.error || 'generic'}`), 'error');
+        } }, t('style.saveApply'))),
+    ];
+  }, { wide: true, xwide: true });
 }
 
 async function pinFlow(remove) {
@@ -827,10 +987,11 @@ function renderSettings() {
     head(t('nav.settings'), t('set.title'), null),
     h('div', { class: 'stack' },
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.appearance'))),
-        themePicker(s.theme, (th) => patchConfig({ settings: { theme: th } })),
+        themePicker(s.theme, (th) => patchConfig({ settings: { theme: th } }), true),
         h('div', { class: 'set-row', style: { marginTop: '8px' } }, h('div', { class: 'label' }, t('set.language')),
           h('select', { class: 'select', style: { width: '200px' }, onchange: (e) => patchConfig({ settings: { lang: e.target.value } }) },
             [['auto', t('set.auto')], ['hu', 'Magyar'], ['en', 'English']].map(([v, n]) => h('option', { value: v, selected: s.lang === v }, n))))),
+      aiCard(),
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.web'))), helperBlock),
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.behavior'))),
         toggleRow(t('set.login'), 'launchAtLogin'), toggleRow(t('set.overlay'), 'showOverlay'), toggleRow(t('set.notifications'), 'notifications'), toggleRow(t('set.sound'), 'sound')),
@@ -851,6 +1012,27 @@ function renderSettings() {
           h('button', { class: 'btn', onclick: () => api.openExternal(BRAND.website) }, icon('ext'), t('set.website')),
           h('button', { class: 'btn', onclick: async () => { const r = await api.quit(); if (!r.ok) toast(t('err.quitLocked'), 'error'); } }, icon('power'), t('set.quit'))))),
   ];
+}
+
+function aiCard() {
+  let key = '';
+  const on = S.settings.hasAiKey;
+  return h('div', { class: 'card' },
+    h('div', { class: 'card-head' }, h('div', { class: 'card-title row', style: { gap: '8px' } }, icon('sparkle'), t('ai.title')),
+      h('span', { class: on ? 'okline' : 'muted small' }, on ? icon('check') : null, on ? t('ai.active', { model: S.aiModel }) : t('ai.inactive'))),
+    h('p', { class: 'muted', style: { marginTop: 0 } }, t('ai.sub')),
+    on ? h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => openStyleStudio(null) }, icon('sparkle'), t('style.new')),
+      h('button', { class: 'btn danger', onclick: async () => { const r = await api.removeAiKey(); if (r.state) applyState(r.state); } }, t('ai.remove')))
+      : h('div', { class: 'row', style: { flexWrap: 'nowrap' } },
+        h('input', { class: 'input', type: 'password', placeholder: `${t('ai.key')} (sk-ant-…)`, autocomplete: 'off', 'data-fid': 'ai-key', oninput: (e) => { key = e.target.value; } }),
+        h('button', { class: 'btn primary', onclick: async (e) => {
+          e.target.disabled = true;
+          const r = await api.setAiKey({ key });
+          e.target.disabled = false;
+          if (r.state) applyState(r.state);
+          toast(r.ok ? t('ok.saved') : t(`err.${r.error || 'generic'}`), r.ok ? 'ok' : 'error');
+        } }, t('ai.save'))),
+    on ? null : h('div', { class: 'muted small', style: { marginTop: '8px' } }, t('ai.where')));
 }
 
 // ------------------------------------------------------------------ onboarding

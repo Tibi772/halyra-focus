@@ -5,7 +5,7 @@ const en = {
   langName: 'English',
   meta: {
     title: 'Halyra Focus — Free App & Website Blocker for Mac and Windows',
-    desc: 'Block distracting apps and websites on Mac and Windows — free. Focus timer, Pomodoro, schedules, a strict mode you can still turn off, and retro themes. No account, no tracking.',
+    desc: 'Block distracting apps and websites on Mac and Windows — free. Focus timer, Pomodoro, schedules, a smart focus coach, an AI style studio and retro themes. No account, no tracking.',
     ogAlt: 'Halyra Focus app showing a focus timer blocking social media, video and games',
   },
   nav: { features: 'Features', modes: 'Modes', themes: 'Themes', faq: 'FAQ', download: 'Download', skip: 'Skip to content' },
@@ -20,7 +20,7 @@ const en = {
     toggle: 'Focus mode', off: 'Off', on: 'On',
     overlayT: 'Video is blocked', overlayS: 'Back to what matters. 24:59 left',
     labels: { social: 'Social', video: 'Video', games: 'Games', news: 'News', shop: 'Shopping', chat: 'Chat', work: 'Work', study: 'Study', code: 'Code' },
-    stats: [['0 €', 'Free — no trial, no ads'], ['2', 'Platforms: macOS & Windows'], ['5', 'Themes, three of them retro'], ['0', 'Trackers. Your data stays local']],
+    stats: [['0 €', 'Free — no trial, no ads'], ['2', 'Platforms: macOS & Windows'], ['∞', 'Themes — 5 built in, plus your own, designed with AI'], ['0', 'Trackers. Your data stays local']],
     canvasLabel: 'Animated city where each building is an app. Turning on focus mode switches off the lights in distracting apps.',
   },
   asks: {
@@ -45,6 +45,8 @@ const en = {
       { k: 'Block lists', h: 'Your distractions, neatly grouped.', p: 'Start with ready-made lists for social media, video, games, chat, news and shopping — or build your own from installed apps and any website.', ticks: ['Pick from your installed apps, with icons', 'Paste dozens of sites at once; www. and m. subdomains included', 'Combine any lists per session or schedule'], img: 'lists' },
       { k: 'Schedules', h: 'Let the calendar have the willpower.', p: 'Set it once: social media off during work hours, games off on school nights, everything off after 23:00. The week view shows exactly when you’re protected.', ticks: ['Any days, any hours — overnight windows work', 'Each schedule has its own strictness', 'Skip today’s block in Flexible mode if plans change'], img: 'schedules' },
       { k: 'Stats', h: 'Watch your focus grow. Privately.', p: 'Daily focus minutes, a streak counter and the apps you reached for most. Stored only on your computer — there’s no server to send it to.', ticks: ['7-day focus chart and streaks', 'Top distractions of the week', 'Export and import your setup as a file'], img: 'stats' },
+      { k: 'Focus coach', h: 'Smart enough to plan. Firm enough to hold you to it.', p: 'Tell it what you’re working on and it sets up the block for you — what to block, how long and how strict. Try to quit early and it tells you exactly what you’d be giving up.', ticks: ['One-click smart setup from your goal', 'Firm, specific nudges instead of guilt trips', 'Tips from your own stats — like auto-blocking your weakest hour'], img: 'coach' },
+      { k: 'AI style studio', h: 'Describe a vibe. Get your own theme.', p: 'Type “neon Tokyo night” or “calm forest” and the style studio designs a complete theme — colours, font, corners and background effect — with readable contrast guaranteed. Fine-tune anything and save as many as you like.', ticks: ['Works offline with the built-in style engine', 'Even smarter with your own Claude AI key (optional)', 'Pixel, terminal, elegant or modern fonts; neon grid, CRT lines, stars and more'], img: 'studio' },
     ],
     extras: [
       ['PIN lock', 'For accountability partners or kids: blocks can’t be stopped or removed without the PIN.'],
@@ -69,8 +71,8 @@ const en = {
   themes: {
     eyebrow: 'Make it yours',
     h2: 'Sleek by default. <em>Retro</em> if you like.',
-    p: 'Five themes, three of them retro — a green phosphor CRT terminal, a 1-bit black & white desktop and an 80s vapor sunset. Same app, totally different mood.',
-    names: { midnight: 'Midnight', daylight: 'Daylight', crt: 'Retro CRT', onebit: 'Retro 1-bit', vapor: 'Retro Vapor' },
+    p: 'Five built-in themes, three of them retro — a green phosphor CRT terminal, a 1-bit black & white desktop and an 80s vapor sunset. Or describe your own and let the AI style studio build it.',
+    names: { midnight: 'Midnight', daylight: 'Daylight', crt: 'Retro CRT', onebit: 'Retro 1-bit', vapor: 'Retro Vapor', custom: 'Your style ✦' },
   },
   how: {
     eyebrow: 'How it works',
@@ -108,6 +110,7 @@ const en = {
       ['macOS says it can’t verify the developer. What should I do?', 'Open System Settings → Privacy & Security, scroll down and click “Open Anyway”. You only do this once. We’re new and don’t have a paid Apple certificate yet — the source code is public, so anyone can check it.'],
       ['Windows shows “Windows protected your PC”.', 'Click “More info”, then “Run anyway”. This appears because the installer isn’t signed with a paid certificate yet.'],
       ['Which systems are supported?', 'macOS 12 Monterey or newer (Apple Silicon and Intel) and Windows 10 or 11 (64-bit).'],
+      ['Is there AI in it?', 'Yes. The style studio and the focus coach work offline out of the box. If you add your own Anthropic API key in Settings, they use Claude AI for even smarter results. Only the text you type into those two features is sent — never your lists, stats or browsing.'],
       ['Can it block only YouTube Shorts or the Reddit front page?', 'Not yet — Halyra Focus blocks whole sites and apps. Blocking individual feeds needs a browser extension, which is on the roadmap.'],
     ],
   },
@@ -136,7 +139,8 @@ const en = {
 <li>Your block lists, schedules, settings and statistics are stored only on your computer, in the app’s own folder.</li>
 <li>Website blocking writes the domains you choose into your computer’s hosts file through a local helper. Nothing is sent over the internet.</li>
 <li>To block apps, the app looks at the list of running programs on your computer. This list never leaves your computer.</li>
-<li>The app does not connect to the internet by itself. Opening a link (for example to this website) happens in your browser.</li>
+<li>The app does not connect to the internet by itself. The only exception is optional: if you add your own Anthropic API key, the text you type into the AI style studio or the smart setup is sent to Anthropic’s API to generate the result. Nothing else is ever sent.</li>
+<li>Opening a link (for example to this website) happens in your browser.</li>
 </ul>
 <h2>This website</h2>
 <ul>
@@ -219,7 +223,7 @@ const hu = {
   langName: 'Magyar',
   meta: {
     title: 'Halyra Focus — Ingyenes app- és weboldal-blokkoló Macre és Windowsra',
-    desc: 'Tiltsd le a figyelemelterelő appokat és weboldalakat Macen és Windowson — ingyen. Fókusz időzítő, Pomodoro, időzítések, szigorú mód vészkijárattal és retró témák. Fiók és követés nélkül.',
+    desc: 'Tiltsd le a figyelemelterelő appokat és weboldalakat Macen és Windowson — ingyen. Fókusz időzítő, Pomodoro, időzítések, okos fókusz-coach, AI stílusstúdió és retró témák. Fiók és követés nélkül.',
     ogAlt: 'A Halyra Focus app fókusz időzítővel, ami tiltja a közösségi médiát, a videókat és a játékokat',
   },
   nav: { features: 'Funkciók', modes: 'Módok', themes: 'Témák', faq: 'GYIK', download: 'Letöltés', skip: 'Ugrás a tartalomra' },
@@ -234,7 +238,7 @@ const hu = {
     toggle: 'Fókusz mód', off: 'Ki', on: 'Be',
     overlayT: 'A videó tiltva', overlayS: 'Vissza ahhoz, ami számít. Még 24:59',
     labels: { social: 'Közösségi', video: 'Videó', games: 'Játékok', news: 'Hírek', shop: 'Vásárlás', chat: 'Chat', work: 'Munka', study: 'Tanulás', code: 'Kód' },
-    stats: [['0 Ft', 'Ingyenes — nincs próbaidő, nincs reklám'], ['2', 'Platform: macOS és Windows'], ['5', 'Téma, ebből három retró'], ['0', 'Követőkód. Az adataid nálad maradnak']],
+    stats: [['0 Ft', 'Ingyenes — nincs próbaidő, nincs reklám'], ['2', 'Platform: macOS és Windows'], ['∞', 'Téma — 5 beépített, és a saját, AI-jal tervezett stílusaid'], ['0', 'Követőkód. Az adataid nálad maradnak']],
     canvasLabel: 'Animált város, ahol minden épület egy app. A fókusz mód bekapcsolásakor a figyelemelterelő appok épületeiben kialszanak a fények.',
   },
   asks: {
@@ -259,6 +263,8 @@ const hu = {
       { k: 'Tiltólisták', h: 'A figyelemelterelők, szépen csoportosítva.', p: 'Kezdd kész listákkal (közösségi média, videó, játékok, chat, hírek, vásárlás), vagy rakd össze a sajátodat a telepített appokból és bármilyen weboldalból.', ticks: ['Appok kiválasztása a telepítettek közül, ikonokkal', 'Egyszerre több tucat oldal beillesztése; a www. és m. aldomainek is', 'Munkamenetenként és időzítésenként bármilyen lista-kombináció'], img: 'lists' },
       { k: 'Időzítések', h: 'Az akaraterőt bízd a naptárra.', p: 'Egyszer beállítod: munkaidőben nincs közösségi média, hétköznap este nincs játék, 23:00 után semmi. A heti nézet pontosan mutatja, mikor vagy védve.', ticks: ['Bármelyik nap, bármelyik óra — éjfélen átnyúló sáv is', 'Minden időzítésnek saját szigorúsága van', 'Laza módban a mai tiltást kihagyhatod, ha változik a terv'], img: 'schedules' },
       { k: 'Statisztika', h: 'Nézd, ahogy nő a fókuszod. Privát módon.', p: 'Napi fókuszpercek, sorozatszámláló, és hogy mely appokhoz nyúltál a legtöbbször. Csak a gépeden tárolódik — nincs szerver, ahová elküldhetnénk.', ticks: ['7 napos fókuszgrafikon és sorozatok', 'A hét legnagyobb figyelemelterelői', 'A beállításaid exportálása és importálása fájlként'], img: 'stats' },
+      { k: 'Fókusz-coach', h: 'Elég okos, hogy megtervezze. Elég határozott, hogy be is tartasd.', p: 'Mondd meg, min dolgozol, és beállítja helyetted a tiltást — mit, mennyi ideig és mennyire szigorúan. Ha idő előtt kiszállnál, pontosan megmondja, mit adnál fel.', ticks: ['Okos beállítás egy kattintással a célodból', 'Határozott, konkrét mondatok bűntudatkeltés helyett', 'Tippek a saját statisztikádból — pl. a leggyengébb órád automatikus tiltása'], img: 'coach' },
+      { k: 'AI stílusstúdió', h: 'Írd le a hangulatot. Megkapod a saját témádat.', p: 'Írd be: „neon tokiói éjszaka” vagy „erdei nyugalom”, és a stílusstúdió megtervez egy teljes témát — színek, betűtípus, sarkok és háttéreffekt —, garantáltan jól olvasható kontraszttal. Bármit finomhangolhatsz, és annyit menthetsz, amennyit akarsz.', ticks: ['Offline is működik a beépített stílusmotorral', 'Saját Claude AI-kulccsal még okosabb (opcionális)', 'Pixel, terminál, elegáns vagy modern betű; neon rács, CRT csíkok, csillagok és még sok más'], img: 'studio' },
     ],
     extras: [
       ['PIN-zár', 'Elszámoltató barátnak vagy gyerekeknek: PIN nélkül a tiltás nem állítható le és nem törölhető.'],
@@ -283,8 +289,8 @@ const hu = {
   themes: {
     eyebrow: 'Legyen a tiéd',
     h2: 'Alapból elegáns. <em>Retró</em>, ha szereted.',
-    p: 'Öt téma, ebből három retró: zöld foszforos CRT terminál, fekete-fehér 1-bites asztal és 80-as évekbeli vapor naplemente. Ugyanaz az app, teljesen más hangulat.',
-    names: { midnight: 'Éjfél', daylight: 'Nappal', crt: 'Retró CRT', onebit: 'Retró 1-bit', vapor: 'Retró Vapor' },
+    p: 'Öt beépített téma, ebből három retró: zöld foszforos CRT terminál, fekete-fehér 1-bites asztal és 80-as évekbeli vapor naplemente. Vagy írd le a sajátodat, és az AI stílusstúdió megépíti.',
+    names: { midnight: 'Éjfél', daylight: 'Nappal', crt: 'Retró CRT', onebit: 'Retró 1-bit', vapor: 'Retró Vapor', custom: 'A te stílusod ✦' },
   },
   how: {
     eyebrow: 'Hogyan működik',
@@ -322,6 +328,7 @@ const hu = {
       ['A macOS azt írja, nem tudja ellenőrizni a fejlesztőt. Mit tegyek?', 'Nyisd meg a Rendszerbeállítások → Adatvédelem és biztonság (Privacy & Security) oldalt, görgess le, és kattints a „Megnyitás mégis” (Open Anyway) gombra. Ezt csak egyszer kell. Újak vagyunk, és még nincs fizetős Apple-tanúsítványunk — a forráskód nyilvános, bárki ellenőrizheti.'],
       ['A Windows azt írja: „A Windows megvédte a számítógépet”.', 'Kattints a „További információ” (More info), majd a „Futtatás mindenképp” (Run anyway) gombra. Ez azért jelenik meg, mert a telepítő még nincs fizetős tanúsítvánnyal aláírva.'],
       ['Milyen rendszereken fut?', 'macOS 12 Monterey vagy újabb (Apple Silicon és Intel), valamint Windows 10 vagy 11 (64 bit).'],
+      ['Van benne AI?', 'Igen. A stílusstúdió és a fókusz-coach alapból offline működik. Ha a Beállításokban megadod a saját Anthropic API-kulcsodat, Claude AI-t használnak a még okosabb eredményért. Csak az a szöveg megy el, amit ebbe a két funkcióba írsz — a listáid, statisztikáid és a böngészésed soha.'],
       ['Le tudja tiltani csak a YouTube Shortsot vagy a Reddit főoldalát?', 'Egyelőre nem — a Halyra Focus egész oldalakat és appokat tilt. Az egyes hírfolyamok tiltásához böngészőbővítmény kell, ez a tervek között van.'],
     ],
   },
@@ -350,7 +357,8 @@ const hu = {
 <li>A tiltólistáid, időzítéseid, beállításaid és statisztikáid csak a gépeden, az app saját mappájában tárolódnak.</li>
 <li>A weboldal-tiltás a kiválasztott domaineket egy helyi segédprogramon keresztül a géped hosts fájljába írja. Semmi nem megy ki az internetre.</li>
 <li>Az appok tiltásához az app a gépeden futó programok listáját nézi. Ez a lista soha nem hagyja el a gépedet.</li>
-<li>Az app magától nem csatlakozik az internethez. Ha megnyitsz egy linket (például ezt a weboldalt), az a böngésződben történik.</li>
+<li>Az app magától nem csatlakozik az internethez. Az egyetlen kivétel opcionális: ha megadod a saját Anthropic API-kulcsodat, az AI stílusstúdióba vagy az okos beállításba írt szöveg az Anthropic API-jához kerül, hogy elkészüljön az eredmény. Semmi más nem megy el.</li>
+<li>Ha megnyitsz egy linket (például ezt a weboldalt), az a böngésződben történik.</li>
 </ul>
 <h2>Ez a weboldal</h2>
 <ul>

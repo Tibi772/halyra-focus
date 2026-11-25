@@ -10,6 +10,7 @@ No account. No tracking. MIT licensed.
 | Blocks | Desktop apps (closed on launch) · Websites in every browser (system hosts file) |
 | Modes | Flexible (stop anytime) · Patient (stop after a pause) · Locked (stop after timer, emergency exit) |
 | Extras | Schedules incl. overnight · Pomodoro · PIN lock · Tray/menu-bar timer · Stats · EN/HU UI |
+| AI | Style studio (text → full theme, contrast-checked) · Focus coach (goal → setup, firm nudges, stats insights). Offline by default; uses Claude with the user's own Anthropic API key. |
 
 ## How blocking works
 

@@ -82,6 +82,9 @@ Ha később eltüntetnéd: Apple Developer Program (kb. 99 USD/év) + Windows k�
 - Magától lejáró weboldal-tiltás: akkor is feloldódik az idő végén, ha az appot közben törölték.
 - PIN-zár, statisztika (helyben tárolva), indítás bejelentkezéskor, menüsor/tálca visszaszámláló.
 - 5 téma: Éjfél, Nappal, **Retró CRT**, **Retró 1-bit**, **Retró Vapor** — saját, ékezetes pixel betűtípussal.
+- **AI stílusstúdió:** írd le, milyen legyen (pl. „neon tokiói éjszaka”), és megtervezi a saját témádat — színek, betű, sarkok, háttéreffekt, mindig jól olvasható kontraszttal. Finomhangolható, korlátlanul menthető.
+- **Okos, határozott fókusz-coach:** megmondod, min dolgozol, ő beállítja a tiltást (mit, mennyi ideig, milyen szigorúan). Ha idő előtt kiszállnál, konkrétan megmondja, mit adsz fel. A statisztikádból tippeket ad (pl. a leggyengébb órád automatikus tiltása).
+- Az AI alapból offline működik. Ha a Beállítások → AI résznél megadsz egy saját Anthropic API-kulcsot (console.anthropic.com), Claude AI-t használ.
 - Magyar és angol nyelv.
 
 ## 8. Átnevezés (ha nem „Halyra Focus” legyen a neve)

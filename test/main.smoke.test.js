@@ -66,6 +66,7 @@ const fakeElectron = {
   dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }), showSaveDialog: async () => ({ canceled: true }) },
   shell: { openExternal() {}, readShortcutLink: () => ({}) },
   screen: { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1440, height: 900 } }) },
+  safeStorage: { isEncryptionAvailable: () => false },
 };
 
 const origLoad = Module._load;
@@ -144,6 +145,31 @@ test('main process boots and IPC works end-to-end', async () => {
   assert.deepEqual(await call('sites:normalize', { sites: ['HTTPS://WWW.Reddit.com/r/x', 'bad'] }), ['reddit.com']);
   assert.ok((await call('presets:get')).length >= 6);
   assert.ok(Array.isArray(await call('apps:installed', {})));
+
+  // style studio (offline engine), save + apply, delete
+  const gen = await call('style:generate', { prompt: 'neon tokiói éjszaka' });
+  assert.equal(gen.ok, true);
+  assert.equal(gen.source, 'offline');
+  assert.ok(gen.theme.vars['--accent']);
+  const tuned = await call('style:preview', { theme: { ...gen.theme, colors: { ...gen.theme.colors, accent: '#ff0000' } } });
+  assert.equal(tuned.ok, true);
+  const savedStyle = await call('style:save', { theme: tuned.theme, apply: true });
+  assert.equal(savedStyle.ok, true);
+  assert.equal(savedStyle.state.settings.theme, `custom:${savedStyle.id}`);
+  assert.equal(savedStyle.state.customThemes.length, 1);
+  const del = await call('style:delete', { id: savedStyle.id });
+  assert.equal(del.state.customThemes.length, 0);
+  assert.notEqual(del.state.settings.theme, `custom:${savedStyle.id}`);
+
+  // coach
+  const sug = await call('coach:suggest', { goal: 'vizsgára tanulok' });
+  assert.equal(sug.ok, true);
+  assert.ok(sug.listIds.length >= 1);
+  assert.ok(sug.pomodoro);
+  const line = await call('coach:line');
+  assert.ok(line.text.length > 10, 'coach line during a block');
+  assert.ok(Array.isArray((await call('state:get')).insights));
+  assert.equal((await call('ai:setKey', { key: 'nope' })).error, 'aiKeyFormat');
 
   // state is pushed to the window
   assert.ok(sent.some(([ch]) => ch === 'state'));

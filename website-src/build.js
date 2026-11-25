@@ -173,7 +173,7 @@ function homePage(page) {
   const faqLd = { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: t.faq.items.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })) };
   const siteLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Halyra Focus', url: `${BASE}/`, inLanguage: page.lang };
   const modeIcons = ['unlock', 'hourglass', 'lock'];
-  const themeShots = { midnight: 'focus', daylight: 'theme-daylight', crt: 'theme-crt', onebit: 'theme-onebit', vapor: 'theme-vapor' };
+  const themeShots = { midnight: 'focus', daylight: 'theme-daylight', crt: 'theme-crt', onebit: 'theme-onebit', vapor: 'theme-vapor', custom: 'theme-custom' };
 
   return `${head(page, t, { title: t.meta.title, desc: t.meta.desc, jsonld: [softwareLd, faqLd, siteLd] })}
 <body>

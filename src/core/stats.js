@@ -26,6 +26,9 @@ function addBlock(stats, ms, name) {
   const d = day(stats, ms);
   const k = String(name || '?').slice(0, 80);
   d.blocks[k] = (d.blocks[k] || 0) + 1;
+  d.hours = d.hours || {};
+  d.hours[k] = d.hours[k] || new Array(24).fill(0);
+  d.hours[k][new Date(ms).getHours()] += 1;
 }
 
 function addSession(stats, ms) {
