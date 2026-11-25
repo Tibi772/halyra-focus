@@ -6,11 +6,12 @@ Ez a mappa mindent tartalmaz: a Mac- és Windows-appot, a weboldalt, és az auto
 
 ## 1. GitHub fiók és tároló (5 perc)
 
-1. Regisztrálj a [github.com](https://github.com) oldalon (ingyenes).
-2. Jobb felső **+ → New repository**.
+1. Regisztrálj a [github.com](https://github.com) oldalon (ingyenes) — neked már van: **Tibi772**.
+2. Nyisd meg: **https://github.com/new?name=halyra-focus&visibility=public**
    - Név: `halyra-focus`
    - **Public** legyen! (Csak így ingyenes a weboldal-tárhely és a letöltés mindenkinek.)
    - A többit hagyd üresen → **Create repository**.
+3. **Ha azt szeretnéd, hogy Claude töltse fel és felügyelje a gyártást:** nyisd meg a https://github.com/settings/installations oldalt → **Claude** → **Configure** → a „Repository access” résznél add hozzá a `halyra-focus` tárolót → **Save**. Utána szólj Claude-nak, és ő feltölt mindent (a 2. lépést kihagyhatod).
 
 ## 2. A fájlok feltöltése (10 perc)
 
@@ -37,6 +38,23 @@ A weboldal letöltés gombjai **mindig a legfrissebb kiadásra** mutatnak.
 > Ha piros X van az **Actions** fülön: kattints rá, és küldd el nekem a hibát.
 
 **Új verzió:** írd át a `package.json`-ban a `"version"` számot (pl. `1.0.1`), és töltsd fel.
+
+## 3/b. Fiók és szinkron bekapcsolása (10 perc, ingyenes)
+
+Az app és a weboldal fiók nélkül is teljesen működik. Ha azt szeretnéd, hogy a felhasználók **be tudjanak jelentkezni** (minden gépükön ugyanaz legyen a tiltás, és a telefonjukról is indíthassák), ehhez egy ingyenes Supabase-projekt kell:
+
+1. Regisztrálj: [supabase.com](https://supabase.com) → **New project** (név: `halyra-focus`, régió: Central EU (Frankfurt), adj meg egy erős adatbázis-jelszót).
+2. Bal oldalt **SQL Editor** → **New query** → másold be a `docs/supabase.sql` fájl teljes tartalmát → **Run**. (Ez létrehozza a szinkron-táblát, és beállítja, hogy mindenki csak a saját adatát lássa.)
+3. **Authentication → Sign In / Providers → Email**: maradjon bekapcsolva. (A „Confirm email” mehet bekapcsolva — ekkor a regisztráció után egy megerősítő e-mailt kapnak.)
+4. **Authentication → URL Configuration → Site URL**: írd be a weboldalad címét + `/app/` (pl. `https://tibi772.github.io/halyra-focus/app/`). Ide viszi vissza a felhasználót a megerősítő és a jelszó-visszaállító link.
+5. **Project Settings → API**: másold ki a **Project URL**-t és az **anon public** kulcsot, és írd be a `src/shared/cloud.json` fájlba:
+   ```json
+   { "url": "https://xxxx.supabase.co", "anonKey": "eyJhbGciOi..." }
+   ```
+   (Az anon kulcs nyilvános kulcs, nyugodtan lehet a kódban — a táblát a 2. lépés szabályai védik.)
+6. Töltsd fel (push). Az új verzióban megjelenik a **Beállítások → Fiók és szinkron** kártya, a weboldalon pedig a **Belépés** gomb működni kezd.
+
+**Webapp (telefonra is):** `https://…/halyra-focus/app/` — belépés után innen indítható a fókusz az összes gépen, szerkeszthetők a listák és a napi keretek. iPhone-on: Megosztás → **Főképernyőhöz adás**, Androidon: menü → **Alkalmazás telepítése**, és appként ott lesz a kezdőképernyőn.
 
 ## 4. Saját domain (opcionális, kb. 3–15 €/év)
 
@@ -85,6 +103,11 @@ Ha később eltüntetnéd: Apple Developer Program (kb. 99 USD/év) + Windows k�
 - **AI stílusstúdió:** írd le, milyen legyen (pl. „neon tokiói éjszaka”), és megtervezi a saját témádat — színek, betű, sarkok, háttéreffekt, mindig jól olvasható kontraszttal. Finomhangolható, korlátlanul menthető.
 - **Okos, határozott fókusz-coach:** megmondod, min dolgozol, ő beállítja a tiltást (mit, mennyi ideig, milyen szigorúan). Ha idő előtt kiszállnál, konkrétan megmondja, mit adsz fel. A statisztikádból tippeket ad (pl. a leggyengébb órád automatikus tiltása).
 - Az AI alapból offline működik. Ha a Beállítások → AI résznél megadsz egy saját Anthropic API-kulcsot (console.anthropic.com), Claude AI-t használ.
+- **Napi keret** listánként (pl. YouTube napi 30 perc): méri az appok futási idejét és azt, amíg a lista egyik weboldala az elöl lévő böngészőlap; ha elfogy, éjfélig tiltva.
+- **Fókuszhangok:** eső, hullámok, barna zaj, kávézó, kandalló, fehér zaj — az app generálja, a tiltással együtt indul.
+- **Fiók és szinkron (opcionális):** e-mailes belépés, a listák, időzítések, stílusok és a futó fókusz minden gépen ugyanaz. Zárolt tiltást másik eszközről sem lehet leállítani.
+- **Webapp telefonra:** a weboldal `/app/` oldalán, ugyanazzal a fiókkal — innen is indítható a fókusz az összes gépen.
+- Nyugodt tiltóképernyő rövid, motiváló mondatokkal.
 - Magyar és angol nyelv.
 
 ## 8. Átnevezés (ha nem „Halyra Focus” legyen a neve)

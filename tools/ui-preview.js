@@ -58,7 +58,7 @@ function state(lang, mutate) {
     c.customThemes.push(stylegen.generate(lang === 'hu' ? 'Neon tokiói éjszaka' : 'Neon Tokyo night'));
     c.customThemes.push(stylegen.generate(lang === 'hu' ? 'Erdei nyugalom' : 'Calm forest'));
   }
-  const ev = engine.evaluate(c, NOW);
+  const ev = engine.evaluate(c, NOW, { usage: c._usage || {} });
   const { pinHash, pinSalt, aiKeyEnc, ...settings } = c.settings;
   return {
     now: NOW, rev: 1, platform: 'darwin', version: '1.0.0', lang,
@@ -67,6 +67,8 @@ function state(lang, mutate) {
     insights: coach.insights(rawStats(), c, NOW, lang),
     eval: { blocking: ev.blocking, mode: ev.mode, sources: ev.sources, endsAt: ev.endsAt, next: ev.next, sitesCount: ev.sites.length, appsCount: ev.apps.length, listIds: ev.listIds },
     unlock: null, helper: { installed: true, verified: true, expected: 10, supported: true }, stats: fakeStats(),
+    cloud: c._cloud || { enabled: true, signedIn: false, email: null, lastSync: 0, error: null },
+    usage: c._usage || {},
   };
 }
 
@@ -86,6 +88,25 @@ for (const lang of ['en', 'hu']) {
     c._noCustom = true;
     c.settings.theme = `custom:${th.id}`;
     c.session = { startedAt: NOW - 17 * 60000 - 12000, endsAt: NOW + 33 * 60000 + 48000, listIds: [c.lists[0].id, c.lists[1].id, c.lists[2].id], mode: 'patient', pomodoro: null, goal: lang === 'hu' ? 'Roblox játék programozása' : 'Coding my Roblox game' };
+  });
+  scenarios[`synced-${lang}`] = state(lang, (c) => {
+    c.schedules[0].enabled = false;
+    c.lists[0].limitMin = 45; c.lists[1].limitMin = 60;
+    c._usage = { [c.lists[0].id]: 31 * 60 + 20, [c.lists[1].id]: 12 * 60 };
+    c.settings.focusSound = 'rain';
+    c._cloud = { enabled: true, signedIn: true, email: 'anna@halyra.app', lastSync: NOW - 40000, error: null };
+  });
+  scenarios[`remote-${lang}`] = state(lang, (c) => {
+    c.schedules[0].enabled = false;
+    c.session = { startedAt: NOW - 17 * 60000 - 12000, endsAt: NOW + 33 * 60000 + 48000, listIds: [c.lists[0].id, c.lists[1].id], mode: 'strict', pomodoro: null };
+    c.settings.focusSound = 'rain';
+    c._cloud = { enabled: true, signedIn: true, email: 'anna@halyra.app', lastSync: NOW - 20000, error: null };
+  });
+  scenarios[`limit-${lang}`] = state(lang, (c) => {
+    c.schedules[0].enabled = false;
+    c.lists[0].limitMin = 30;
+    c._usage = { [c.lists[0].id]: 30 * 60 + 5 };
+    c._cloud = { enabled: true, signedIn: true, email: 'anna@halyra.app', lastSync: NOW - 40000, error: null };
   });
   scenarios[`nohelper-${lang}`] = { ...scenarios[`idle-${lang}`], helper: { installed: false, verified: false, supported: true }, settings: { ...scenarios[`idle-${lang}`].settings, onboarded: false } };
 }
@@ -118,6 +139,9 @@ __mods.coach = ${wrap('coach.js')};
     previewStyle: async ({ theme }) => { const th = __mods.stylegen.sanitizeTheme(theme); return th ? { ok: true, theme: { ...th, vars: __mods.stylegen.cssVars(th) } } : { ok: false }; },
     saveStyle: async ({ theme }) => { const th = __mods.stylegen.sanitizeTheme(theme); S.customThemes = [{ ...th, vars: __mods.stylegen.cssVars(th) }, ...S.customThemes.filter((x) => x.id !== th.id)]; S.settings.theme = 'custom:' + th.id; S.rev++; return { ok: true, state: JSON.parse(JSON.stringify(S)) }; },
     deleteStyle: ok, setAiKey: ok, removeAiKey: ok, applyInsight: ok,
+    cloudSignIn: async ({ email }) => { S.cloud = { enabled: true, signedIn: true, email, lastSync: S.now, error: null }; S.rev++; return { ok: true, state: JSON.parse(JSON.stringify(S)) }; },
+    cloudSignUp: async () => ({ ok: true, needsConfirm: true, state: S }), cloudReset: ok, cloudSyncNow: ok,
+    cloudSignOut: async () => { S.cloud = { enabled: true, signedIn: false, email: null, lastSync: 0, error: null }; S.rev++; return { ok: true, state: JSON.parse(JSON.stringify(S)) }; },
     coachSuggest: async ({ goal }) => { const r = __mods.coach.suggestSetup(goal, S.lang); return { ok: true, source: 'offline', listIds: S.lists.filter((l) => r.presets.includes(l.presetId)).map((l) => l.id), minutes: r.minutes, pomodoro: r.pomodoro, mode: r.mode, reason: r.reason }; },
     coachLine: async () => ({ text: __mods.coach.coachLine({ goal: S.session && S.session.goal, leftMs: 33 * 60000, totalMs: 51 * 60000, streak: S.stats.streak, todayMin: 20 }, S.lang), streak: S.stats.streak }),
     browseApps: async () => [], installHelper: ok, uninstallHelper: ok, exportConfig: ok, importConfig: ok, openExternal: ok, quit: ok,

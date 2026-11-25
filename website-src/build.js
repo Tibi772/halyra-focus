@@ -50,6 +50,7 @@ function link(from, to) {
   return (up + target) || './';
 }
 const asset = (from, file) => `${'../'.repeat(depth(from))}assets/${file}`;
+const appLink = (page) => `${'../'.repeat(depth(page.path))}app/${LINK_INDEX ? 'index.html' : ''}`;
 
 const ICON = {
   dl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>',
@@ -121,6 +122,7 @@ function nav(page, t, solid) {
         <a href="${link(page.path, enP.path)}" hreflang="en" lang="en" class="${page.lang === 'en' ? 'on' : ''}">EN</a>
         <a href="${link(page.path, huP.path)}" hreflang="hu" lang="hu" class="${page.lang === 'hu' ? 'on' : ''}">HU</a>
       </div>
+      <a class="btn sm ghost signin" href="${appLink(page)}">${t.nav.signin}</a>
       <a class="btn pill sm" href="${sec('download')}">${t.nav.download}</a>
     </div>
   </div>
@@ -186,7 +188,7 @@ ${nav(page, t)}
         <div class="eyebrow"><span class="px">v${VERSION}</span> ${t.hero.eyebrow}</div>
         <h1>${t.hero.h1}</h1>
         <p class="lede">${t.hero.lede}</p>
-        <p class="mobile-note">${t.hero.mobile}</p>
+        <p class="mobile-note"><span>${t.hero.mobile.replace('{{app}}', appLink(page))}</span></p>
         <div class="cta">${dlButtons(t, true)}</div>
         <p class="hero-note">${t.hero.note}</p>
       </div>
@@ -207,7 +209,7 @@ ${nav(page, t)}
 <section class="sec" id="asks">
   <div class="wrap">
     <div class="sec-head reveal"><div class="eyebrow">${t.asks.eyebrow}</div><h2>${t.asks.h2}</h2><p>${t.asks.p}</p></div>
-    <div class="grid g3 asks">${t.asks.items.map(([q, a]) => `<div class="card reveal"><div class="ask-q">${q}</div><div class="ask-a">${ICON.check}<span>${a}</span></div></div>`).join('')}</div>
+    <div class="grid g2 asks">${t.asks.items.map(([q, a]) => `<div class="card reveal"><div class="ask-q">${q}</div><div class="ask-a">${ICON.check}<span>${a}</span></div></div>`).join('')}</div>
   </div>
 </section>
 
@@ -273,7 +275,7 @@ ${nav(page, t)}
       <div style="width:84px;height:84px;margin:0 auto 26px"><img src="${asset(page.path, 'icon-512.png')}" alt="" width="84" height="84"></div>
       <h2 style="max-width:820px;margin:0 auto 16px">${t.final.h2}</h2>
       <p style="color:var(--muted);font-size:18px;margin:0 0 34px">${t.final.p}</p>
-      <p class="mobile-note">${t.hero.mobile}</p>
+      <p class="mobile-note"><span>${t.hero.mobile.replace('{{app}}', appLink(page))}</span></p>
       <div class="cta">${dlButtons(t, true)}</div>
       <p style="margin-top:18px"><a href="${DL.releases}" style="color:var(--muted);font-size:14px" rel="noopener">${t.final.all} →</a></p>
     </div>
@@ -375,6 +377,15 @@ ${PAGES.filter((x) => x.id === p.id).map((x) => `    <xhtml:link rel="alternate"
 write('site.webmanifest', JSON.stringify({
   name: 'Halyra Focus', short_name: 'Halyra Focus', start_url: '.', display: 'standalone', background_color: '#07090f', theme_color: '#07090f',
   icons: [{ src: 'assets/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: 'assets/icon-512.png', sizes: '512x512', type: 'image/png' }],
+}, null, 2));
+// ---- web app (phone & browser companion), same account as the desktop app
+const CLOUD = (() => { try { return JSON.parse(fs.readFileSync(path.join(SRC, '..', 'src', 'shared', 'cloud.json'), 'utf8')); } catch (_) { return {}; } })();
+fs.cpSync(path.join(SRC, 'app'), path.join(OUT, 'app'), { recursive: true });
+write('app/config.js', `window.HALYRA_CFG = ${JSON.stringify({ url: CLOUD.url || '', anonKey: CLOUD.anonKey || '', dl: { mac: DL.mac, win: DL.win }, home: LINK_INDEX ? '../index.html' : '../', version: VERSION })};\n`);
+write('app/manifest.webmanifest', JSON.stringify({
+  name: 'Halyra Focus', short_name: 'Halyra', description: 'Start focus blocks on all your computers from your phone.', start_url: './', scope: './', display: 'standalone',
+  background_color: '#07090f', theme_color: '#07090f',
+  icons: [{ src: '../assets/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '../assets/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }],
 }, null, 2));
 write('.nojekyll', '');
 if (domain) write('CNAME', `${domain}\n`);

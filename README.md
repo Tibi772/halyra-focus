@@ -1,8 +1,8 @@
 # Halyra Focus
 
-**Free app & website blocker for macOS and Windows.** Focus sessions, Pomodoro, schedules, three strictness modes (you can always turn it off — or lock it), local-only stats and five themes, three of them retro.
+**Free app & website blocker for macOS and Windows — with a web app for your phone.** Focus sessions, Pomodoro, schedules, daily time limits, focus sounds, three strictness modes (you can always turn it off — or lock it), local-only stats and five themes, three of them retro.
 
-No account. No tracking. MIT licensed.
+No account needed (optional email account syncs all devices). No tracking. MIT licensed.
 
 | | |
 |---|---|
@@ -10,6 +10,9 @@ No account. No tracking. MIT licensed.
 | Blocks | Desktop apps (closed on launch) · Websites in every browser (system hosts file) |
 | Modes | Flexible (stop anytime) · Patient (stop after a pause) · Locked (stop after timer, emergency exit) |
 | Extras | Schedules incl. overnight · Pomodoro · PIN lock · Tray/menu-bar timer · Stats · EN/HU UI |
+| Limits | Per-list daily allowance: counts app run-time + time a listed site is the front browser tab (macOS: Safari/Chromium via JXA; Windows: browser window titles) → blocked until midnight |
+| Sync | Optional Supabase account (`src/shared/cloud.json`, `docs/supabase.sql`): lists, schedules, styles, prefs and the running session sync across computers; locked blocks can't be weakened remotely |
+| Web app | `website-src/app/` → `/app/` on the site: PWA for phones/browsers, same account — start/extend blocks on all computers, edit sites & limits, toggle schedules |
 | AI | Style studio (text → full theme, contrast-checked) · Focus coach (goal → setup, firm nudges, stats insights). Offline by default; uses Claude with the user's own Anthropic API key. |
 
 ## How blocking works

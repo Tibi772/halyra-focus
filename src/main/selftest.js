@@ -140,6 +140,19 @@ module.exports = async function selftest(ctx) {
     await shot('07-locked');
     ctx.forceClearSession();
 
+    // ---------------------------------------------------------------- daily limits & browser probe
+    let probe = 'n/a';
+    try { probe = JSON.stringify(await ctx.platform.activeWebPage()); log('Browser probe for daily limits runs without errors', true, probe); } catch (e) { log('Browser probe for daily limits runs without errors', false, e.message); }
+    const cfgNow = ctx.config();
+    const limRes = await ctx.setConfig({ lists: cfgNow.lists.map((l) => (l.id === 'selftest' ? { ...l, limitMin: 15 } : l)) });
+    log('Daily limit can be set on a list', limRes.ok && ctx.config().lists.find((l) => l.id === 'selftest').limitMin === 15);
+    await js("document.querySelectorAll('.nav-btn')[4].click(); true");
+    await sleep(400);
+    log('Account card renders in Settings', await js("document.body.innerText.length > 0 && !!document.querySelector('.view .card')"));
+    await js("document.querySelectorAll('.nav-btn')[0].click(); true");
+    await sleep(300);
+    log('Focus sounds card renders', await js("!!document.querySelector('.sound-bar')"));
+
     // ---------------------------------------------------------------- remove helper
     const un = await ctx.platform.uninstallHelper('selftest', { nonInteractive: true });
     log('Helper uninstalls cleanly', un.ok && !ctx.platform.helperInstalled());

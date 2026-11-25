@@ -241,3 +241,9 @@ footer { border-top: 1px solid var(--border); padding: 48px 0 60px; color: var(-
   .toggle { font-size: 13px; }
 }
 @media (prefers-reduced-motion: reduce) { .js .reveal { opacity: 1; transform: none; } * { animation: none !important; transition: none !important; } html { scroll-behavior: auto; } }
+
+/* sign-in (web app) link */
+.btn.signin { border-color: var(--border); color: var(--muted); }
+.btn.signin:hover { color: var(--text); border-color: var(--border-2); }
+.mobile-note a { color: var(--accent); font-weight: 600; }
+@media (max-width: 560px) { .nav-right .btn.signin { display: inline-flex; height: 34px; padding: 0 14px; font-size: 13px; } }

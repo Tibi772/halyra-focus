@@ -47,6 +47,9 @@ function defaults(lang = 'en') {
     settings: {
       lang: 'auto',
       theme: 'midnight',
+      focusSound: 'off',
+      focusVolume: 0.5,
+      soundAuto: true,
       launchAtLogin: true,
       showOverlay: true,
       notifications: true,
@@ -115,6 +118,8 @@ function sanitizeLists(lists) {
       emoji: str(l.emoji, 16) || '⛔',
       sites,
       apps,
+      limitMin: int(l.limitMin, 0, 720, 0),
+      limitMode: MODES.includes(l.limitMode) ? l.limitMode : 'patient',
     });
   }
   return out;
@@ -166,6 +171,9 @@ function sanitizeSettings(input, base) {
   return {
     lang: LANGS.includes(i.lang) ? i.lang : b.lang,
     theme: isTheme(i.theme) ? i.theme : b.theme,
+    focusSound: ['off', 'rain', 'waves', 'brown', 'cafe', 'fire', 'white'].includes(i.focusSound) ? i.focusSound : (b.focusSound || 'off'),
+    focusVolume: Number.isFinite(Number(i.focusVolume)) ? Math.min(1, Math.max(0, Number(i.focusVolume))) : (b.focusVolume == null ? 0.5 : b.focusVolume),
+    soundAuto: bool(i.soundAuto, b.soundAuto == null ? true : b.soundAuto),
     launchAtLogin: bool(i.launchAtLogin, b.launchAtLogin),
     showOverlay: bool(i.showOverlay, b.showOverlay),
     notifications: bool(i.notifications, b.notifications),
@@ -224,6 +232,7 @@ function normalizeLoaded(raw, lang) {
       pomodoro: s.pomodoro && s.pomodoro.work > 0 ? { work: int(s.pomodoro.work, 1, 240, 25), brk: int(s.pomodoro.brk, 0, 120, 5), cycles: int(s.pomodoro.cycles, 1, 24, 4) } : null,
     }
     : null;
+  merged.sessionChangedAt = typeof raw.sessionChangedAt === 'number' ? raw.sessionChangedAt : 0;
   merged.skips = {};
   if (raw.skips && typeof raw.skips === 'object') {
     for (const [k, v] of Object.entries(raw.skips)) if (typeof v === 'number') merged.skips[k] = v;

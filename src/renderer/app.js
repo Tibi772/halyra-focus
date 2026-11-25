@@ -65,6 +65,9 @@ const P = {
   power: '<path d="M12 2v10M18.4 6.6a9 9 0 1 1-12.8 0"/>',
   sparkle: '<path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2Z"/>',
   key: '<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/>',
+  wave: '<path d="M2 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0"/><path d="M2 18c2-4 4-4 6 0s4 4 6 0 4-4 6 0" opacity=".5"/>',
+  cloud: '<path d="M17.5 19H7a5 5 0 1 1 .9-9.9A6 6 0 0 1 19.5 11 4 4 0 0 1 17.5 19z"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
 };
 function icon(name) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -194,12 +197,136 @@ async function patchConfig(patch) {
   return r;
 }
 
+
+// ------------------------------------------------------------------ focus sounds (generated offline with WebAudio)
+
+const Sound = (() => {
+  let ctx = null;
+  let master = null;
+  let current = 'off';
+  let parts = [];
+  let timers = [];
+  const buffers = {};
+  function noise(type) {
+    if (buffers[type]) return buffers[type];
+    const len = ctx.sampleRate * 6;
+    const b = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch += 1) {
+      const d = b.getChannelData(ch);
+      let b0 = 0; let b1 = 0; let b2 = 0; let b3 = 0; let b4 = 0; let b5 = 0; let b6 = 0; let last = 0;
+      for (let i = 0; i < len; i += 1) {
+        const w = Math.random() * 2 - 1;
+        if (type === 'white') d[i] = w * 0.5;
+        else if (type === 'pink') {
+          b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759; b2 = 0.969 * b2 + w * 0.153852;
+          b3 = 0.8665 * b3 + w * 0.3104856; b4 = 0.55 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.016898;
+          d[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11; b6 = w * 0.115926;
+        } else { last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; }
+      }
+    }
+    buffers[type] = b;
+    return b;
+  }
+  const src = (type) => { const s0 = ctx.createBufferSource(); s0.buffer = noise(type); s0.loop = true; s0.start(); parts.push(s0); return s0; };
+  const filt = (type, freq, q = 0.7) => { const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; return f; };
+  const gain = (v) => { const g = ctx.createGain(); g.gain.value = v; return g; };
+  function chain(...nodes) { for (let i = 0; i < nodes.length - 1; i += 1) nodes[i].connect(nodes[i + 1]); return nodes[nodes.length - 1]; }
+  function every(minMs, maxMs, fn) {
+    const tick = () => { fn(); timers.push(setTimeout(tick, minMs + Math.random() * (maxMs - minMs))); };
+    timers.push(setTimeout(tick, minMs));
+  }
+  function burst(freq, dur, vol, type = 'bandpass', q = 4) {
+    const s0 = ctx.createBufferSource(); s0.buffer = noise('white');
+    const f = filt(type, freq, q); const g = gain(0); const t0 = ctx.currentTime;
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(vol, t0 + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    chain(s0, f, g, master); s0.start(t0, Math.random() * 4); s0.stop(t0 + dur + 0.05);
+  }
+  function tone(freq, dur, vol) {
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq; const g = gain(0); const t0 = ctx.currentTime;
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(vol, t0 + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    chain(o, g, master); o.start(t0); o.stop(t0 + dur + 0.05);
+  }
+  function build(kind) {
+    if (kind === 'white') chain(src('white'), filt('lowpass', 9000), gain(0.35), master);
+    if (kind === 'brown') chain(src('brown'), filt('lowpass', 520), gain(1.1), master);
+    if (kind === 'rain') {
+      chain(src('pink'), filt('highpass', 380), filt('lowpass', 7000), gain(0.75), master);
+      every(40, 160, () => burst(2500 + Math.random() * 3500, 0.03 + Math.random() * 0.05, 0.05 + Math.random() * 0.08));
+    }
+    if (kind === 'waves') {
+      const g = gain(0.35);
+      chain(src('pink'), filt('lowpass', 1100), g, master);
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.085; const depth = gain(0.3); lfo.connect(depth).connect(g.gain); lfo.start(); parts.push(lfo);
+    }
+    if (kind === 'cafe') {
+      chain(src('brown'), filt('bandpass', 420, 0.6), gain(0.9), master);
+      chain(src('pink'), filt('bandpass', 1200, 0.8), gain(0.12), master);
+      every(2500, 8000, () => tone(1800 + Math.random() * 1400, 0.35, 0.025));
+    }
+    if (kind === 'fire') {
+      chain(src('brown'), filt('lowpass', 700), gain(0.9), master);
+      every(60, 450, () => burst(1800 + Math.random() * 4000, 0.015 + Math.random() * 0.04, 0.12 + Math.random() * 0.2, 'highpass', 0.7));
+    }
+  }
+  function stop() {
+    for (const p of parts) { try { p.stop(); } catch (_) { /* already stopped */ } try { p.disconnect(); } catch (_) { /* ignore */ } }
+    parts = [];
+    timers.forEach(clearTimeout); timers = [];
+    if (master) { try { master.disconnect(); } catch (_) { /* ignore */ } master = null; }
+    current = 'off';
+  }
+  function play(kind, vol) {
+    if (kind === current) { setVolume(vol); return; }
+    stop();
+    if (!kind || kind === 'off') return;
+    try {
+      ctx = ctx || new AudioContext();
+      if (ctx.state === 'suspended') ctx.resume();
+      master = gain(0);
+      master.connect(ctx.destination);
+      build(kind);
+      master.gain.linearRampToValueAtTime(Math.max(0, Math.min(1, vol)) * 0.8, ctx.currentTime + 1.2);
+      current = kind;
+    } catch (_) { current = 'off'; }
+  }
+  function setVolume(v) { if (master && ctx) master.gain.linearRampToValueAtTime(Math.max(0, Math.min(1, v)) * 0.8, ctx.currentTime + 0.15); }
+  return { play, stop, setVolume, current: () => current };
+})();
+
+let soundPreview = false;
+function updateSound() {
+  if (!S) return;
+  const st = S.settings;
+  const session = S.eval.sources.find((x) => x.type === 'session');
+  const working = S.eval.blocking && !(session && session.phase === 'break');
+  const want = st.focusSound !== 'off' && (soundPreview || (st.soundAuto && working)) ? st.focusSound : 'off';
+  Sound.play(want, st.focusVolume);
+}
+
+function soundBar() {
+  const st = S.settings;
+  const kinds = ['off', 'rain', 'waves', 'brown', 'cafe', 'fire', 'white'];
+  return h('div', { class: 'card sound-bar' },
+    h('div', { class: 'card-title row', style: { gap: '8px' } }, icon('wave'), t('snd.title')),
+    h('div', { class: 'row', style: { gap: '6px' } }, kinds.map((k) => h('button', {
+      class: `chip sm-chip${st.focusSound === k ? ' on' : ''}`,
+      onclick: async () => { soundPreview = k !== 'off'; await patchConfig({ settings: { focusSound: k } }); updateSound(); },
+    }, t(`snd.${k}`)))),
+    h('div', { class: 'row', style: { flexWrap: 'nowrap', gap: '12px' } },
+      h('input', { type: 'range', min: 0, max: 100, value: Math.round(st.focusVolume * 100), style: { maxWidth: '180px' }, 'aria-label': t('snd.volume'),
+        oninput: (e) => Sound.setVolume(Number(e.target.value) / 100), onchange: (e) => patchConfig({ settings: { focusVolume: Number(e.target.value) / 100 } }) }),
+      h('label', { class: 'row small muted', style: { gap: '8px', flexWrap: 'nowrap' } },
+        h('span', { class: 'switch', style: { transform: 'scale(.85)' } }, h('input', { type: 'checkbox', checked: st.soundAuto, onchange: (e) => patchConfig({ settings: { soundAuto: e.target.checked } }) }), h('span')),
+        t('snd.auto'))));
+}
+
 // ------------------------------------------------------------------ state
 
 function structKey() {
   const ev = S.eval;
   return [S.rev, S.lang, S.settings.theme, ev.blocking, ev.mode, ev.sources.map((s) => `${s.id}:${s.phase}:${s.endsAt}`).join(','),
-    S.helper.installed, S.helper.verified, S.unlock ? S.unlock.kind : '', ui.view, S.stats.todayBlocks, Math.floor(S.stats.todayMinutes)].join('|');
+    S.helper.installed, S.helper.verified, S.unlock ? S.unlock.kind : '', ui.view, S.stats.todayBlocks, Math.floor(S.stats.todayMinutes),
+    S.cloud ? `${S.cloud.signedIn}${S.cloud.lastSync}${S.cloud.error}` : '', ui.view === 'lists' ? Object.values(S.usage || {}).map((x) => Math.floor(x / 60)).join(',') : ''].join('|');
 }
 
 const CUSTOM_KEYS = new Set();
@@ -256,6 +383,7 @@ function applyState(state) {
     updateLive();
   }
   for (const m of modalStack) if (m.live) m.live();
+  updateSound();
   if (first && !S.settings.onboarded) openOnboarding();
 }
 
@@ -271,6 +399,8 @@ function renderSidebar() {
     h('div', { class: 'brand' }, logo(30), h('div', { class: 'brand-name' }, 'Halyra Focus', h('small', null, 'App & site blocker'))),
     h('nav', { class: 'nav' }, nav.map(([id, ic]) => h('button', { class: `nav-btn${ui.view === id ? ' on' : ''}`, onclick: () => go(id) }, icon(ic), t(`nav.${id}`)))),
     h('div', { class: 'side-foot' },
+      S.cloud && S.cloud.enabled ? h('button', { class: 'acc-chip', onclick: () => go('settings') }, icon(S.cloud.signedIn ? 'cloud' : 'user'),
+        h('span', null, S.cloud.signedIn ? (S.cloud.email || t('acc.chipIn')) : t('acc.chipOut'))) : null,
       h('div', { class: `status-pill${ev.blocking ? ' on' : ''}` },
         h('span', { class: 'status-dot' }),
         h('div', { class: 'status-text' },
@@ -458,8 +588,8 @@ function renderFocus() {
     );
   } else {
     right.append(h('div', { class: 'sources' }, ev.sources.map((src) => h('div', { class: 'source' },
-      icon(src.type === 'session' ? (src.phase === 'break' ? 'coffee' : 'timer') : 'schedules'),
-      h('div', { class: 'spacer' }, h('b', null, src.type === 'session' ? (src.pomodoro ? `${t('focus.pomodoro')} · ${t('focus.round', { n: src.cycle, total: src.cycles })}` : t('focus.session')) : src.name),
+      icon(src.type === 'session' ? (src.phase === 'break' ? 'coffee' : 'timer') : src.type === 'limit' ? 'hourglass' : 'schedules'),
+      h('div', { class: 'spacer' }, h('b', null, src.type === 'session' ? (src.pomodoro ? `${t('focus.pomodoro')} · ${t('focus.round', { n: src.cycle, total: src.cycles })}` : t('focus.session')) : src.type === 'limit' ? `${t('lim.source')}: ${src.name}` : src.name),
         h('div', { class: 'muted small' }, t('focus.until', { time: fmtClock(src.endsAt) }))),
       h('span', { class: `badge ${src.mode}` }, t(`mode.${src.mode}`))))));
     const lists = ev.listIds.map(listById).filter(Boolean);
@@ -476,6 +606,7 @@ function renderFocus() {
   }
 
   parts.push(h('div', { class: 'card focus-hero' }, renderRing(), right));
+  parts.push(soundBar());
 
   const st = S.stats;
   const fm = fmtMinutes(st.todayMinutes);
@@ -639,6 +770,8 @@ function renderLists() {
       h('div', { class: 'lc-emoji' }, l.emoji),
       h('div', { class: 'lc-name' }, l.name),
       h('div', { class: 'lc-meta' }, t('lists.count', { sites: l.sites.length, apps: l.apps.length })),
+      l.limitMin > 0 ? h('div', { class: 'lim-bar' }, h('span', { style: { width: `${Math.min(100, ((S.usage[l.id] || 0) / 60 / l.limitMin) * 100)}%` } }),
+        h('em', null, t('lim.today', { used: Math.floor((S.usage[l.id] || 0) / 60), max: l.limitMin }))) : null,
       h('div', { class: 'lc-icons' }, [...l.sites.slice(0, 3), ...l.apps.slice(0, 2).map((a) => a.name)].map((x) => h('span', { class: 'mini-tag' }, x))))),
     h('button', { class: 'card list-card add', onclick: newList }, icon('plus'), t('lists.new')));
   const out = [head(t('nav.lists'), t('lists.title'), t('lists.sub')), grid];
@@ -690,6 +823,12 @@ function openListEditor(id) {
         h('label', { class: 'field' }, t('lists.name'),
           h('input', { class: 'input', value: l.name, maxlength: 60, onchange: async (e) => { const c = clone(); c.name = e.target.value.trim() || l.name; await saveList(c); self.render(); } })),
         h('div', { class: 'emoji-row' }, EMOJIS.map((em) => h('button', { class: em === l.emoji ? 'on' : '', onclick: async () => { const c = clone(); c.emoji = em; await saveList(c); self.render(); } }, em))),
+        h('div', { class: 'row', style: { flexWrap: 'nowrap', alignItems: 'flex-end' } },
+          h('label', { class: 'field', style: { flex: 1 } }, t('lim.title'),
+            h('select', { class: 'select', onchange: async (e) => { const c = clone(); c.limitMin = Number(e.target.value); await saveList(c); self.render(); } },
+              [0, 15, 30, 45, 60, 90, 120, 180].map((m) => h('option', { value: m, selected: (l.limitMin || 0) === m }, m ? t('lim.min', { m }) : t('lim.none'))))),
+          l.limitMin > 0 ? h('div', { class: 'muted small', style: { paddingBottom: '10px' } }, t('lim.today', { used: Math.floor((S.usage[l.id] || 0) / 60), max: l.limitMin })) : null),
+        h('div', { class: 'muted small' }, t('lim.hint')),
         h('hr', { class: 'sep' }),
         h('div', { class: 'row' }, icon('globe'), h('b', null, t('lists.sites')), h('span', { class: 'muted small' }, String(l.sites.length))),
         h('div', { class: 'row', style: { flexWrap: 'nowrap' } },
@@ -986,6 +1125,7 @@ function renderSettings() {
   return [
     head(t('nav.settings'), t('set.title'), null),
     h('div', { class: 'stack' },
+      accountCard(),
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.appearance'))),
         themePicker(s.theme, (th) => patchConfig({ settings: { theme: th } }), true),
         h('div', { class: 'set-row', style: { marginTop: '8px' } }, h('div', { class: 'label' }, t('set.language')),
@@ -1012,6 +1152,39 @@ function renderSettings() {
           h('button', { class: 'btn', onclick: () => api.openExternal(BRAND.website) }, icon('ext'), t('set.website')),
           h('button', { class: 'btn', onclick: async () => { const r = await api.quit(); if (!r.ok) toast(t('err.quitLocked'), 'error'); } }, icon('power'), t('set.quit'))))),
   ];
+}
+
+function accountCard() {
+  const c = S.cloud || {};
+  const f = ui.acc || (ui.acc = { email: '', password: '', note: '' });
+  const head0 = h('div', { class: 'card-head' }, h('div', { class: 'card-title row', style: { gap: '8px' } }, icon('cloud'), t('acc.title')),
+    c.signedIn ? h('span', { class: 'okline' }, icon('check'), t('acc.chipIn')) : null);
+  if (!c.enabled) return h('div', { class: 'card' }, head0, h('p', { class: 'muted', style: { margin: 0 } }, t('acc.sub')), h('p', { class: 'small', style: { marginBottom: 0 } }, t('acc.notReady')));
+  const act = async (fn, okMsg) => {
+    const r = await fn();
+    if (r.state) applyState(r.state);
+    if (!r.ok) toast(t(`err.${r.error || 'generic'}`), 'error');
+    else if (r.needsConfirm) { f.note = t('acc.confirm'); renderAll(); } else if (okMsg) toast(okMsg);
+  };
+  if (c.signedIn) {
+    return h('div', { class: 'card' }, head0,
+      h('div', { class: 'row' }, h('div', { class: 'acc-avatar' }, icon('user')),
+        h('div', { class: 'spacer' }, h('b', null, t('acc.signedIn', { email: c.email })),
+          h('div', { class: 'muted small' }, t('acc.lastSync', { time: c.lastSync ? fmtClock(c.lastSync) : t('acc.never') }), c.error ? ` · ${t(`err.${c.error}`)}` : '')),
+        h('button', { class: 'btn', onclick: () => act(() => api.cloudSyncNow({}), t('ok.saved')) }, icon('cloud'), t('acc.syncNow')),
+        h('button', { class: 'btn', onclick: () => act(() => api.cloudSignOut({})) }, t('acc.signOut'))));
+  }
+  return h('div', { class: 'card' }, head0,
+    h('p', { class: 'muted', style: { marginTop: 0 } }, t('acc.sub')),
+    h('div', { class: 'grid g2', style: { gap: '10px' } },
+      h('input', { class: 'input', type: 'email', placeholder: t('acc.email'), value: f.email, autocomplete: 'email', 'data-fid': 'acc-email', oninput: (e) => { f.email = e.target.value; } }),
+      h('input', { class: 'input', type: 'password', placeholder: t('acc.password'), value: f.password, autocomplete: 'current-password', 'data-fid': 'acc-pw', oninput: (e) => { f.password = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') act(() => api.cloudSignIn({ email: f.email, password: f.password })); } })),
+    h('div', { class: 'row', style: { marginTop: '12px' } },
+      h('button', { class: 'btn primary', onclick: () => act(() => api.cloudSignIn({ email: f.email, password: f.password })) }, t('acc.signIn')),
+      h('button', { class: 'btn', onclick: () => { if ((f.password || '').length < 8) { toast(t('err.weakPassword'), 'error'); return; } act(() => api.cloudSignUp({ email: f.email, password: f.password })); } }, t('acc.signUp')),
+      h('span', { class: 'spacer' }),
+      h('button', { class: 'btn sm', onclick: () => act(() => api.cloudReset({ email: f.email }), t('acc.resetSent')) }, t('acc.forgot'))),
+    f.note ? h('div', { class: 'coach-note', style: { marginTop: '12px' } }, icon('check'), h('span', null, f.note)) : null);
 }
 
 function aiCard() {

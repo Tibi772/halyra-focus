@@ -40,7 +40,12 @@ function appKey(app) {
  * Works out what must be blocked right now.
  * Returns { blocking, mode, sources, listIds, sites, apps, endsAt, next }
  */
-function evaluate(config, nowMs) {
+function nextMidnight(nowMs) {
+  const d = new Date(nowMs);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+}
+
+function evaluate(config, nowMs, { usage } = {}) {
   const now = new Date(nowMs);
   const sources = [];
 
@@ -64,6 +69,18 @@ function evaluate(config, nowMs) {
     } else {
       const ns = nextStart(s, now);
       if (ns && (!next || ns < next.at)) next = { at: ns, id: s.id, name: s.name };
+    }
+  }
+
+  // Daily limits: once a list's apps have run for limitMin today, the list is blocked until midnight.
+  if (usage) {
+    for (const l of config.lists || []) {
+      if (!(l.limitMin > 0)) continue;
+      const id = `limit:${l.id}`;
+      const skipUntil = config.skips && config.skips[id];
+      if ((usage[l.id] || 0) >= l.limitMin * 60 && !(skipUntil && skipUntil > nowMs)) {
+        sources.push({ type: 'limit', id, name: l.name, mode: l.limitMode || 'patient', endsAt: nextMidnight(nowMs), phase: 'work', blocking: true, listIds: [l.id] });
+      }
     }
   }
 
@@ -106,10 +123,10 @@ function evaluate(config, nowMs) {
 }
 
 /** True when `candidate` would block less than `current` right now. */
-function isReduction(current, candidate, nowMs) {
-  const a = evaluate(current, nowMs);
+function isReduction(current, candidate, nowMs, opts = {}) {
+  const a = evaluate(current, nowMs, opts);
   if (!a.sources.length) return false;
-  const b = evaluate(candidate, nowMs);
+  const b = evaluate(candidate, nowMs, opts);
   const bSites = new Set(b.sites);
   if (a.sites.some((s) => !bSites.has(s))) return true;
   const bApps = new Map(b.apps.map((x) => [appKey(x), x]));
@@ -130,4 +147,4 @@ function isReduction(current, candidate, nowMs) {
   return false;
 }
 
-module.exports = { MODES, MODE_RANK, strictest, sessionState, evaluate, isReduction, appKey };
+module.exports = { MODES, MODE_RANK, strictest, sessionState, evaluate, isReduction, appKey, nextMidnight };

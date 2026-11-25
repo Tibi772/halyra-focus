@@ -534,3 +534,14 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .coach-note .ic { width: 16px; height: 16px; color: var(--accent); margin-top: 1px; }
 .insight { display: flex; gap: 14px; align-items: center; padding: 12px 14px; border-radius: var(--r); background: var(--panel); border: 1px solid var(--border); font-size: 13.5px; }
 @media (max-width: 1040px) { .studio { grid-template-columns: 1fr; } }
+
+/* ---------- Sounds, limits, account ---------- */
+.sound-bar { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
+.lim-bar { position: relative; height: 6px; border-radius: 4px; background: var(--ring-track); margin-top: 10px; overflow: visible; }
+.lim-bar span { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+.lim-bar em { position: absolute; right: 0; top: 8px; font-style: normal; font-size: 11px; color: var(--muted); }
+.list-card .lim-bar + .lc-icons { margin-top: 22px; }
+.acc-avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); }
+.acc-chip { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: var(--r); border: 1px solid var(--border); background: var(--panel); color: var(--muted); font-size: 12px; text-align: left; overflow: hidden; }
+.acc-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-chip .ic { width: 15px; height: 15px; color: var(--accent); }

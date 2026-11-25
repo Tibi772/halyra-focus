@@ -8,6 +8,7 @@ const os = require('os');
 const path = require('path');
 const BRAND = require('../shared/brand');
 const proc = require('../core/procmatch');
+const webusage = require('../core/webusage');
 const hostsLib = require('../core/hosts');
 const helper = require('../core/helperScripts');
 
@@ -49,6 +50,41 @@ async function findBlocked(apps) {
   if (!apps.length) return [];
   const procs = await listProcesses();
   return IS_MAC ? proc.matchMac(procs, apps, selfInfo()) : proc.matchWin(procs, apps, selfInfo());
+}
+
+// ---------------------------------------------------------------- browser page (for daily limits)
+
+// JXA: name of the frontmost app + URL of its front tab (Safari & Chromium browsers).
+// The first time, macOS asks once whether Halyra Focus may read the browser.
+const JXA_FRONT = `function run(argv) {
+  const sa = Application.currentApplication(); sa.includeStandardAdditions = true;
+  const p = sa.pathTo('frontmost application').toString();
+  const name = p.split('/').filter(Boolean).pop().replace(/\\.app$/, '');
+  if ((argv[0] || '').split('|').indexOf(name) >= 0) return name + '\\n';
+  const chromium = ['Google Chrome', 'Brave Browser', 'Microsoft Edge', 'Arc', 'Vivaldi', 'Chromium'];
+  try {
+    if (chromium.indexOf(name) >= 0) return name + '\\n' + Application(name).windows[0].activeTab.url();
+    if (name === 'Safari' || name === 'Safari Technology Preview') return name + '\\n' + Application(name).documents[0].url();
+  } catch (e) { return name + '\\n!' + (e.errorNumber || ''); }
+  return name + '\\n';
+}`;
+const deniedBrowsers = new Set();
+
+async function activeWebPage() {
+  if (IS_MAC) {
+    const r = await run('/usr/bin/osascript', ['-l', 'JavaScript', '-e', JXA_FRONT, [...deniedBrowsers].join('|')], { timeout: 4000 });
+    if (r.code) return null;
+    const [name, url = ''] = r.stdout.trim().split('\n');
+    if (url.startsWith('!')) { if (/-1743|-10004/.test(url)) deniedBrowsers.add(name); return null; }
+    const host = webusage.hostOf(url);
+    return host ? { host } : null;
+  }
+  if (IS_WIN) {
+    const r = await run('tasklist.exe', ['/v', '/fo', 'csv', '/nh', '/fi', 'WINDOWTITLE ne N/A'], { timeout: 8000 });
+    const titles = webusage.parseWinTitles(r.stdout);
+    return titles.length ? { titles } : null;
+  }
+  return null;
 }
 
 function kill(pids) {
@@ -238,6 +274,6 @@ async function uninstallHelper(prompt, { nonInteractive = false } = {}) {
 }
 
 module.exports = {
-  IS_MAC, IS_WIN, findBlocked, kill, listInstalledApps, appFromPath,
+  IS_MAC, IS_WIN, findBlocked, activeWebPage, kill, listInstalledApps, appFromPath,
   helperInstalled, writeRules, verifyHosts, installHelper, uninstallHelper, rulesPath, hostsPath,
 };

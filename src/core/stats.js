@@ -31,6 +31,18 @@ function addBlock(stats, ms, name) {
   d.hours[k][new Date(ms).getHours()] += 1;
 }
 
+function addUsage(stats, ms, listId, seconds) {
+  if (!(seconds > 0)) return;
+  const d = day(stats, ms);
+  d.usage = d.usage || {};
+  d.usage[listId] = (d.usage[listId] || 0) + Math.min(seconds, 10);
+}
+
+function usageToday(stats, ms) {
+  const v = stats.days[dayKey(ms)];
+  return (v && v.usage) || {};
+}
+
 function addSession(stats, ms) {
   day(stats, ms).sessions += 1;
 }
@@ -87,4 +99,4 @@ function summarize(stats, ms, streakMinMinutes = 25) {
   };
 }
 
-module.exports = { dayKey, emptyStats, addFocus, addBlock, addSession, prune, summarize };
+module.exports = { dayKey, emptyStats, addFocus, addBlock, addUsage, usageToday, addSession, prune, summarize };

@@ -18,6 +18,10 @@ const platform = require('./platform');
 const stylegen = require('../core/stylegen');
 const coach = require('../core/coach');
 const ai = require('./ai');
+const sync = require('../core/sync');
+const { CloudClient } = require('./cloud');
+const webusage = require('../core/webusage');
+const CLOUD_CONF = (() => { try { return require('../shared/cloud.json'); } catch (_) { return {}; } })();
 
 const SELFTEST = process.argv.includes('--selftest');
 const SELFTEST_OUT = process.env.HALYRA_SELFTEST_OUT || path.join(require('os').tmpdir(), 'halyra-selftest');
@@ -45,6 +49,16 @@ let appCheckBusy = false;
 let tickCount = 0;
 const lastOverlay = new Map();
 const unlocker = new Unlocker();
+let cloud = null;
+let deviceId = null;
+let dirty = false;
+let applyingRemote = false;
+let lastRemoteAt = 0;
+let syncTimer = null;
+const syncState = { lastSync: 0, error: null, busy: false };
+
+const usageNow = (now = Date.now()) => (stats ? statsLib.usageToday(stats, now) : {});
+const evalNow = (now = Date.now()) => engine.evaluate(config, now, { usage: usageNow(now) });
 
 // ------------------------------------------------------------------ helpers
 
@@ -81,7 +95,76 @@ function writeJsonAtomic(p, data) {
 function saveConfig() {
   rev += 1;
   try { writeJsonAtomic(configPath, config); } catch (e) { console.error('save config', e); }
+  if (!applyingRemote && cloud && cloud.signedIn()) { dirty = true; scheduleSync(2500); }
 }
+
+// ------------------------------------------------------------------ account & sync
+
+function cloudStore() {
+  const file = path.join(app.getPath('userData'), 'account.json');
+  return {
+    load() {
+      try { const raw = fs.readFileSync(file, 'utf8'); const dec = ai.decryptKey(raw.trim()); return dec ? JSON.parse(dec) : null; } catch (_) { return null; }
+    },
+    save(session) {
+      try { if (!session) fs.rmSync(file, { force: true }); else fs.writeFileSync(file, ai.encryptKey(JSON.stringify(session))); } catch (_) { /* ignore */ }
+    },
+  };
+}
+
+function scheduleSync(ms) {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncNow, ms);
+}
+
+async function syncNow() {
+  if (!cloud || !cloud.enabled() || !cloud.signedIn() || syncState.busy) return;
+  syncState.busy = true;
+  try {
+    const row = await cloud.pull();
+    if (row && row.data && row.device !== deviceId && Date.parse(row.updated_at) > lastRemoteAt) {
+      lastRemoteAt = Date.parse(row.updated_at);
+      const hadSession = Boolean(config.session && config.session.endsAt > Date.now());
+      const r = sync.applyRemote(config, row.data, Date.now(), { pinSet: Boolean(config.settings.pinHash) });
+      if (r.changed) {
+        if (!hadSession && r.config.session && r.config.session.endsAt > Date.now()) notify(t('note.remote'), t('note.startedBody', { time: fmtClock(r.config.session.endsAt) }));
+        applyingRemote = true;
+        config = r.config;
+        saveConfig();
+        applyingRemote = false;
+        applyWindowTheme();
+        tick();
+      }
+      if (r.keptLocal) dirty = true;
+    }
+    if (dirty || !row) {
+      await cloud.push(sync.buildPayload(config, deviceId, Date.now()), deviceId);
+      dirty = false;
+    }
+    syncState.lastSync = Date.now();
+    syncState.error = null;
+  } catch (e) {
+    syncState.error = e.code || 'network';
+    if (e.code === 'auth') cloud.signOut();
+  } finally {
+    syncState.busy = false;
+    applyingRemote = false;
+    push();
+  }
+}
+
+function cloudPublic() {
+  return {
+    enabled: Boolean(cloud && cloud.enabled()),
+    signedIn: Boolean(cloud && cloud.signedIn()),
+    email: cloud ? cloud.email() : null,
+    lastSync: syncState.lastSync,
+    error: syncState.error,
+    busy: syncState.busy,
+  };
+}
+
+function markSessionChange() { config.sessionChangedAt = Date.now(); }
 
 function saveStats() {
   if (!statsDirty) return;
@@ -115,7 +198,7 @@ function currentInsights(now) {
 
 function fullState() {
   const now = Date.now();
-  const ev = lastEval || engine.evaluate(config, now);
+  const ev = lastEval || evalNow(now);
   return {
     now,
     rev,
@@ -136,6 +219,8 @@ function fullState() {
     customThemes: (config.customThemes || []).map((t) => ({ ...t, vars: stylegen.cssVars(t) })),
     insights: currentInsights(now),
     aiModel: ai.MODEL,
+    cloud: cloudPublic(),
+    usage: usageNow(now),
   };
 }
 
@@ -165,7 +250,7 @@ function syncHosts(ev, force = false) {
 function verifyHostsLater() {
   setTimeout(() => {
     if (!hostsState.installed) { hostsState.verified = false; return; }
-    const ev = lastEval || engine.evaluate(config, Date.now());
+    const ev = lastEval || evalNow();
     hostsState.verified = platform.verifyHosts(sitesFor(ev)).ok;
     push();
   }, 4000);
@@ -199,6 +284,27 @@ async function enforceApps(ev) {
   }
 }
 
+let usageBusy = false;
+let lastUsageAt = 0;
+async function trackUsage(ev, now) {
+  const limited = (config.lists || []).filter((l) => l.limitMin > 0 && (l.apps.length || l.sites.length) && !ev.listIds.includes(l.id));
+  const dt = lastUsageAt ? Math.min(10, (now - lastUsageAt) / 1000) : 0;
+  lastUsageAt = now;
+  if (!limited.length || usageBusy || !dt) return;
+  usageBusy = true;
+  try {
+    const apps = limited.flatMap((l) => l.apps);
+    const [hits, page] = await Promise.all([
+      apps.length ? platform.findBlocked(apps) : [],
+      limited.some((l) => l.sites.length) && config.settings.trackWeb !== false ? platform.activeWebPage().catch(() => null) : null,
+    ]);
+    const running = new Set(hits.map((h) => engine.appKey(h.app)));
+    for (const l of limited) {
+      if (l.apps.some((a) => running.has(engine.appKey(a))) || webusage.pageMatches(page, l.sites)) { statsLib.addUsage(stats, now, l.id, dt); statsDirty = true; }
+    }
+  } catch (_) { /* ignore */ } finally { usageBusy = false; }
+}
+
 function transitions(prev, ev, now) {
   if (!prev) return;
   const prevS = prev.sources.find((s) => s.type === 'session');
@@ -210,6 +316,7 @@ function transitions(prev, ev, now) {
   const prevIds = new Set(prev.sources.map((s) => s.id));
   for (const s of ev.sources) {
     if (s.type === 'schedule' && !prevIds.has(s.id)) notify(t('note.schedule', { name: s.name }), t('note.scheduleBody', { time: fmtClock(s.endsAt) }));
+    if (s.type === 'limit' && !prevIds.has(s.id)) notify(t('note.limit', { name: s.name }), t('note.limitBody'));
   }
 }
 
@@ -232,7 +339,7 @@ function tick() {
   }
   if (changed) saveConfig();
 
-  const ev = engine.evaluate(config, now);
+  const ev = evalNow(now);
   transitions(lastEval, ev, now);
   const blockingChanged = !lastEval || lastEval.blocking !== ev.blocking;
   lastEval = ev;
@@ -241,6 +348,8 @@ function tick() {
   syncHosts(ev);
   if (blockingChanged) verifyHostsLater();
   if (tickCount % 2 === 0 || blockingChanged) enforceApps(ev);
+  if (tickCount % (platform.IS_WIN ? 6 : 2) === 1) trackUsage(ev, now);
+  if (tickCount % 30 === 0) syncNow();
   if (tickCount % 30 === 0) { statsLib.prune(stats, now); saveStats(); }
   if (tickCount % 10 === 0 && hostsState.installed && !hostsState.verified) {
     hostsState.verified = platform.verifyHosts(sitesFor(ev)).ok;
@@ -253,9 +362,10 @@ function tick() {
 // ------------------------------------------------------------------ actions
 
 function stopAll() {
-  const ev = engine.evaluate(config, Date.now());
+  const ev = evalNow();
   config.session = null;
-  for (const s of ev.sources) if (s.type === 'schedule') config.skips[s.id] = s.endsAt;
+  markSessionChange();
+  for (const s of ev.sources) if (s.type === 'schedule' || s.type === 'limit') config.skips[s.id] = s.endsAt;
   unlocker.cancel();
   saveConfig();
   tick();
@@ -281,6 +391,7 @@ function startSession({ listIds, minutes, mode, pomodoro, goal }) {
     endsAt = now + mins * 60000;
   }
   config.session = { startedAt: now, endsAt, listIds: ids, mode: m, pomodoro: pomo, goal: typeof goal === 'string' ? goal.trim().slice(0, 80) : '' };
+  markSessionChange();
   config.settings.defaultListIds = ids;
   config.settings.defaultMode = m;
   if (!pomo) config.settings.defaultMinutes = Math.round((endsAt - now) / 60000);
@@ -301,13 +412,14 @@ function extendSession(minutes) {
   } else {
     s.endsAt += Math.min(240, Math.max(1, Math.round(Number(minutes) || 15))) * 60000;
   }
+  markSessionChange();
   saveConfig();
   tick();
   return { ok: true };
 }
 
 function unlockRequest(pin) {
-  const ev = engine.evaluate(config, Date.now());
+  const ev = evalNow();
   if (!ev.sources.length) return { status: 'stopped' };
   if (config.settings.pinHash && !cfgLib.verifyPin(config.settings, pin)) return { status: 'pin', error: Boolean(pin) };
   const r = unlocker.request(ev.mode, config.settings);
@@ -316,7 +428,7 @@ function unlockRequest(pin) {
 }
 
 function quitAllowed() {
-  const ev = engine.evaluate(config, Date.now());
+  const ev = evalNow();
   return !(ev.blocking && (ev.mode !== 'flexible' || config.settings.pinHash));
 }
 
@@ -330,8 +442,8 @@ function applyLoginItem() {
 function applyConfigChange(partial, pin) {
   const now = Date.now();
   const candidate = cfgLib.mergeEditable(config, partial || {});
-  const ev = engine.evaluate(config, now);
-  if (ev.sources.length && engine.isReduction(config, candidate, now)) {
+  const ev = evalNow(now);
+  if (ev.sources.length && engine.isReduction(config, candidate, now, { usage: usageNow(now) })) {
     if (ev.mode !== 'flexible') return { ok: false, error: 'locked' };
     if (config.settings.pinHash && !cfgLib.verifyPin(config.settings, pin)) return { ok: false, error: 'pin' };
   }
@@ -403,6 +515,8 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       spellcheck: false,
+      autoplayPolicy: 'no-user-gesture-required',
+      backgroundThrottling: false,
     },
   });
   win.loadFile(path.join(RENDERER, 'index.html'));
@@ -462,8 +576,10 @@ function showOverlay(appName, ev) {
   overlay.setPosition(Math.round(area.x + (area.width - 460) / 2), Math.round(area.y + 24));
   const left = ev.endsAt ? t('overlay.leftTime', { t: fmtLeft(ev.endsAt - Date.now()) }) : '';
   const custom = activeCustomTheme();
+  const quotes = t('quotes');
+  const quote = Array.isArray(quotes) ? quotes[Math.floor(Math.random() * quotes.length)] : '';
   const payload = {
-    title: t('overlay.blocked', { app: appName }), sub: t('overlay.sub', { left }), theme: custom ? 'custom' : config.settings.theme,
+    title: t('overlay.blocked', { app: appName }), sub: `${quote} ${left}`.trim(), theme: custom ? 'custom' : config.settings.theme,
     vars: custom ? stylegen.cssVars(custom) : null, font: custom ? custom.font : null,
   };
   const send = () => { overlay.webContents.send('overlay', payload); overlay.showInactive(); };
@@ -555,13 +671,13 @@ function ipc() {
 
   handle('unlock:request', ({ pin }) => unlockRequest(pin));
   handle('unlock:emergency', ({ pin }) => {
-    const ev = engine.evaluate(config, Date.now());
+    const ev = evalNow();
     if (!ev.sources.length) return { status: 'stopped' };
     if (config.settings.pinHash && !cfgLib.verifyPin(config.settings, pin)) return { status: 'pin', error: Boolean(pin) };
     return unlocker.emergency(config.settings);
   });
   handle('unlock:confirm', ({ challenge }) => {
-    const ev = engine.evaluate(config, Date.now());
+    const ev = evalNow();
     if (!ev.sources.length) return { status: 'stopped' };
     if (ev.mode === 'flexible') return { status: 'denied' };
     if (unlocker.confirm(ev.mode, { challenge })) { stopAll(); return { status: 'stopped' }; }
@@ -571,7 +687,7 @@ function ipc() {
 
   handle('pin:set', ({ current, next }) => {
     if (!cfgLib.verifyPin(config.settings, current)) return { ok: false, error: 'pin' };
-    const ev = engine.evaluate(config, Date.now());
+    const ev = evalNow();
     if (!next) {
       if (ev.blocking && ev.mode !== 'flexible') return { ok: false, error: 'locked' };
       config.settings.pinHash = null;
@@ -609,12 +725,12 @@ function ipc() {
   handle('helper:install', async () => {
     const r = await platform.installHelper(t('helper.prompt'));
     lastHostsKey = null;
-    syncHosts(engine.evaluate(config, Date.now()), true);
+    syncHosts(evalNow(), true);
     verifyHostsLater();
     return { ...r, state: fullState() };
   });
   handle('helper:uninstall', async () => {
-    const ev = engine.evaluate(config, Date.now());
+    const ev = evalNow();
     if (ev.blocking && ev.mode !== 'flexible') return { ok: false, error: 'locked' };
     const r = await platform.uninstallHelper(t('helper.prompt'));
     hostsState = { installed: platform.helperInstalled(), verified: false, expected: 0 };
@@ -711,7 +827,7 @@ function ipc() {
   });
   handle('coach:line', () => {
     const now = Date.now();
-    const ev = engine.evaluate(config, now);
+    const ev = evalNow(now);
     const src = ev.sources.find((x) => x.type === 'session') || ev.sources[0];
     if (!src) return { text: '' };
     const s0 = src.type === 'session' ? config.session : null;
@@ -736,6 +852,25 @@ function ipc() {
     return { ...r, action: a.type, state: fullState() };
   });
 
+  // ---------------------------------------------------------------- account
+  const cloudCall = async (fn) => {
+    try { const r = await fn(); return { ok: true, ...r, state: fullState() }; } catch (e) { return { ok: false, error: e.code || 'network', state: fullState() }; }
+  };
+  handle('cloud:signUp', ({ email, password }) => cloudCall(async () => {
+    const r = await cloud.signUp(String(email || '').trim(), String(password || ''));
+    if (r.signedIn) { lastRemoteAt = 0; await syncNow(); }
+    return r;
+  }));
+  handle('cloud:signIn', ({ email, password }) => cloudCall(async () => {
+    await cloud.signIn(String(email || '').trim(), String(password || ''));
+    lastRemoteAt = 0;
+    await syncNow();
+    return { signedIn: true };
+  }));
+  handle('cloud:reset', ({ email }) => cloudCall(() => cloud.resetPassword(String(email || '').trim())));
+  handle('cloud:signOut', () => { cloud.signOut(); syncState.lastSync = 0; return { ok: true, state: fullState() }; });
+  handle('cloud:syncNow', async () => { dirty = true; await syncNow(); return { ok: !syncState.error, error: syncState.error, state: fullState() }; });
+
   handle('app:open-external', ({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { ok: true }; });
   handle('app:quit', () => ({ ok: tryQuit() }));
 }
@@ -753,6 +888,11 @@ function boot() {
   const rawStats = readJson(statsPath);
   stats = rawStats && rawStats.days ? rawStats : statsLib.emptyStats();
   if (!raw) saveConfig();
+
+  const devFile = path.join(dir, 'device-id');
+  try { deviceId = fs.readFileSync(devFile, 'utf8').trim(); } catch (_) { deviceId = ''; }
+  if (!deviceId) { deviceId = cfgLib.uid(); try { fs.writeFileSync(devFile, deviceId); } catch (_) { /* ignore */ } }
+  cloud = new CloudClient(CLOUD_CONF, cloudStore());
 
   if (platform.IS_WIN) app.setAppUserModelId(BRAND.appId);
   app.setAboutPanelOptions && app.setAboutPanelOptions({ applicationName: BRAND.name, copyright: '© Halyra', website: BRAND.website });
@@ -772,6 +912,7 @@ function boot() {
   tick();
   verifyHostsLater();
   setInterval(tick, 1000);
+  setTimeout(syncNow, 3000);
   if (SELFTEST) runSelftest();
 }
 
@@ -811,7 +952,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('will-quit', () => {
     try {
       saveStats();
-      const ev = engine.evaluate(config, Date.now());
+      const ev = evalNow();
       // Quitting from a flexible block means "turn it off". Non-flexible blocks
       // keep websites blocked even if the app is force-closed.
       if (!ev.blocking || (ev.mode === 'flexible' && !config.settings.pinHash)) {

@@ -171,6 +171,23 @@ test('main process boots and IPC works end-to-end', async () => {
   assert.ok(Array.isArray((await call('state:get')).insights));
   assert.equal((await call('ai:setKey', { key: 'nope' })).error, 'aiKeyFormat');
 
+  // account: not configured in this build → clean error, state still served
+  const acc = await call('cloud:signIn', { email: 'a@b.c', password: 'password1' });
+  assert.equal(acc.ok, false);
+  assert.equal(acc.error, 'notConfigured');
+  const accSt = await call('state:get');
+  assert.equal(accSt.cloud.enabled, false);
+  assert.equal(accSt.cloud.signedIn, false);
+  assert.equal(typeof accSt.usage, 'object');
+  assert.equal((await call('cloud:signOut')).ok, true);
+
+  // daily limit + focus sound settings round-trip
+  const withLimit = accSt.lists.map((l, i) => (i === 0 ? { ...l, limitMin: 45 } : l));
+  const lim = await call('config:set', { patch: { lists: withLimit, settings: { focusSound: 'rain', focusVolume: 0.3 } } });
+  assert.equal(lim.ok, true);
+  assert.equal(lim.state.lists[0].limitMin, 45);
+  assert.equal(lim.state.settings.focusSound, 'rain');
+
   // state is pushed to the window
   assert.ok(sent.some(([ch]) => ch === 'state'));
   // will-quit handler is safe

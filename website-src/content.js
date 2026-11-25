@@ -5,22 +5,22 @@ const en = {
   langName: 'English',
   meta: {
     title: 'Halyra Focus — Free App & Website Blocker for Mac and Windows',
-    desc: 'Block distracting apps and websites on Mac and Windows — free. Focus timer, Pomodoro, schedules, a smart focus coach, an AI style studio and retro themes. No account, no tracking.',
+    desc: 'Block distracting apps and websites on Mac and Windows — free. Focus timer, Pomodoro, schedules, daily time limits, focus sounds, a smart coach, an AI style studio and retro themes. Optional account syncs all your devices; web app for your phone.',
     ogAlt: 'Halyra Focus app showing a focus timer blocking social media, video and games',
   },
-  nav: { features: 'Features', modes: 'Modes', themes: 'Themes', faq: 'FAQ', download: 'Download', skip: 'Skip to content' },
+  nav: { features: 'Features', modes: 'Modes', themes: 'Themes', faq: 'FAQ', download: 'Download', signin: 'Sign in', skip: 'Skip to content' },
   hero: {
-    eyebrow: 'Free · macOS & Windows · No account',
+    eyebrow: 'Free · macOS, Windows & web · Account optional',
     h1: 'Block the apps that <em>eat your day.</em>',
     lede: 'Halyra Focus shuts distracting apps and websites for as long as you decide — in every browser, on Mac and Windows. Free, private, and you can always turn it off.',
     mac: 'Download for Mac', macSub: 'Apple Silicon & Intel · macOS 12+',
     win: 'Download for Windows', winSub: 'Windows 10 & 11 · 64-bit',
-    note: 'Free download · No sign-up · Open source (MIT)',
-    mobile: '📱 On your phone? Halyra Focus is for Mac and Windows — open this page on your computer to download it.',
+    note: 'Free download · Account optional · Open source (MIT)',
+    mobile: '📱 On your phone? Download Halyra Focus on your computer — then use the <a href="{{app}}">web app</a> to start a block on all your computers from your phone.',
     toggle: 'Focus mode', off: 'Off', on: 'On',
     overlayT: 'Video is blocked', overlayS: 'Back to what matters. 24:59 left',
     labels: { social: 'Social', video: 'Video', games: 'Games', news: 'News', shop: 'Shopping', chat: 'Chat', work: 'Work', study: 'Study', code: 'Code' },
-    stats: [['0 €', 'Free — no trial, no ads'], ['2', 'Platforms: macOS & Windows'], ['∞', 'Themes — 5 built in, plus your own, designed with AI'], ['0', 'Trackers. Your data stays local']],
+    stats: [['0 €', 'Free — no trial, no ads'], ['3', 'Platforms: macOS, Windows & web'], ['∞', 'Themes — 5 built in, plus your own, designed with AI'], ['0', 'Trackers. No account needed — sync only if you want it']],
     canvasLabel: 'Animated city where each building is an app. Turning on focus mode switches off the lights in distracting apps.',
   },
   asks: {
@@ -30,10 +30,12 @@ const en = {
     items: [
       ['Block apps too, not just websites.', 'Steam, Discord, games and any app you pick are closed the moment they open — with a gentle banner instead of a rage-inducing popup.'],
       ['It has to work in every browser.', 'Website blocking runs at the system level, so Chrome, Safari, Firefox, Edge, Brave and Arc are all covered. No extension to forget.'],
-      ['Please, no subscription.', 'It’s free. No trial, no account, no ads, no “premium” wall around the useful features.'],
+      ['Please, no subscription.', 'It’s free. No trial, no ads, no “premium” wall. An account is optional — only if you want your devices in sync.'],
       ['I still want to be able to turn it off.', 'Flexible mode stops with one click. Want a speed bump? Patient mode makes you wait 60 seconds first.'],
       ['…but sometimes I need it to be strict.', 'Locked mode can’t be stopped until the timer ends — though a deliberately tedious emergency exit always exists.'],
       ['Schedules, so I don’t rely on willpower.', 'Work hours, evenings, weekends — blocks switch on by themselves, including windows that run past midnight.'],
+      ['Limits, not just bans.', 'Give YouTube 30 minutes a day. App time and time on the site both count; once it’s used up, it’s blocked until midnight.'],
+      ['Same blocks on all my devices.', 'Sign in once and your lists, schedules and running focus follow you to every computer — and you can start a block from your phone.'],
     ],
   },
   features: {
@@ -44,6 +46,8 @@ const en = {
       { k: 'Focus sessions', h: 'One click from scattered to focused.', p: 'Pick a length, pick what to block, press start. A live ring shows how far you’ve come, and the menu bar or tray shows the countdown.', ticks: ['25 / 50 / 90 minutes or any custom length', 'Pomodoro mode with automatic breaks — blocks pause during breaks', '+15 minutes when you’re on a roll'], img: 'focus' },
       { k: 'Block lists', h: 'Your distractions, neatly grouped.', p: 'Start with ready-made lists for social media, video, games, chat, news and shopping — or build your own from installed apps and any website.', ticks: ['Pick from your installed apps, with icons', 'Paste dozens of sites at once; www. and m. subdomains included', 'Combine any lists per session or schedule'], img: 'lists' },
       { k: 'Schedules', h: 'Let the calendar have the willpower.', p: 'Set it once: social media off during work hours, games off on school nights, everything off after 23:00. The week view shows exactly when you’re protected.', ticks: ['Any days, any hours — overnight windows work', 'Each schedule has its own strictness', 'Skip today’s block in Flexible mode if plans change'], img: 'schedules' },
+      { k: 'Daily limits', h: 'A budget for the things you love too much.', p: 'Not every distraction needs a hard ban. Give a list a daily allowance — 30 minutes of YouTube, an hour of games — and Halyra Focus counts the time for you. When it runs out, the whole list is blocked until midnight.', ticks: ['Counts app time and time a site is your front browser tab', 'A live “31 / 45 min today” bar on every list', 'Set the allowance on your computer or from your phone'], img: 'limits' },
+      { k: 'Account & sync', h: 'Start on your phone. Block on every computer.', p: 'Sign in with an email and your lists, schedules, styles and running focus stay the same on every computer. The web app works on any phone: start a block on the bus, and your Mac and PC are locked down before you get home.', ticks: ['Optional — everything works without an account', 'Locked blocks can’t be stopped from another device', 'Web app for iPhone & Android — add it to your home screen'], img: 'sync' },
       { k: 'Stats', h: 'Watch your focus grow. Privately.', p: 'Daily focus minutes, a streak counter and the apps you reached for most. Stored only on your computer — there’s no server to send it to.', ticks: ['7-day focus chart and streaks', 'Top distractions of the week', 'Export and import your setup as a file'], img: 'stats' },
       { k: 'Focus coach', h: 'Smart enough to plan. Firm enough to hold you to it.', p: 'Tell it what you’re working on and it sets up the block for you — what to block, how long and how strict. Try to quit early and it tells you exactly what you’d be giving up.', ticks: ['One-click smart setup from your goal', 'Firm, specific nudges instead of guilt trips', 'Tips from your own stats — like auto-blocking your weakest hour'], img: 'coach' },
       { k: 'AI style studio', h: 'Describe a vibe. Get your own theme.', p: 'Type “neon Tokyo night” or “calm forest” and the style studio designs a complete theme — colours, font, corners and background effect — with readable contrast guaranteed. Fine-tune anything and save as many as you like.', ticks: ['Works offline with the built-in style engine', 'Even smarter with your own Claude AI key (optional)', 'Pixel, terminal, elegant or modern fonts; neon grid, CRT lines, stars and more'], img: 'studio' },
@@ -55,6 +59,9 @@ const en = {
       ['Gentle block banner', 'Open a blocked app and a short banner reminds you how long is left.'],
       ['English & Hungarian', 'Starts in your system language — switch anytime.'],
       ['Self-expiring blocks', 'Website blocks lift on their own when the timer ends — even if you quit or delete the app.'],
+      ['Focus sounds', 'Rain, waves, café, fireplace, brown or white noise — generated in the app, starts with your focus block.'],
+      ['Mindful block screen', 'Instead of a scolding popup, a short calm line reminds you why you started — and how long is left.'],
+      ['Works on any device', 'Mac and Windows apps, plus a web app for your phone or any browser.'],
     ],
   },
   modes: {
@@ -92,8 +99,9 @@ const en = {
       ['Blocks desktop apps & games', 'Y', 'Often a paid tier', 'N'],
       ['Works in every browser', 'Y', 'Y', 'Only its own browser'],
       ['Turn off anytime — or lock it', 'Your choice, per session', 'Varies', 'Varies'],
-      ['Account required', 'No', 'Usually', 'Sometimes'],
-      ['Your data', 'Stays on your computer', 'Often synced to a server', 'Varies'],
+      ['Account required', 'No — optional, for sync', 'Usually', 'Sometimes'],
+      ['Daily time limits', 'Y', 'Often a paid tier', 'Some'],
+      ['Your data', 'On your computer; synced only if you sign in', 'Often synced to a server', 'Varies'],
     ],
     note: '“Typical” describes common patterns, not any specific product.',
   },
@@ -101,12 +109,14 @@ const en = {
     eyebrow: 'FAQ',
     h2: 'Questions, <em>answered.</em>',
     items: [
-      ['Is Halyra Focus really free?', 'Yes. There’s no trial, no account and no ads, and every feature in the app today is free.'],
+      ['Is Halyra Focus really free?', 'Yes. There’s no trial and no ads, every feature is free, and you don’t need an account. Sign in only if you want your devices in sync.'],
       ['How does it block apps?', 'While a block is active, Halyra Focus checks every couple of seconds for apps on your block lists and closes them, showing a short banner with the time left. It works on Mac and Windows.'],
       ['How can website blocking work in every browser?', 'Instead of a browser extension, Halyra Focus uses your computer’s system-wide hosts file, through a tiny helper you allow once with your admin password. That covers Chrome, Safari, Firefox, Edge, Brave, Arc and others. Tabs that were already open may need a reload.'],
       ['Can I turn it off whenever I want?', 'Yes — in Flexible mode (the default) one click stops everything. Patient and Locked modes are optional, and even Locked mode has an emergency exit.'],
       ['What happens if I quit or delete the app during a block?', 'Quitting a Flexible block simply ends it. For Patient and Locked blocks, websites stay blocked until the timer ends and then unblock themselves automatically — even if the app was deleted.'],
-      ['Does it collect any data?', 'No. There’s no account, no analytics and no server. Your lists, schedules and stats are stored only on your computer.'],
+      ['Does it collect any data?', 'No analytics and no tracking. Without an account everything stays on your computer. If you sign in, only your lists, schedules, styles and running focus session are stored — protected so only your account can read them — to keep your devices in sync. Stats, your PIN and your AI key never leave your computer.'],
+      ['Does it work on my phone?', 'Yes, as a remote control: open the web app on your phone, sign in, and start or extend a block on all your computers, or edit lists and daily limits. Blocking apps on the phone itself isn’t possible for any independent app on iPhone without Apple’s special permission — for that use Screen Time (iPhone) or Digital Wellbeing (Android).'],
+      ['How do daily limits work?', 'Give any list a daily allowance, say 45 minutes. Halyra Focus counts the time its apps are open and the time its websites are your front browser tab. When the allowance is used up, the list is blocked until midnight with the strictness you chose.'],
       ['macOS says it can’t verify the developer. What should I do?', 'Open System Settings → Privacy & Security, scroll down and click “Open Anyway”. You only do this once. We’re new and don’t have a paid Apple certificate yet — the source code is public, so anyone can check it.'],
       ['Windows shows “Windows protected your PC”.', 'Click “More info”, then “Run anyway”. This appears because the installer isn’t signed with a paid certificate yet.'],
       ['Which systems are supported?', 'macOS 12 Monterey or newer (Apple Silicon and Intel) and Windows 10 or 11 (64-bit).'],
@@ -116,7 +126,7 @@ const en = {
   },
   final: {
     h2: 'Your next focused hour starts <em>with a download.</em>',
-    p: 'Free for Mac and Windows. No account. Turn it off whenever you want.',
+    p: 'Free for Mac and Windows, with a web app for your phone. Account optional. Turn it off whenever you want.',
     macT: 'First launch on Mac',
     mac: ['Open <b>HalyraFocus-mac.dmg</b> and drag the app to <b>Applications</b>.', 'Open the app. If macOS says it can’t verify the developer, click <b>Done</b>.', 'Go to <b>System Settings → Privacy &amp; Security</b>, scroll down, click <b>Open Anyway</b>.', 'Confirm with your password. Only needed once.'],
     winT: 'First launch on Windows',
@@ -125,15 +135,15 @@ const en = {
     all: 'All releases & changelog',
   },
   footer: {
-    tagline: 'Free app & website blocker for Mac and Windows. Made by Halyra.',
+    tagline: 'Free app & website blocker for Mac, Windows and the web. Made by Halyra.',
     product: 'Product', guides: 'Guides', legal: 'Legal', source: 'Source code', privacy: 'Privacy', language: 'Language',
   },
   privacy: {
     title: 'Privacy — Halyra Focus',
-    desc: 'Halyra Focus collects no data: no account, no analytics, no server. Everything stays on your computer.',
+    desc: 'Halyra Focus has no analytics and no tracking. Without an account, everything stays on your computer; with one, only what is needed to sync your devices.',
     h1: 'Privacy',
     body: `<p class="meta">Last updated: November 2026</p>
-<p><b>Short version: the Halyra Focus app collects nothing.</b> There is no account, no analytics, no crash reporting and no server that your data could be sent to.</p>
+<p><b>Short version: Halyra Focus has no analytics, no tracking and no ads.</b> You don’t need an account. If you choose to create one, it is used only to keep your devices in sync.</p>
 <h2>The app</h2>
 <ul>
 <li>Your block lists, schedules, settings and statistics are stored only on your computer, in the app’s own folder.</li>
@@ -141,6 +151,14 @@ const en = {
 <li>To block apps, the app looks at the list of running programs on your computer. This list never leaves your computer.</li>
 <li>The app does not connect to the internet by itself. The only exception is optional: if you add your own Anthropic API key, the text you type into the AI style studio or the smart setup is sent to Anthropic’s API to generate the result. Nothing else is ever sent.</li>
 <li>Opening a link (for example to this website) happens in your browser.</li>
+<li>Daily limits count how long a list’s apps run and, on a Mac, read the address of the front browser tab (only after you allow it). This is used only to count time on your computer and is never sent anywhere.</li>
+</ul>
+<h2>Optional account &amp; sync</h2>
+<ul>
+<li>If you sign in, we store your email address and a password hash (handled by our hosting provider, Supabase) and one record with your block lists, schedules, custom styles, a few preferences and the currently running focus session.</li>
+<li>Database rules make sure only your signed-in account can read or change your record. It is not shared, sold or analysed.</li>
+<li>Never synced: your statistics, PIN, AI key, usage times and the list of apps on your computer.</li>
+<li>Delete everything by asking in the source repository’s issues, or simply stop using the account; signing out removes the login from the device.</li>
 </ul>
 <h2>This website</h2>
 <ul>
@@ -223,22 +241,22 @@ const hu = {
   langName: 'Magyar',
   meta: {
     title: 'Halyra Focus — Ingyenes app- és weboldal-blokkoló Macre és Windowsra',
-    desc: 'Tiltsd le a figyelemelterelő appokat és weboldalakat Macen és Windowson — ingyen. Fókusz időzítő, Pomodoro, időzítések, okos fókusz-coach, AI stílusstúdió és retró témák. Fiók és követés nélkül.',
+    desc: 'Tiltsd le a figyelemelterelő appokat és weboldalakat Macen és Windowson — ingyen. Fókusz időzítő, Pomodoro, időzítések, napi időkeret, fókuszhangok, okos coach, AI stílusstúdió és retró témák. Opcionális fiók szinkronizálja az eszközeidet; webapp a telefonodra.',
     ogAlt: 'A Halyra Focus app fókusz időzítővel, ami tiltja a közösségi médiát, a videókat és a játékokat',
   },
-  nav: { features: 'Funkciók', modes: 'Módok', themes: 'Témák', faq: 'GYIK', download: 'Letöltés', skip: 'Ugrás a tartalomra' },
+  nav: { features: 'Funkciók', modes: 'Módok', themes: 'Témák', faq: 'GYIK', download: 'Letöltés', signin: 'Belépés', skip: 'Ugrás a tartalomra' },
   hero: {
-    eyebrow: 'Ingyenes · macOS és Windows · Regisztráció nélkül',
+    eyebrow: 'Ingyenes · macOS, Windows és web · Fiók csak ha akarod',
     h1: 'Tiltsd le az appokat, amik <em>megeszik a napodat.</em>',
     lede: 'A Halyra Focus addig zárja ki a figyelemelterelő appokat és weboldalakat, ameddig te szeretnéd — minden böngészőben, Macen és Windowson. Ingyenes, privát, és bármikor kikapcsolhatod.',
     mac: 'Letöltés Macre', macSub: 'Apple Silicon és Intel · macOS 12+',
     win: 'Letöltés Windowsra', winSub: 'Windows 10 és 11 · 64 bit',
-    note: 'Ingyenes letöltés · Nincs regisztráció · Nyílt forráskód (MIT)',
-    mobile: '📱 Telefonon vagy? A Halyra Focus Macre és Windowsra készült — a letöltéshez nyisd meg ezt az oldalt a gépeden.',
+    note: 'Ingyenes letöltés · Fiók nem kötelező · Nyílt forráskód (MIT)',
+    mobile: '📱 Telefonon vagy? Töltsd le a Halyra Focust a gépedre — utána a <a href="{{app}}">webappal</a> a telefonodról is elindíthatod a tiltást az összes gépeden.',
     toggle: 'Fókusz mód', off: 'Ki', on: 'Be',
     overlayT: 'A videó tiltva', overlayS: 'Vissza ahhoz, ami számít. Még 24:59',
     labels: { social: 'Közösségi', video: 'Videó', games: 'Játékok', news: 'Hírek', shop: 'Vásárlás', chat: 'Chat', work: 'Munka', study: 'Tanulás', code: 'Kód' },
-    stats: [['0 Ft', 'Ingyenes — nincs próbaidő, nincs reklám'], ['2', 'Platform: macOS és Windows'], ['∞', 'Téma — 5 beépített, és a saját, AI-jal tervezett stílusaid'], ['0', 'Követőkód. Az adataid nálad maradnak']],
+    stats: [['0 Ft', 'Ingyenes — nincs próbaidő, nincs reklám'], ['3', 'Platform: macOS, Windows és web'], ['∞', 'Téma — 5 beépített, és a saját, AI-jal tervezett stílusaid'], ['0', 'Követőkód. Fiók nem kell — szinkron csak ha kéred']],
     canvasLabel: 'Animált város, ahol minden épület egy app. A fókusz mód bekapcsolásakor a figyelemelterelő appok épületeiben kialszanak a fények.',
   },
   asks: {
@@ -248,10 +266,12 @@ const hu = {
     items: [
       ['Az appokat is tiltsa, ne csak a weboldalakat.', 'A Steam, a Discord, a játékok és bármelyik app, amit kiválasztasz, azonnal bezárul, amint megnyitod — egy barátságos értesítővel, nem idegesítő felugró ablakkal.'],
       ['Minden böngészőben működjön.', 'A weboldal-tiltás rendszerszinten működik, így a Chrome, a Safari, a Firefox, az Edge, a Brave és az Arc is le van fedve. Nincs bővítmény, amit elfelejthetsz.'],
-      ['Csak ne legyen előfizetés.', 'Ingyenes. Nincs próbaidő, nincs fiók, nincs reklám, és nincs „prémium” fal a hasznos funkciók körül.'],
+      ['Csak ne legyen előfizetés.', 'Ingyenes. Nincs próbaidő, nincs reklám, nincs „prémium” fal. Fiók csak akkor kell, ha szinkronizálnád az eszközeidet.'],
       ['Azért ki akarom tudni kapcsolni.', 'Laza módban egy kattintással leállítod. Kell egy kis fék? Türelmes módban előtte 60 másodpercet várnod kell.'],
       ['…de néha kell, hogy szigorú legyen.', 'Zárolt módban az idő lejártáig nem állítható le — egy szándékosan macerás vészkijárat azért mindig van.'],
       ['Időzítés, hogy ne az akaraterőn múljon.', 'Munkaidő, esték, hétvégék — a tiltások maguktól kapcsolnak be, éjfélen átnyúló idősávokkal is.'],
+      ['Keret, nem csak tiltás.', 'Adj a YouTube-nak napi 30 percet. Az app-idő és az oldalon töltött idő is számít; ha elfogyott, éjfélig tiltva.'],
+      ['Ugyanaz a tiltás minden eszközön.', 'Egyszer belépsz, és a listáid, időzítéseid és a futó fókuszod minden gépeden ott van — a telefonodról is indíthatsz tiltást.'],
     ],
   },
   features: {
@@ -262,6 +282,8 @@ const hu = {
       { k: 'Fókusz munkamenet', h: 'Egy kattintás a szétszórtságtól a fókuszig.', p: 'Válassz időtartamot, válaszd ki, mit tiltson, és indítsd. Egy élő gyűrű mutatja, hol tartasz, a menüsorban vagy a tálcán pedig ott a visszaszámlálás.', ticks: ['25 / 50 / 90 perc vagy bármilyen egyéni hossz', 'Pomodoro mód automatikus szünetekkel — szünetben a tiltás szünetel', '+15 perc, ha épp belelendültél'], img: 'focus' },
       { k: 'Tiltólisták', h: 'A figyelemelterelők, szépen csoportosítva.', p: 'Kezdd kész listákkal (közösségi média, videó, játékok, chat, hírek, vásárlás), vagy rakd össze a sajátodat a telepített appokból és bármilyen weboldalból.', ticks: ['Appok kiválasztása a telepítettek közül, ikonokkal', 'Egyszerre több tucat oldal beillesztése; a www. és m. aldomainek is', 'Munkamenetenként és időzítésenként bármilyen lista-kombináció'], img: 'lists' },
       { k: 'Időzítések', h: 'Az akaraterőt bízd a naptárra.', p: 'Egyszer beállítod: munkaidőben nincs közösségi média, hétköznap este nincs játék, 23:00 után semmi. A heti nézet pontosan mutatja, mikor vagy védve.', ticks: ['Bármelyik nap, bármelyik óra — éjfélen átnyúló sáv is', 'Minden időzítésnek saját szigorúsága van', 'Laza módban a mai tiltást kihagyhatod, ha változik a terv'], img: 'schedules' },
+      { k: 'Napi keret', h: 'Keret azokra, amiket túlságosan szeretsz.', p: 'Nem mindent kell teljesen tiltani. Adj egy listának napi keretet — 30 perc YouTube, egy óra játék —, és a Halyra Focus méri helyetted az időt. Ha elfogyott, az egész lista éjfélig tiltva.', ticks: ['Méri az app-időt és amíg az oldal az elöl lévő böngészőlap', 'Élő „Ma 31 / 45 perc” sáv minden listán', 'A keretet a gépeden vagy a telefonodról is beállíthatod'], img: 'limits' },
+      { k: 'Fiók és szinkron', h: 'Indítsd a telefonodról. Tiltson minden gépen.', p: 'Lépj be egy e-mail-címmel, és a listáid, időzítéseid, stílusaid és a futó fókuszod minden gépeden ugyanaz lesz. A webapp bármilyen telefonon működik: elindítod a buszon, és mire hazaérsz, a Maced és a PC-d is le van zárva.', ticks: ['Nem kötelező — fiók nélkül is minden működik', 'Zárolt tiltást másik eszközről sem lehet leállítani', 'Webapp iPhone-ra és Androidra — tedd ki a kezdőképernyőre'], img: 'sync' },
       { k: 'Statisztika', h: 'Nézd, ahogy nő a fókuszod. Privát módon.', p: 'Napi fókuszpercek, sorozatszámláló, és hogy mely appokhoz nyúltál a legtöbbször. Csak a gépeden tárolódik — nincs szerver, ahová elküldhetnénk.', ticks: ['7 napos fókuszgrafikon és sorozatok', 'A hét legnagyobb figyelemelterelői', 'A beállításaid exportálása és importálása fájlként'], img: 'stats' },
       { k: 'Fókusz-coach', h: 'Elég okos, hogy megtervezze. Elég határozott, hogy be is tartasd.', p: 'Mondd meg, min dolgozol, és beállítja helyetted a tiltást — mit, mennyi ideig és mennyire szigorúan. Ha idő előtt kiszállnál, pontosan megmondja, mit adnál fel.', ticks: ['Okos beállítás egy kattintással a célodból', 'Határozott, konkrét mondatok bűntudatkeltés helyett', 'Tippek a saját statisztikádból — pl. a leggyengébb órád automatikus tiltása'], img: 'coach' },
       { k: 'AI stílusstúdió', h: 'Írd le a hangulatot. Megkapod a saját témádat.', p: 'Írd be: „neon tokiói éjszaka” vagy „erdei nyugalom”, és a stílusstúdió megtervez egy teljes témát — színek, betűtípus, sarkok és háttéreffekt —, garantáltan jól olvasható kontraszttal. Bármit finomhangolhatsz, és annyit menthetsz, amennyit akarsz.', ticks: ['Offline is működik a beépített stílusmotorral', 'Saját Claude AI-kulccsal még okosabb (opcionális)', 'Pixel, terminál, elegáns vagy modern betű; neon rács, CRT csíkok, csillagok és még sok más'], img: 'studio' },
@@ -273,6 +295,9 @@ const hu = {
       ['Barátságos tiltás-értesítő', 'Ha megnyitnál egy tiltott appot, egy rövid sáv emlékeztet, mennyi van még hátra.'],
       ['Magyarul és angolul', 'A géped nyelvén indul — bármikor átállíthatod.'],
       ['Magától lejáró tiltás', 'A weboldal-tiltás az idő végén magától feloldódik — akkor is, ha közben bezártad vagy törölted az appot.'],
+      ['Fókuszhangok', 'Eső, hullámok, kávézó, kandalló, barna vagy fehér zaj — az app maga generálja, és a tiltással együtt indul.'],
+      ['Nyugodt tiltóképernyő', 'Szidó felugró ablak helyett egy rövid, nyugodt mondat emlékeztet, miért kezdted — és mennyi van hátra.'],
+      ['Bármilyen eszközön', 'Mac és Windows app, plusz webapp a telefonodra vagy bármilyen böngészőbe.'],
     ],
   },
   modes: {
@@ -310,8 +335,9 @@ const hu = {
       ['Asztali appok és játékok tiltása', 'Y', 'Gyakran csak fizetős csomagban', 'N'],
       ['Minden böngészőben működik', 'Y', 'Y', 'Csak a saját böngészőjében'],
       ['Kikapcsolható — vagy zárolható', 'Te döntöd el, munkamenetenként', 'Változó', 'Változó'],
-      ['Kell hozzá fiók', 'Nem', 'Általában igen', 'Néha'],
-      ['Az adataid', 'A gépeden maradnak', 'Gyakran szerverre szinkronizálva', 'Változó'],
+      ['Kell hozzá fiók', 'Nem — opcionális, a szinkronhoz', 'Általában igen', 'Néha'],
+      ['Napi időkeret', 'Y', 'Gyakran csak fizetős csomagban', 'Némelyik'],
+      ['Az adataid', 'A gépeden; szinkron csak ha belépsz', 'Gyakran szerverre szinkronizálva', 'Változó'],
     ],
     note: 'A „tipikus” gyakori mintákat jelent, nem egy konkrét terméket.',
   },
@@ -319,12 +345,14 @@ const hu = {
     eyebrow: 'GYIK',
     h2: 'Kérdések és <em>válaszok.</em>',
     items: [
-      ['Tényleg ingyenes a Halyra Focus?', 'Igen. Nincs próbaidő, nincs fiók, nincs reklám, és az appban jelenleg minden funkció ingyenes.'],
+      ['Tényleg ingyenes a Halyra Focus?', 'Igen. Nincs próbaidő és reklám, minden funkció ingyenes, és fiók sem kell. Csak akkor lépj be, ha szinkronizálnád az eszközeidet.'],
       ['Hogyan tiltja az appokat?', 'Amíg egy tiltás aktív, a Halyra Focus pár másodpercenként megnézi, fut-e valami a tiltólistáidról, és bezárja, egy rövid sávval jelezve, mennyi idő van még hátra. Macen és Windowson is működik.'],
       ['Hogyan működhet a weboldal-tiltás minden böngészőben?', 'Böngészőbővítmény helyett a Halyra Focus a géped rendszerszintű hosts fájlját használja, egy pici segédprogramon keresztül, amit egyszer engedélyezel a jelszavaddal. Így a Chrome, a Safari, a Firefox, az Edge, a Brave, az Arc és a többi is le van fedve. A már megnyitott lapokat lehet, hogy újra kell tölteni.'],
       ['Bármikor kikapcsolhatom?', 'Igen — Laza módban (ez az alapértelmezett) egy kattintással minden leáll. A Türelmes és a Zárolt mód opcionális, és még a Zárolt módban is van vészkijárat.'],
       ['Mi történik, ha tiltás közben kilépek vagy törlöm az appot?', 'Laza tiltásnál a kilépés egyszerűen befejezi a tiltást. Türelmes és Zárolt tiltásnál a weboldalak az idő lejártáig tiltva maradnak, utána maguktól feloldódnak — akkor is, ha közben törölted az appot.'],
-      ['Gyűjt bármilyen adatot?', 'Nem. Nincs fiók, nincs analitika és nincs szerver. A listáid, időzítéseid és statisztikáid csak a gépeden tárolódnak.'],
+      ['Gyűjt bármilyen adatot?', 'Nincs analitika és nincs követés. Fiók nélkül minden a gépeden marad. Ha belépsz, csak a listáid, időzítéseid, stílusaid és a futó fókuszod tárolódik — úgy védve, hogy csak a te fiókod olvashassa —, hogy az eszközeid szinkronban legyenek. A statisztika, a PIN és az AI-kulcs soha nem hagyja el a gépedet.'],
+      ['Működik a telefonomon?', 'Igen, távirányítóként: nyisd meg a webappot a telefonodon, lépj be, és indítsd vagy hosszabbítsd meg a tiltást az összes gépeden, vagy szerkeszd a listákat és a napi kereteket. Magán a telefonon appokat tiltani iPhone-on egyetlen független app sem tud az Apple külön engedélye nélkül — erre a Képernyőidőt (iPhone) vagy a Digitális jólétet (Android) ajánljuk.'],
+      ['Hogyan működik a napi keret?', 'Bármelyik listának adhatsz napi keretet, pl. 45 percet. A Halyra Focus méri, mennyi ideig fut a lista appja, és mennyi ideig van elöl a böngészőben a lista egyik weboldala. Ha elfogyott a keret, a lista éjfélig tiltva lesz, az általad választott szigorúsággal.'],
       ['A macOS azt írja, nem tudja ellenőrizni a fejlesztőt. Mit tegyek?', 'Nyisd meg a Rendszerbeállítások → Adatvédelem és biztonság (Privacy & Security) oldalt, görgess le, és kattints a „Megnyitás mégis” (Open Anyway) gombra. Ezt csak egyszer kell. Újak vagyunk, és még nincs fizetős Apple-tanúsítványunk — a forráskód nyilvános, bárki ellenőrizheti.'],
       ['A Windows azt írja: „A Windows megvédte a számítógépet”.', 'Kattints a „További információ” (More info), majd a „Futtatás mindenképp” (Run anyway) gombra. Ez azért jelenik meg, mert a telepítő még nincs fizetős tanúsítvánnyal aláírva.'],
       ['Milyen rendszereken fut?', 'macOS 12 Monterey vagy újabb (Apple Silicon és Intel), valamint Windows 10 vagy 11 (64 bit).'],
@@ -334,7 +362,7 @@ const hu = {
   },
   final: {
     h2: 'A következő fókuszált órád <em>egy letöltéssel kezdődik.</em>',
-    p: 'Ingyenes Macre és Windowsra. Nincs fiók. Bármikor kikapcsolhatod.',
+    p: 'Ingyenes Macre és Windowsra, webappal a telefonodra. Fiók nem kötelező. Bármikor kikapcsolhatod.',
     macT: 'Első indítás Macen',
     mac: ['Nyisd meg a <b>HalyraFocus-mac.dmg</b> fájlt, és húzd az appot az <b>Alkalmazások</b> mappába.', 'Nyisd meg az appot. Ha a macOS azt írja, nem tudja ellenőrizni a fejlesztőt, kattints a <b>Kész</b> gombra.', 'Menj a <b>Rendszerbeállítások → Adatvédelem és biztonság</b> (Privacy &amp; Security) oldalra, görgess le, és kattints a <b>Megnyitás mégis</b> (Open Anyway) gombra.', 'Erősítsd meg a jelszavaddal. Csak egyszer kell.'],
     winT: 'Első indítás Windowson',
@@ -343,15 +371,15 @@ const hu = {
     all: 'Összes kiadás és változásnapló',
   },
   footer: {
-    tagline: 'Ingyenes app- és weboldal-blokkoló Macre és Windowsra. A Halyra fejlesztése.',
+    tagline: 'Ingyenes app- és weboldal-blokkoló Macre, Windowsra és webre. A Halyra fejlesztése.',
     product: 'Termék', guides: 'Útmutatók', legal: 'Jogi', source: 'Forráskód', privacy: 'Adatvédelem', language: 'Nyelv',
   },
   privacy: {
     title: 'Adatvédelem — Halyra Focus',
-    desc: 'A Halyra Focus semmilyen adatot nem gyűjt: nincs fiók, nincs analitika, nincs szerver. Minden a gépeden marad.',
+    desc: 'A Halyra Focusban nincs analitika és követés. Fiók nélkül minden a gépeden marad; fiókkal is csak az, ami a szinkronhoz kell.',
     h1: 'Adatvédelem',
     body: `<p class="meta">Utolsó frissítés: 2026. november</p>
-<p><b>Röviden: a Halyra Focus app semmit nem gyűjt.</b> Nincs fiók, nincs analitika, nincs hibajelentés-küldés, és nincs szerver, ahová az adataid kerülhetnének.</p>
+<p><b>Röviden: a Halyra Focusban nincs analitika, követés és reklám.</b> Fiók nem kell. Ha mégis létrehozol egyet, az csak az eszközeid szinkronizálására szolgál.</p>
 <h2>Az app</h2>
 <ul>
 <li>A tiltólistáid, időzítéseid, beállításaid és statisztikáid csak a gépeden, az app saját mappájában tárolódnak.</li>
@@ -359,6 +387,14 @@ const hu = {
 <li>Az appok tiltásához az app a gépeden futó programok listáját nézi. Ez a lista soha nem hagyja el a gépedet.</li>
 <li>Az app magától nem csatlakozik az internethez. Az egyetlen kivétel opcionális: ha megadod a saját Anthropic API-kulcsodat, az AI stílusstúdióba vagy az okos beállításba írt szöveg az Anthropic API-jához kerül, hogy elkészüljön az eredmény. Semmi más nem megy el.</li>
 <li>Ha megnyitsz egy linket (például ezt a weboldalt), az a böngésződben történik.</li>
+<li>A napi keret méri, mennyi ideig futnak a lista appjai, és Macen (csak az engedélyed után) kiolvassa az elöl lévő böngészőlap címét. Ezt csak az idő számolására használja a gépeden, és sehova nem küldi el.</li>
+</ul>
+<h2>Opcionális fiók és szinkron</h2>
+<ul>
+<li>Ha belépsz, tároljuk az e-mail-címedet és a jelszavad hash-ét (ezt a tárhelyszolgáltatónk, a Supabase kezeli), valamint egyetlen rekordot a tiltólistáiddal, időzítéseiddel, saját stílusaiddal, néhány beállítással és az éppen futó fókusszal.</li>
+<li>Adatbázis-szabályok biztosítják, hogy a rekordodat csak a bejelentkezett fiókod olvashassa és módosíthassa. Nem osztjuk meg, nem adjuk el és nem elemezzük.</li>
+<li>Soha nem szinkronizálódik: a statisztikád, a PIN, az AI-kulcs, a használati idők és a gépeden lévő appok listája.</li>
+<li>Mindent törölhetsz, ha a forráskód-tároló hibajegyeiben kéred; a kijelentkezés eltávolítja a belépést az eszközről.</li>
 </ul>
 <h2>Ez a weboldal</h2>
 <ul>
