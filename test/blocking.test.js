@@ -68,7 +68,7 @@ test('blocklist file carries parts + allowlist for the helper', () => {
 
 test('Windows helper script contains the policy sync and its version', () => {
   const ps = helper.winHelperPs1();
-  assert.match(ps, /halyra-helper-version: 5/);
+  assert.match(ps, /halyra-helper-version: 6/);
   assert.match(ps, /URLBlocklist/);
   assert.match(ps, /URLAllowlist/);
   assert.ok(!ps.includes('${'), 'no unresolved template placeholders');

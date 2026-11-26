@@ -201,7 +201,7 @@ module.exports = async function selftest(ctx) {
       const open = await waitFor(async () => {
         again = await bt.visit(br, `https://${PART}/page`, 2500);
         return /Example Domain|404|Not Found/i.test(`${again.text || ''} ${again.title || ''}`) && !/blocked/i.test(again.text || '');
-      }, 60000, 500);
+      }, 120000, 1000);
       if (open || !isWin) {
         log('The part of the site opens again after stopping', open, JSON.stringify(again).slice(0, 300));
       } else {

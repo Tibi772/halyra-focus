@@ -496,6 +496,14 @@ function tick() {
   syncHosts(ev);
   if (guard) guard.update(webRules(ev), { blockUrl: blockPage && blockPage.url, policyOk: hostsState.installed && !(platform.helperOutdated && platform.helperOutdated()), now });
   if (blockingChanged) verifyHostsLater();
+  // Chrome/Edge on Windows can keep an ended block for a few minutes (they re-read
+  // their policy on their own schedule): say so once a day, so nobody is puzzled.
+  if (blockingChanged && lastEval && lastEval.blocking && !ev.blocking && platform.IS_WIN && hostsState.installed
+    && (lastEval.sites.length || (lastEval.paths || []).length) && now - (stats.browserLagNoted || 0) > 86400000) {
+    stats.browserLagNoted = now;
+    statsDirty = true;
+    notify(t('note.unblocked'), t('note.browserLag'));
+  }
   if (tickCount % 2 === 0 || blockingChanged) enforceApps(ev);
   if (tickCount % (platform.IS_WIN ? 6 : 2) === 1) trackUsage(ev, now);
   if (tickCount % 30 === 0) syncNow();

@@ -130,7 +130,7 @@ const WIN = {
 };
 
 // Bumped whenever a helper script changes, so the app can ask for a one-time update.
-const HELPER_VERSION = { mac: 1, win: 5 };
+const HELPER_VERSION = { mac: 1, win: 6 };
 
 function winHelperPs1() {
   return `# ${BRAND.name} helper - runs as SYSTEM, mirrors blocklist.txt into the hosts file
@@ -288,6 +288,8 @@ function Invoke-PolicyRefresh {
     }
     [void][HalyraFocus.Gp]::RefreshPolicyEx($true, 1)
   } catch { }
+  # Browsers reload their policy when Group Policy has been processed.
+  try { Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\gpupdate.exe') -ArgumentList '/target:computer', '/force' -WindowStyle Hidden } catch { }
   foreach ($root in $PolicyRoots) {
     $rk = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey($root)
     if ($rk) { $rk.SetValue('HalyraFocusSync', 1, [Microsoft.Win32.RegistryValueKind]::DWord); $rk.DeleteValue('HalyraFocusSync', $false); $rk.Close() }
