@@ -30,6 +30,7 @@ if (SELFTEST) app.setPath('userData', path.join(SELFTEST_OUT, 'userdata'));
 const ASSETS = path.join(__dirname, 'assets');
 const RENDERER = path.join(__dirname, '..', 'renderer');
 let startHidden = process.argv.includes('--hidden');
+const rendererLog = [];
 
 let config;
 let stats;
@@ -519,6 +520,16 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
+  const wc = win.webContents;
+  const rlog = (line) => { rendererLog.push(line); if (rendererLog.length > 60) rendererLog.shift(); if (SELFTEST) console.log(`[renderer] ${line}`); };
+  wc.on('console-message', (e, level, message, line, source) => {
+    const d = e && typeof e.message === 'string' ? e : { level, message, lineNumber: line, sourceId: source };
+    const lv = String(d.level);
+    if (lv === 'error' || lv === 'warning' || lv === '2' || lv === '3' || SELFTEST) rlog(`${lv} ${d.message} (${String(d.sourceId || '').split('/').pop()}:${d.lineNumber})`);
+  });
+  wc.on('preload-error', (_e, file, err) => rlog(`preload-error ${file}: ${err && err.stack}`));
+  wc.on('did-fail-load', (_e, code, desc, url) => rlog(`did-fail-load ${code} ${desc} ${url}`));
+  wc.on('render-process-gone', (_e, d) => rlog(`render-process-gone ${d && d.reason}`));
   win.loadFile(path.join(RENDERER, 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https:\/\//.test(url)) shell.openExternal(url);
@@ -931,6 +942,7 @@ function runSelftest() {
     unlockRequest: async (pin) => unlockRequest(pin),
     tryQuitDry: () => quitAllowed(),
     forceClearSession: () => { config.session = null; unlocker.cancel(); saveConfig(); tick(); },
+    rendererLog: () => rendererLog.slice(),
     blockCount: (name) => Object.values(stats.days).reduce((n, d) => n + (d.blocks[name] || 0), 0),
   };
   const watchdog = setTimeout(() => { console.error('[selftest] timed out'); app.exit(2); }, 8 * 60000);

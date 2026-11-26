@@ -58,7 +58,14 @@ module.exports = async function selftest(ctx) {
   try {
     // ---------------------------------------------------------------- UI
     const loaded = await waitFor(() => js("document.querySelectorAll('.nav-btn').length === 5"), 30000);
-    log('UI loads (sidebar with 5 sections)', loaded);
+    let why = '';
+    if (!loaded) {
+      let dom = '';
+      try { dom = await js("(document.readyState + ' | api=' + typeof window.api + ' | ' + document.body.innerHTML.slice(0, 600))"); } catch (e) { dom = `executeJavaScript failed: ${e.message}`; }
+      why = `${dom}\n--- renderer log ---\n${(ctx.rendererLog ? ctx.rendererLog() : []).join('\n')}`;
+    }
+    log('UI loads (sidebar with 5 sections)', loaded, why);
+    if (!loaded) throw new Error('UI did not load — see renderer log above');
     await sleep(700);
     log('First-run onboarding appears', await js("!!document.querySelector('.ob-steps')"));
     await shot('01-onboarding');
