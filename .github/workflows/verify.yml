@@ -21,8 +21,9 @@ permissions:
   contents: read
   actions: read
 
+# One queue per trigger, so a website deploy can't cancel the installer checks of a release.
 concurrency:
-  group: verify
+  group: verify-${{ github.event.workflow_run.name || github.event_name }}
   cancel-in-progress: true
 
 jobs:
