@@ -326,7 +326,7 @@ function soundBar() {
 function structKey() {
   const ev = S.eval;
   return [S.rev, S.lang, S.settings.theme, ev.blocking, ev.mode, ev.sources.map((s) => `${s.id}:${s.phase}:${s.endsAt}`).join(','),
-    S.helper.installed, S.helper.verified, S.unlock ? S.unlock.kind : '', ui.view, S.stats.todayBlocks, Math.floor(S.stats.todayMinutes),
+    S.helper.installed, S.helper.verified, S.unlock ? S.unlock.kind : '', ui.view, JSON.stringify(permState()), S.stats.todayBlocks, Math.floor(S.stats.todayMinutes),
     S.cloud ? `${S.cloud.signedIn}${S.cloud.lastSync}${S.cloud.error}` : '', ui.view === 'lists' ? Object.values(S.usage || {}).map((x) => Math.floor(x / 60)).join(',') : ''].join('|');
 }
 
@@ -362,6 +362,7 @@ function applyState(state) {
   applyTheme();
   document.body.classList.toggle('win', S.platform === 'win32');
   document.body.classList.toggle('mac', S.platform === 'darwin');
+  document.body.classList.toggle('android', S.platform === 'android');
   if (!ui.setup) {
     ui.setup = {
       minutes: S.settings.defaultMinutes || 50,
@@ -386,6 +387,60 @@ function applyState(state) {
   for (const m of modalStack) if (m.live) m.live();
   updateSound();
   if (first && !S.settings.onboarded) openOnboarding();
+}
+
+// ------------------------------------------------------------------ platform
+
+const isMobile = () => Boolean(S && S.platform === 'android');
+/** Apps of a list that do something on this device. */
+function appsHere(l) {
+  const key = isMobile() ? 'android' : S.platform === 'darwin' ? 'mac' : S.platform === 'win32' ? 'win' : null;
+  return key ? (l.apps || []).filter((a) => (a[key] || []).length) : (l.apps || []);
+}
+function appBadge(a) {
+  const phoneOnly = !(a.mac || []).length && !(a.win || []).length;
+  const desktopOnly = !(a.android || []).length;
+  if (!isMobile() && phoneOnly) return h('span', { class: 'dev-badge', title: t('apps.phone') }, '📱');
+  if (isMobile() && desktopOnly) return h('span', { class: 'dev-badge', title: t('apps.desktop') }, '💻');
+  return null;
+}
+
+// ------------------------------------------------------------------ phone permissions
+
+const PERMS = [['usage', true], ['overlay', true], ['vpn', false], ['notifications', false], ['battery', false]];
+const permState = () => ((S && S.mobile && S.mobile.perms) || {});
+const missingRequired = () => PERMS.filter(([k, req]) => req && !permState()[k]).map(([k]) => k);
+async function requestPerm(kind) {
+  const r = await api.platformCall('permission', { kind });
+  if (r && r.state) applyState(r.state);
+  for (const m of modalStack) if (m.render) m.render();
+}
+// Android back button: close the top sheet, then go back to Focus, then leave the app.
+window.__halyraBack = () => {
+  const top = modalStack[modalStack.length - 1];
+  if (top) { top.close(); return true; }
+  if (ui.view !== 'focus') { go('focus'); return true; }
+  return false;
+};
+// Called by the Android app when it comes back to the front (e.g. from system settings).
+window.__halyraResume = async () => {
+  const r = await api.platformCall('refresh');
+  if (r && r.state) applyState(r.state);
+  for (const m of modalStack) if (m.render) m.render();
+};
+function permRows() {
+  const p = permState();
+  return PERMS.map(([k]) => h('div', { class: 'set-row perm-row' },
+    h('div', { class: 'label' }, t(`perm.${k}`), h('small', null, t(`perm.${k}Sub`))),
+    p[k] ? h('span', { class: 'okline' }, icon('check'), t('perm.ok'))
+      : h('button', { class: 'btn primary sm', onclick: () => requestPerm(k) }, t('perm.allow'))));
+}
+function openPermissions() {
+  openModal((self) => [
+    modalHead(t('perm.title'), () => self.close()),
+    h('p', { class: 'muted', style: { marginTop: 0 } }, t('perm.sub')),
+    h('div', { class: 'stack' }, permRows()),
+  ], { wide: true });
 }
 
 // ------------------------------------------------------------------ shell
@@ -543,7 +598,7 @@ function modeCards(current, onPick) {
 
 function listChips(selected, onToggle) {
   return h('div', { class: 'row' }, S.lists.map((l) => h('button', { class: `chip${selected.includes(l.id) ? ' on' : ''}`, onclick: () => onToggle(l.id) },
-    h('span', { class: 'emoji' }, l.emoji), l.name, h('small', null, String(l.sites.length + l.apps.length)))));
+    h('span', { class: 'emoji' }, l.emoji), l.name, h('small', null, String(l.sites.length + appsHere(l).length)))));
 }
 
 async function startFocus() {
@@ -565,6 +620,22 @@ function renderFocus() {
     active ? (onBreak ? t('focus.break') : t('focus.on')) : t('focus.ready'),
     active ? (onBreak ? t('focus.breakSub') : t('focus.blockingCount', { sites: ev.sitesCount, apps: ev.appsCount })) : t('focus.readySub')));
 
+  if (isMobile()) {
+    const miss = missingRequired();
+    if (miss.length) {
+      parts.push(h('div', { class: 'banner' }, icon('shield'),
+        h('div', { class: 'b-text' }, h('b', null, t('perm.needed', { n: miss.length })), h('span', null, t('perm.neededSub'))),
+        h('button', { class: 'btn primary', onclick: openPermissions }, t('perm.setup'))));
+    } else if (permState().privateDns) {
+      parts.push(h('div', { class: 'banner' }, icon('globe'),
+        h('div', { class: 'b-text' }, h('b', null, t('perm.privateDns')), h('span', null, t('perm.privateDnsSub', { host: permState().privateDns }))),
+        h('button', { class: 'btn primary', onclick: () => requestPerm('privateDns') }, t('perm.open'))));
+    } else if (!permState().vpn && S.lists.some((l) => l.sites.length)) {
+      parts.push(h('div', { class: 'banner' }, icon('globe'),
+        h('div', { class: 'b-text' }, h('b', null, t('perm.webOff')), h('span', null, t('perm.webOffSub'))),
+        h('button', { class: 'btn primary', onclick: () => requestPerm('vpn') }, t('perm.allow'))));
+    }
+  }
   if (S.helper.supported && !S.helper.installed) {
     parts.push(h('div', { class: 'banner' }, icon('globe'),
       h('div', { class: 'b-text' }, h('b', null, t('helper.title')), h('span', null, t('helper.sub'))),
@@ -770,10 +841,10 @@ function renderLists() {
     S.lists.map((l) => h('button', { class: 'card list-card', onclick: () => openListEditor(l.id) },
       h('div', { class: 'lc-emoji' }, l.emoji),
       h('div', { class: 'lc-name' }, l.name),
-      h('div', { class: 'lc-meta' }, t('lists.count', { sites: l.sites.length, apps: l.apps.length })),
+      h('div', { class: 'lc-meta' }, t('lists.count', { sites: l.sites.length, apps: appsHere(l).length })),
       l.limitMin > 0 ? h('div', { class: 'lim-bar' }, h('span', { style: { width: `${Math.min(100, ((S.usage[l.id] || 0) / 60 / l.limitMin) * 100)}%` } }),
         h('em', null, t('lim.today', { used: Math.floor((S.usage[l.id] || 0) / 60), max: l.limitMin }))) : null,
-      h('div', { class: 'lc-icons' }, [...l.sites.slice(0, 3), ...l.apps.slice(0, 2).map((a) => a.name)].map((x) => h('span', { class: 'mini-tag' }, x))))),
+      h('div', { class: 'lc-icons' }, [...l.sites.slice(0, 3), ...appsHere(l).slice(0, 2).map((a) => a.name)].map((x) => h('span', { class: 'mini-tag' }, x))))),
     h('button', { class: 'card list-card add', onclick: newList }, icon('plus'), t('lists.new')));
   const out = [head(t('nav.lists'), t('lists.title'), t('lists.sub')), grid];
   if (avail.length) {
@@ -829,7 +900,7 @@ function openListEditor(id) {
             h('select', { class: 'select', onchange: async (e) => { const c = clone(); c.limitMin = Number(e.target.value); await saveList(c); self.render(); } },
               [0, 15, 30, 45, 60, 90, 120, 180].map((m) => h('option', { value: m, selected: (l.limitMin || 0) === m }, m ? t('lim.min', { m }) : t('lim.none'))))),
           l.limitMin > 0 ? h('div', { class: 'muted small', style: { paddingBottom: '10px' } }, t('lim.today', { used: Math.floor((S.usage[l.id] || 0) / 60), max: l.limitMin })) : null),
-        h('div', { class: 'muted small' }, t('lim.hint')),
+        h('div', { class: 'muted small' }, t(isMobile() ? 'lim.hintMobile' : 'lim.hint')),
         h('hr', { class: 'sep' }),
         h('div', { class: 'row' }, icon('globe'), h('b', null, t('lists.sites')), h('span', { class: 'muted small' }, String(l.sites.length))),
         h('div', { class: 'row', style: { flexWrap: 'nowrap' } },
@@ -839,9 +910,9 @@ function openListEditor(id) {
         l.sites.length ? h('div', { class: 'tags' }, l.sites.map((s) => h('span', { class: 'tag' }, s,
           h('button', { onclick: async () => { const c = clone(); c.sites = c.sites.filter((x) => x !== s); await saveList(c); self.render(); } }, icon('x'))))) : h('div', { class: 'muted small' }, t('lists.empty')),
         h('hr', { class: 'sep' }),
-        h('div', { class: 'row' }, icon('grid'), h('b', null, t('lists.apps')), h('span', { class: 'muted small' }, String(l.apps.length)), h('span', { class: 'spacer' }),
+        h('div', { class: 'row' }, icon('grid'), h('b', null, t('lists.apps')), h('span', { class: 'muted small' }, String(appsHere(l).length)), h('span', { class: 'spacer' }),
           h('button', { class: 'btn sm', onclick: () => openAppPicker(id, () => self.render()) }, icon('plus'), t('lists.addApp'))),
-        l.apps.length ? h('div', { class: 'tags' }, l.apps.map((a) => h('span', { class: 'tag' }, a.name,
+        l.apps.length ? h('div', { class: 'tags' }, l.apps.map((a) => h('span', { class: 'tag' }, appBadge(a), a.name,
           h('button', { onclick: async () => { const c = clone(); c.apps = c.apps.filter((x) => x.name !== a.name); await saveList(c); self.render(); } }, icon('x'))))) : h('div', { class: 'muted small' }, t('lists.empty'))),
       h('div', { class: 'modal-foot' },
         h('button', { class: 'btn danger', onclick: async () => {
@@ -861,7 +932,7 @@ function openAppPicker(listId, after) {
   let loading = !ui.installed;
   const m = openModal((self) => {
     const l = listById(listId);
-    const have = new Set((l ? l.apps : []).map((a) => a.name.toLowerCase()));
+    const have = new Set((l ? appsHere(l) : []).map((a) => a.name.toLowerCase()));
     const apps = (ui.installed || []).filter((a) => !have.has(a.name.toLowerCase()) && a.name.toLowerCase().includes(q.toLowerCase()));
     const listEl = loading ? h('div', { class: 'muted', style: { padding: '30px', textAlign: 'center' } }, t('picker.loading'))
       : apps.length ? h('div', { class: 'app-list' }, apps.map((a) => h('button', {
@@ -872,7 +943,11 @@ function openAppPicker(listId, after) {
         : h('div', { class: 'muted', style: { padding: '30px', textAlign: 'center' } }, t('picker.none'));
     const add = async (items) => {
       const c = JSON.parse(JSON.stringify(listById(listId)));
-      for (const a of items) if (!c.apps.some((x) => x.name.toLowerCase() === a.name.toLowerCase())) c.apps.push({ name: a.name, mac: a.mac || [], win: a.win || [] });
+      for (const a of items) {
+        const have = c.apps.find((x) => x.name.toLowerCase() === a.name.toLowerCase());
+        if (!have) c.apps.push({ name: a.name, mac: a.mac || [], win: a.win || [], ...(a.android ? { android: a.android } : {}) });
+        else if (a.android) have.android = [...new Set([...(have.android || []), ...a.android])];
+      }
       await saveList(c);
       self.close();
       if (after) after();
@@ -881,7 +956,7 @@ function openAppPicker(listId, after) {
       modalHead(t('picker.title'), () => self.close()),
       h('div', { class: 'row', style: { flexWrap: 'nowrap', marginBottom: '12px' } },
         h('input', { class: 'input', placeholder: t('picker.search'), value: q, 'data-fid': 'app-q', oninput: (e) => { q = e.target.value; self.render(); const i = self.box.querySelector('[data-fid="app-q"]'); i.focus(); i.setSelectionRange(q.length, q.length); } }),
-        h('button', { class: 'btn', onclick: async () => { const r = await api.browseApps(); if (r && r.length) add(r); } }, t('picker.browse'))),
+        isMobile() ? null : h('button', { class: 'btn', onclick: async () => { const r = await api.browseApps(); if (r && r.length) add(r); } }, t('picker.browse'))),
       listEl,
       h('div', { class: 'modal-foot' },
         h('button', { class: 'btn', onclick: () => self.close() }, t('common.cancel')),
@@ -1133,17 +1208,20 @@ function renderSettings() {
           h('select', { class: 'select', style: { width: '200px' }, onchange: (e) => patchConfig({ settings: { lang: e.target.value } }) },
             [['auto', t('set.auto')], ['hu', 'Magyar'], ['en', 'English']].map(([v, n]) => h('option', { value: v, selected: s.lang === v }, n))))),
       aiCard(),
-      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.web'))), helperBlock),
+      isMobile()
+        ? h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('perm.title'))), h('p', { class: 'muted', style: { marginTop: 0 } }, t('perm.sub')), permRows())
+        : h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.web'))), helperBlock),
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.behavior'))),
-        toggleRow(t('set.login'), 'launchAtLogin'), toggleRow(t('set.overlay'), 'showOverlay'), toggleRow(t('set.notifications'), 'notifications'), toggleRow(t('set.sound'), 'sound')),
+        isMobile() ? null : toggleRow(t('set.login'), 'launchAtLogin'), isMobile() ? null : toggleRow(t('set.overlay'), 'showOverlay'),
+        toggleRow(t('set.notifications'), 'notifications'), toggleRow(t('set.sound'), 'sound')),
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.unlock'))),
         numRow(t('set.patientDelay'), 'patientDelaySec', 10, 3600), numRow(t('set.emergencyDelay'), 'emergencyDelaySec', 1, 120, 60), numRow(t('set.challenge'), 'challengeLength', 30, 600),
-        toggleRow(t('set.tools'), 'strictBlocksTools')),
+        toggleRow(t(isMobile() ? 'set.toolsMobile' : 'set.tools'), 'strictBlocksTools')),
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.pin'))),
         h('p', { class: 'muted', style: { marginTop: 0 } }, t('set.pinSub')),
         h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => pinFlow(false) }, icon('key'), s.hasPin ? t('set.pinChange') : t('set.pinSet')),
           s.hasPin ? h('button', { class: 'btn danger', onclick: () => pinFlow(true) }, t('set.pinRemove')) : null)),
-      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.data'))),
+      isMobile() ? null : h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.data'))),
         h('p', { class: 'muted', style: { marginTop: 0 } }, t('set.dataSub')),
         h('div', { class: 'row' },
           h('button', { class: 'btn', onclick: () => api.exportConfig() }, icon('download'), t('set.export')),
@@ -1151,7 +1229,7 @@ function renderSettings() {
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.about'))),
         h('div', { class: 'row' }, logo(36), h('div', null, h('b', null, 'Halyra Focus'), h('div', { class: 'muted small' }, t('set.version', { v: S.version }))), h('span', { class: 'spacer' }),
           h('button', { class: 'btn', onclick: () => api.openExternal(BRAND.website) }, icon('ext'), t('set.website')),
-          h('button', { class: 'btn', onclick: async () => { const r = await api.quit(); if (!r.ok) toast(t('err.quitLocked'), 'error'); } }, icon('power'), t('set.quit'))))),
+          isMobile() ? null : h('button', { class: 'btn', onclick: async () => { const r = await api.quit(); if (!r.ok) toast(t('err.quitLocked'), 'error'); } }, icon('power'), t('set.quit'))))),
   ];
 }
 
@@ -1231,6 +1309,10 @@ function openOnboarding() {
     } else if (step === 1) {
       body = [h('div', { class: 'ob-hero' }, h('h2', null, t('ob.lists'))),
         h('div', { class: 'pill-list' }, listChips(picked, (id) => { picked = picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id]; self.render(); }))];
+    } else if (isMobile()) {
+      body = [h('div', { class: 'ob-hero' }, h('div', { style: { color: 'var(--accent)' } }, (() => { const i = icon('shield'); i.style.width = '48px'; i.style.height = '48px'; return i; })()),
+        h('h2', null, t('ob.permsTitle')), h('p', null, t('ob.permsSub'))),
+      h('div', { class: 'stack', style: { marginTop: '8px' } }, permRows())];
     } else {
       body = [h('div', { class: 'ob-hero' }, h('div', { style: { color: 'var(--accent)' } }, (() => { const i = icon('globe'); i.style.width = '48px'; i.style.height = '48px'; return i; })()),
         h('h2', null, t('ob.web')), h('p', null, t('ob.webSub'))),
@@ -1239,7 +1321,7 @@ function openOnboarding() {
     const foot = h('div', { class: 'modal-foot' },
       step > 0 ? h('button', { class: 'btn', onclick: () => { step -= 1; self.render(); } }, t('ob.back')) : null,
       h('span', { class: 'spacer' }),
-      step === 2 && !S.helper.installed ? h('button', { class: 'btn', onclick: () => finish(self) }, t('ob.skip')) : null,
+      step === 2 && !S.helper.installed && !isMobile() ? h('button', { class: 'btn', onclick: () => finish(self) }, t('ob.skip')) : null,
       step < 2 ? h('button', { class: 'btn primary', onclick: () => { step += 1; self.render(); } }, t('ob.next'))
         : S.helper.installed || !S.helper.supported ? h('button', { class: 'btn accent', onclick: () => finish(self) }, t('ob.done'))
           : h('button', { class: 'btn accent', onclick: async () => { if (await installHelper()) finish(self); } }, icon('shield'), t('helper.enable')));

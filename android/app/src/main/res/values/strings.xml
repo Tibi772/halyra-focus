@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Halyra Focus</string>
+    <string name="channel_focus">Focus</string>
+    <string name="channel_events">Focus events</string>
+</resources>

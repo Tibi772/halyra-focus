@@ -1,6 +1,6 @@
 'use strict';
 const crypto = require('crypto');
-const { PRESETS } = require('./presets');
+const { PRESETS, PRESET_REV } = require('./presets');
 const { normalizeSite } = require('./domains');
 const { parseHM } = require('./schedule');
 const { MODES } = require('./engine');
@@ -19,7 +19,8 @@ function presetToList(preset, lang) {
     name: preset.name[lang] || preset.name.en,
     emoji: preset.emoji,
     sites: [...preset.sites],
-    apps: preset.apps.map((a) => ({ name: a.name, mac: [...a.mac], win: [...a.win] })),
+    apps: preset.apps.map((a) => ({ name: a.name, mac: [...a.mac], win: [...a.win], ...(a.android ? { android: [...a.android] } : {}) })),
+    presetRev: PRESET_REV,
   };
 }
 
@@ -80,6 +81,7 @@ function cleanAppNames(arr, kind) {
     const s = String(raw || '').trim();
     if (!s || s.length > 120 || /[\\/:*?"<>|\0]/.test(s)) continue;
     if (kind === 'win' && !/\.exe$/i.test(s)) continue;
+    if (kind === 'android' && !/^[a-zA-Z][\w]*(\.[a-zA-Z_][\w]*)+$/.test(s)) continue;
     if (!out.includes(s)) out.push(s);
   }
   return out;
@@ -107,9 +109,10 @@ function sanitizeLists(lists) {
       if (!name || names.has(name.toLowerCase())) continue;
       const mac = cleanAppNames(a.mac, 'mac');
       const win = cleanAppNames(a.win, 'win');
-      if (!mac.length && !win.length) continue;
+      const android = cleanAppNames(a.android, 'android');
+      if (!mac.length && !win.length && !android.length) continue;
       names.add(name.toLowerCase());
-      apps.push({ name, mac, win });
+      apps.push(android.length ? { name, mac, win, android } : { name, mac, win });
     }
     out.push({
       id,
@@ -120,6 +123,7 @@ function sanitizeLists(lists) {
       apps,
       limitMin: int(l.limitMin, 0, 720, 0),
       limitMode: MODES.includes(l.limitMode) ? l.limitMode : 'patient',
+      ...(l.presetId ? { presetRev: int(l.presetRev, 0, 999, 0) } : {}),
     });
   }
   return out;
@@ -232,6 +236,7 @@ function normalizeLoaded(raw, lang) {
       pomodoro: s.pomodoro && s.pomodoro.work > 0 ? { work: int(s.pomodoro.work, 1, 240, 25), brk: int(s.pomodoro.brk, 0, 120, 5), cycles: int(s.pomodoro.cycles, 1, 24, 4) } : null,
     }
     : null;
+  upgradePresetLists(merged.lists);
   merged.sessionChangedAt = typeof raw.sessionChangedAt === 'number' ? raw.sessionChangedAt : 0;
   merged.skips = {};
   if (raw.skips && typeof raw.skips === 'object') {
@@ -239,6 +244,23 @@ function normalizeLoaded(raw, lang) {
   }
   merged.version = VERSION;
   return merged;
+}
+
+/** Lists made from a preset get apps added to that preset later (once per PRESET_REV). */
+function upgradePresetLists(lists) {
+  for (const l of lists || []) {
+    if (!l.presetId || (l.presetRev || 0) >= PRESET_REV) continue;
+    const p = PRESETS.find((x) => x.id === l.presetId);
+    if (p) {
+      for (const pa of p.apps) {
+        const have = l.apps.find((a) => a.name.toLowerCase() === pa.name.toLowerCase());
+        if (!have) l.apps.push({ name: pa.name, mac: [...pa.mac], win: [...pa.win], ...(pa.android ? { android: [...pa.android] } : {}) });
+        else if (pa.android) have.android = [...new Set([...(have.android || []), ...pa.android])];
+      }
+    }
+    l.presetRev = PRESET_REV;
+  }
+  return lists;
 }
 
 function hashPin(pin, salt = crypto.randomBytes(16).toString('hex')) {
@@ -257,5 +279,5 @@ function verifyPin(settings, pin) {
 
 module.exports = {
   THEMES, LANGS, VERSION, uid, defaults, presetToList, mergeEditable, normalizeLoaded, sanitizeCustomThemes,
-  sanitizeLists, sanitizeSchedules, hashPin, verifyPin,
+  sanitizeLists, sanitizeSchedules, hashPin, verifyPin, upgradePresetLists,
 };

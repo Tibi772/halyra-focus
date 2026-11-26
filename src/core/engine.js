@@ -103,8 +103,9 @@ function evaluate(config, nowMs, { usage } = {}) {
       if (prev) {
         prev.mac = [...new Set([...(prev.mac || []), ...(app.mac || [])])];
         prev.win = [...new Set([...(prev.win || []), ...(app.win || [])])];
+        prev.android = [...new Set([...(prev.android || []), ...(app.android || [])])];
       } else {
-        apps.set(k, { name: app.name, mac: [...(app.mac || [])], win: [...(app.win || [])] });
+        apps.set(k, { name: app.name, mac: [...(app.mac || [])], win: [...(app.win || [])], android: [...(app.android || [])] });
       }
     }
   }
@@ -135,6 +136,7 @@ function isReduction(current, candidate, nowMs, opts = {}) {
     if (!other) return true;
     if ((app.mac || []).some((m) => !(other.mac || []).includes(m))) return true;
     if ((app.win || []).some((w) => !(other.win || []).includes(w))) return true;
+    if ((app.android || []).some((w) => !(other.android || []).includes(w))) return true;
   }
   const bSources = new Map(b.sources.map((s) => [s.id, s]));
   for (const s of a.sources) {

@@ -58,7 +58,8 @@ let lastRemoteAt = 0;
 let syncTimer = null;
 const syncState = { lastSync: 0, error: null, busy: false };
 
-const usageNow = (now = Date.now()) => (stats ? statsLib.usageToday(stats, now) : {});
+// Phones measure app time natively (platform.usageToday); computers count it here.
+const usageNow = (now = Date.now()) => (platform.usageToday ? platform.usageToday(config, now) : stats ? statsLib.usageToday(stats, now) : {});
 const evalNow = (now = Date.now()) => engine.evaluate(config, now, { usage: usageNow(now) });
 
 // ------------------------------------------------------------------ helpers
@@ -222,6 +223,7 @@ function fullState() {
     aiModel: ai.MODEL,
     cloud: cloudPublic(),
     usage: usageNow(now),
+    ...(platform.extraState ? platform.extraState() : {}),
   };
 }
 
@@ -341,6 +343,7 @@ function tick() {
   if (changed) saveConfig();
 
   const ev = evalNow(now);
+  if (platform.onTick && platform.onTick({ config, ev, now, rev, lang: lang(), theme: activeCustomTheme(), stats })) statsDirty = true;
   transitions(lastEval, ev, now);
   const blockingChanged = !lastEval || lastEval.blocking !== ev.blocking;
   lastEval = ev;
@@ -720,7 +723,7 @@ function ipc() {
       installedAppsCache = await Promise.all(list.map(async (a) => {
         let icon = null;
         try { icon = (await app.getFileIcon(a.path, { size: 'normal' })).toDataURL(); } catch (_) { icon = null; }
-        return { name: a.name, mac: a.mac, win: a.win, icon, running: Boolean(a.running) };
+        return { name: a.name, mac: a.mac, win: a.win, ...(a.android ? { android: a.android } : {}), icon, running: Boolean(a.running) };
       }));
     }
     return installedAppsCache;
@@ -884,6 +887,11 @@ function ipc() {
 
   handle('app:open-external', ({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { ok: true }; });
   handle('app:quit', () => ({ ok: tryQuit() }));
+  // Platform-specific actions (phones: permissions, battery settings …).
+  if (platform.handlers) {
+    const hs = platform.handlers({ fullState: () => fullState(), tick: () => tick(), t });
+    handle('platform:call', async ({ name, arg }) => (hs[name] ? hs[name](arg || {}) : { ok: false, error: 'generic' }));
+  }
 }
 
 // ------------------------------------------------------------------ boot

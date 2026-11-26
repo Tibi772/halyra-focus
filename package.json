@@ -1,7 +1,7 @@
 {
   "name": "halyra-focus",
   "productName": "Halyra Focus",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "Free app & website blocker for Mac and Windows. Focus sessions, schedules, Pomodoro, daily limits, focus sounds, a smart focus coach, an AI style studio and retro themes. Optional account sync and a web app for your phone. No tracking — and you can always turn it off.",
   "main": "src/main/main.js",
   "author": "Halyra",
@@ -30,7 +30,8 @@
     },
     "files": [
       "src/**/*",
-      "package.json"
+      "package.json",
+      "!src/mobile/**"
     ],
     "afterPack": "build/adhoc-sign.js",
     "mac": {
@@ -38,8 +39,18 @@
       "identity": null,
       "hardenedRuntime": false,
       "target": [
-        { "target": "dmg", "arch": ["universal"] },
-        { "target": "zip", "arch": ["universal"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
       ],
       "artifactName": "HalyraFocus-mac.${ext}",
       "minimumSystemVersion": "12.0",
@@ -51,14 +62,30 @@
       "title": "Halyra Focus",
       "artifactName": "HalyraFocus-mac.dmg",
       "contents": [
-        { "x": 150, "y": 190 },
-        { "x": 390, "y": 190, "type": "link", "path": "/Applications" }
+        {
+          "x": 150,
+          "y": 190
+        },
+        {
+          "x": 390,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
       ],
-      "window": { "width": 540, "height": 380 }
+      "window": {
+        "width": 540,
+        "height": 380
+      }
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "artifactName": "HalyraFocus-Setup.${ext}"
     },

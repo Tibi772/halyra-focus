@@ -545,3 +545,4 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .acc-chip { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: var(--r); border: 1px solid var(--border); background: var(--panel); color: var(--muted); font-size: 12px; text-align: left; overflow: hidden; }
 .acc-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acc-chip .ic { width: 15px; height: 15px; color: var(--accent); }
+.dev-badge { font-size: 11px; margin-right: 2px; opacity: .85; }

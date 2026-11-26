@@ -1,0 +1,95 @@
+/* Halyra Focus — phone layout. Loaded after styles.css in the Android app;
+   all themes (incl. retro and AI-made ones) keep working since only layout changes. */
+
+html, body { height: 100%; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+body { -webkit-user-select: none; user-select: none; }
+input, textarea, .tag, .coach b { -webkit-user-select: text; user-select: text; }
+
+/* shell: content on top, tab bar at the bottom */
+.app { grid-template-columns: 1fr; grid-template-rows: 1fr auto; height: 100%; }
+.topbar { display: none; }
+.main { grid-row: 1; padding-top: env(safe-area-inset-top); }
+.view { padding: 18px 16px 28px; max-width: 640px; }
+.sidebar {
+  grid-row: 2; flex-direction: row; padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  border-right: 0; border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-solid) 92%, transparent);
+  backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  position: relative; z-index: 20;
+}
+.sidebar .brand, .sidebar .side-foot { display: none; }
+.nav { flex-direction: row; gap: 2px; width: 100%; }
+.nav-btn {
+  flex: 1; flex-direction: column; justify-content: center; gap: 4px; padding: 8px 2px 6px; min-height: 54px;
+  font-size: 10.5px; letter-spacing: .01em; border-radius: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nav-btn svg { width: 22px; height: 22px; }
+.nav-btn.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); box-shadow: none; }
+.nav-btn:hover { background: transparent; }
+.nav-btn.on:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+/* headings */
+.view-head { flex-direction: column; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
+.view-title { font-size: 26px; }
+body[data-theme='crt'] .view-title, body[data-theme='onebit'] .view-title { font-size: 22px; }
+
+/* grids collapse */
+.g2, .g3, .g4 { grid-template-columns: 1fr; }
+.grid { gap: 12px; }
+.card { padding: 16px; border-radius: var(--r); }
+.stack { gap: 12px; }
+.list-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+.list-card { min-height: 0; }
+
+/* focus */
+.focus-hero { grid-template-columns: 1fr; gap: 18px; padding: 20px 16px; }
+.ring-wrap { width: min(260px, 72vw); height: min(260px, 72vw); }
+.ring-time { font-size: clamp(40px, 13vw, 54px); }
+.focus-hero .row { gap: 8px; }
+.focus-hero .btn { flex: 1 1 auto; justify-content: center; }
+.banner { flex-wrap: wrap; padding: 14px; gap: 12px; }
+.banner .b-text { flex: 1 1 calc(100% - 40px); }
+.banner .btn { flex: 1 1 100%; justify-content: center; }
+.sound-bar .row { flex-wrap: wrap; }
+.sound-bar input[type=range] { max-width: none !important; flex: 1; }
+
+/* settings rows wrap on narrow screens */
+.set-row { flex-wrap: wrap; gap: 10px; }
+.set-row .label { flex: 1 1 60%; }
+.set-row .select { width: 100% !important; }
+.perm-row .btn, .perm-row .okline { margin-left: auto; }
+.themes { grid-template-columns: repeat(2, 1fr) !important; }
+
+/* schedules week view */
+.week { grid-template-columns: 34px 1fr; padding: 14px; gap: 6px 8px; }
+
+/* modals become bottom sheets */
+.modal-back { place-items: end center; padding: 0; }
+.modal, .modal.wide, .modal.xwide {
+  width: 100%; max-height: calc(100% - 28px - env(safe-area-inset-top)); border-radius: 22px 22px 0 0;
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); border-bottom: 0;
+  animation: sheet .28s var(--ease);
+}
+@keyframes sheet { from { transform: translateY(40px); opacity: 0 } }
+.modal-head h2 { font-size: 19px; }
+.modal-foot { flex-wrap: wrap; position: sticky; bottom: calc(-18px - env(safe-area-inset-bottom)); margin: 18px -16px calc(-18px - env(safe-area-inset-bottom)); padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--panel-solid); border-top: 1px solid var(--border); }
+.modal-foot .btn { flex: 1 1 auto; justify-content: center; }
+.modal-foot .spacer { display: none; }
+.studio { grid-template-columns: 1fr; }
+.app-list { grid-template-columns: 1fr; max-height: 52vh; }
+.app-item { padding: 10px 12px; }
+.app-item img, .app-item .ph { width: 34px; height: 34px; border-radius: 9px; }
+.app-item .nm { font-size: 14.5px; }
+.emoji-row { flex-wrap: wrap; }
+
+/* touch targets */
+.btn { min-height: 42px; }
+.btn.sm { min-height: 34px; }
+.chip { min-height: 38px; }
+.input, .select { font-size: 16px; } /* no zoom on focus */
+
+.toasts { bottom: calc(86px + env(safe-area-inset-bottom)); width: calc(100% - 32px); }
+.dev-badge { font-size: 12px; margin-right: 2px; }
+
+/* the onboarding sheet uses the full height */
+.ob-hero h2 { font-size: 22px; }

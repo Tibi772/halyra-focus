@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('api', {
   cloudSignOut: call('cloud:signOut'),
   cloudSyncNow: call('cloud:syncNow'),
   quit: call('app:quit'),
+  platformCall: (name, arg) => ipcRenderer.invoke('platform:call', { name, arg }),
   onState: on('state'),
   onToast: on('toast'),
   onNavigate: on('navigate'),

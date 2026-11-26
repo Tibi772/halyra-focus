@@ -366,3 +366,40 @@ test('renderer never redeclares the contextBridge global `api` (SyntaxError in E
     assert.ok(!/^\s*(const|let|var|function|class)\s+api\b/m.test(src), `${f} redeclares api`);
   }
 });
+
+test('android: lists keep valid package names, presets carry phone apps, old preset lists upgrade once', () => {
+  const cfg = require('../src/core/config');
+  const engine = require('../src/core/engine');
+  const { PRESET_REV } = require('../src/core/presets');
+  const lists = cfg.sanitizeLists([{ id: 'x', name: 'X', sites: [], apps: [
+    { name: 'Insta', android: ['com.instagram.android', 'not a package', '../evil'] },
+    { name: 'Empty', android: ['bad'] },
+  ] }]);
+  assert.deepEqual(lists[0].apps, [{ name: 'Insta', mac: [], win: [], android: ['com.instagram.android'] }]);
+  const d = cfg.defaults('hu');
+  const social = d.lists.find((l) => l.presetId === 'social');
+  assert.ok(social.apps.some((a) => (a.android || []).includes('com.zhiliaoapp.musically')), 'TikTok in social preset');
+  assert.equal(social.presetRev, PRESET_REV);
+  // An old desktop list (no android apps, old rev) gains them on load, but only once.
+  const old = JSON.parse(JSON.stringify(d));
+  const chat = old.lists.find((l) => l.presetId === 'chat');
+  chat.presetRev = 1;
+  chat.apps = chat.apps.map((a) => ({ name: a.name, mac: a.mac, win: a.win }));
+  chat.apps = chat.apps.filter((a) => a.name !== 'Viber');
+  const loaded = cfg.normalizeLoaded(old, 'hu');
+  const c2 = loaded.lists.find((l) => l.presetId === 'chat');
+  assert.ok(c2.apps.find((a) => a.name === 'WhatsApp').android.includes('com.whatsapp'));
+  assert.ok(c2.apps.some((a) => a.name === 'Viber'));
+  c2.apps = c2.apps.filter((a) => a.name !== 'Viber'); // user removes it again
+  const again = cfg.normalizeLoaded(JSON.parse(JSON.stringify(loaded)), 'hu');
+  assert.ok(!again.lists.find((l) => l.presetId === 'chat').apps.some((a) => a.name === 'Viber'), 'not re-added after upgrade');
+  // engine merges android packages, and removing one while blocked is a reduction
+  const now = Date.now();
+  const c = cfg.defaults('en');
+  c.session = { startedAt: now, endsAt: now + 600000, listIds: [c.lists[0].id], mode: 'strict', pomodoro: null };
+  const ev = engine.evaluate(c, now);
+  assert.ok(ev.apps.some((a) => a.android.includes('com.instagram.android')));
+  const weaker = JSON.parse(JSON.stringify(c));
+  weaker.lists[0].apps = weaker.lists[0].apps.filter((a) => a.name !== 'Instagram');
+  assert.equal(engine.isReduction(c, weaker, now), true);
+});
