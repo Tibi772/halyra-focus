@@ -42,6 +42,8 @@ function fakeStats() {
   for (const [k, n] of Object.entries(blocks)) for (let i = 0; i < n; i += 1) statsLib.addBlock(st, NOW - (i % 5) * 86400000, k);
   for (let i = 0; i < 7; i += 1) statsLib.addBlock(st, NOW, 'youtube.com');
   for (let i = 0; i < 4; i += 1) statsLib.addBlock(st, NOW, 'Steam');
+  const grown = ['oak', 'pine', 'oak', 'house', 'cherry', 'birch', 'pine', 'windmill', 'oak', 'maple', 'shop', 'cactus', 'oak', 'lighthouse', 'pine', 'house', 'cherry', 'tower', 'oak', 'birch', 'maple', 'pine'];
+  grown.forEach((i, k) => statsLib.addGrown(st, { id: `g${k}`, t: NOW - (grown.length - k) * 5 * 3600000, i, m: [25, 50, 90][k % 3], ok: k % 9 !== 4 }));
   return statsLib.summarize(st, NOW);
 }
 
@@ -76,7 +78,7 @@ const scenarios = {};
 for (const lang of ['en', 'hu']) {
   scenarios[`idle-${lang}`] = state(lang, (c) => { c.schedules[0].enabled = false; });
   scenarios[`active-${lang}`] = state(lang, (c) => {
-    c.session = { startedAt: NOW - 17 * 60000 - 12000, endsAt: NOW + 33 * 60000 + 48000, listIds: [c.lists[0].id, c.lists[1].id, c.lists[2].id], mode: 'patient', pomodoro: null };
+    c.session = { startedAt: NOW - 17 * 60000 - 12000, endsAt: NOW + 33 * 60000 + 48000, listIds: [c.lists[0].id, c.lists[1].id, c.lists[2].id], mode: 'patient', pomodoro: null, grow: 'cherry' };
   });
   scenarios[`pomo-${lang}`] = state(lang, (c) => {
     c.schedules[0].enabled = false;
@@ -124,12 +126,14 @@ __mods.coach = ${wrap('coach.js')};
   const S = JSON.parse(JSON.stringify(SC[q.get('scenario') || 'idle-en']));
   if (q.get('theme')) S.settings.theme = q.get('theme');
   if (q.get('platform')) S.platform = q.get('platform');
+  if (q.get('grow') && S.session) { S.session.grow = q.get('grow'); if (q.get('p')) { const d = S.session.endsAt - S.session.startedAt; S.session.startedAt = S.now - d * Number(q.get('p')); S.session.endsAt = S.session.startedAt + d; } }
+  if (q.get('celebrate')) S.lastGrown = { id: 'cel' + Math.random(), i: q.get('celebrate'), m: 50, ok: q.get('lost') !== '1', at: S.now };
   let push = null;
   const ok = async () => ({ ok: true, state: S });
   const mockApi = {
     getState: async () => S, getPresets: async () => PRESETS,
     setConfig: async (patch) => { if (patch.lists) S.lists = patch.lists; if (patch.schedules) S.schedules = patch.schedules; if (patch.settings) Object.assign(S.settings, patch.settings); S.rev++; return { ok: true, state: JSON.parse(JSON.stringify(S)) }; },
-    startSession: ok, extendSession: ok, normalizeSites: async (a) => a.map((x) => x.toLowerCase().replace(/^https?:\\/\\//, '').replace(/^www\\./, '').split('/')[0]),
+    startSession: ok, extendSession: ok, normalizeRules: async (a) => ({ sites: a.filter((x) => !x.includes('/')), paths: a.filter((x) => x.includes('/')) }), normalizeSites: async (a) => a.map((x) => x.toLowerCase().replace(/^https?:\\/\\//, '').replace(/^www\\./, '').split('/')[0]),
     unlockRequest: async () => (q.get('unlock') === 'wait' ? { status: 'wait', readyAt: S.now + 42000 } : { status: 'locked', endsAt: S.eval.endsAt }), unlockEmergency: async () => ({ status: 'challenge' }), unlockConfirm: async () => ({ status: 'denied' }), unlockCancel: ok,
     setPin: ok, installedApps: async () => [
       { name: 'Discord', mac: ['Discord'], win: [], icon: null }, { name: 'Steam', mac: ['Steam'], win: [], icon: null, running: true },
@@ -158,6 +162,7 @@ __mods.coach = ${wrap('coach.js')};
     if (q.get('open') === 'schedule') { const c = document.querySelector('.sched-card .btn'); if (c) c.click(); }
     if (q.get('open') === 'studio') { const c = document.querySelector('.theme-card.new-style'); if (c) c.click(); setTimeout(() => { const chip = document.querySelectorAll('.studio .chip')[+(q.get('ex') || 0)]; if (chip) chip.click(); }, 200); }
     if (q.get('open') === 'smart') { const i = document.querySelector('[data-fid=goal]'); if (i) { i.value = q.get('goal') || 'Vizsgára tanulok'; i.dispatchEvent(new Event('input')); i.nextSibling.click(); } }
+    if (q.get('open') === 'grow') { const b = document.querySelector('[data-fid=grow-change]'); if (b) b.click(); }
     if (q.get('open') === 'unlock') { const b = document.querySelector('.btn.danger'); if (b) b.click(); }
   }, 150);
 })();

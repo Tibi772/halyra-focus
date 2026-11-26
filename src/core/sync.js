@@ -1,14 +1,58 @@
 'use strict';
 // Cross-device sync payloads (pure logic, unit-tested). What syncs:
 // block lists, schedules, custom styles, preferences and the running focus
-// session — so starting a block on one computer starts it on all of them.
-// Never synced: PIN, AI key, stats, the hosts helper state.
+// session — so starting a block on one computer starts it on all of them —
+// plus a compact copy of each device's stats and grown forest, so every device
+// and the web app can show the totals. Never synced: PIN, AI key, helper state.
 const cfgLib = require('./config');
 const engine = require('./engine');
 
-const SYNC_SETTINGS = ['theme', 'lang', 'defaultMode', 'defaultMinutes', 'defaultListIds', 'patientDelaySec', 'emergencyDelaySec', 'challengeLength', 'strictBlocksTools', 'showOverlay', 'notifications', 'sound'];
+const SYNC_SETTINGS = ['theme', 'lang', 'defaultMode', 'defaultMinutes', 'defaultListIds', 'patientDelaySec', 'emergencyDelaySec', 'challengeLength', 'strictBlocksTools', 'showOverlay', 'notifications', 'sound', 'growOn', 'growItem', 'growWither', 'focusSound', 'soundAuto'];
+const statsLib = require('./stats');
 
-function buildPayload(config, deviceId, changedAt) {
+const DEVICE_DAYS = 120;
+
+/** Compact copy of one device's stats for the sync row (~10–40 KB). */
+function deviceEntry(stats, nowMs, { name = '', platform = '' } = {}) {
+  const cutoff = statsLib.dayKey(nowMs - DEVICE_DAYS * 86400000);
+  const days = {};
+  for (const [k, v] of Object.entries(stats.days || {})) {
+    if (k < cutoff) continue;
+    const b = Object.entries(v.blocks || {}).sort((x, y) => y[1] - x[1]).slice(0, 8);
+    days[k] = { f: Math.round(v.focusSec || 0), s: v.sessions || 0, b: Object.fromEntries(b) };
+  }
+  return { name: String(name).slice(0, 60), platform, at: nowMs, days, garden: (stats.garden || []).slice(-600) };
+}
+
+/** Other devices' entries from the row (drops ours and ones silent for 120 days). */
+function otherDevices(remote, deviceId, nowMs) {
+  const out = {};
+  const devs = remote && remote.devices && typeof remote.devices === 'object' ? remote.devices : {};
+  for (const [id, d] of Object.entries(devs)) {
+    if (id === deviceId || !d || typeof d !== 'object') continue;
+    if (!(d.at > nowMs - DEVICE_DAYS * 86400000)) continue;
+    out[id] = d;
+  }
+  return out;
+}
+
+/** This device's full stats + the other devices' compact ones → one stats object for summarize(). */
+function mergeStats(local, others) {
+  const days = JSON.parse(JSON.stringify(local.days || {}));
+  const garden = new Map((local.garden || []).map((g) => [g.id, g]));
+  for (const d of Object.values(others || {})) {
+    for (const [k, v] of Object.entries(d.days || {})) {
+      const day = days[k] || (days[k] = { focusSec: 0, blocks: {}, sessions: 0 });
+      day.focusSec += Number(v.f) || 0;
+      day.sessions += Number(v.s) || 0;
+      for (const [name, n] of Object.entries(v.b || {})) day.blocks[name] = (day.blocks[name] || 0) + (Number(n) || 0);
+    }
+    for (const g of d.garden || []) if (g && g.id && !garden.has(g.id)) garden.set(g.id, g);
+  }
+  return { days, garden: [...garden.values()].sort((a, b) => a.t - b.t) };
+}
+
+function buildPayload(config, deviceId, changedAt, devices) {
   const settings = {};
   for (const k of SYNC_SETTINGS) settings[k] = config.settings[k];
   return {
@@ -21,6 +65,7 @@ function buildPayload(config, deviceId, changedAt) {
     settings,
     session: config.session && config.session.endsAt > changedAt - 1 ? config.session : null,
     sessionChangedAt: config.sessionChangedAt || 0,
+    ...(devices ? { devices } : {}),
   };
 }
 
@@ -61,4 +106,4 @@ function applyRemote(config, remote, nowMs, { pinSet = false } = {}) {
   return { config: next, changed: strip(next) !== strip(config), keptLocal };
 }
 
-module.exports = { SYNC_SETTINGS, buildPayload, applyRemote };
+module.exports = { SYNC_SETTINGS, buildPayload, applyRemote, deviceEntry, otherDevices, mergeStats };

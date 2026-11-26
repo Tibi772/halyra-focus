@@ -24,7 +24,8 @@
       notReady: 'Accounts are being set up — coming very soon. Until then, download the app; it works fully without an account.',
       dlMac: 'Download for Mac', dlWin: 'Download for Windows', dlAndroid: 'Download for Android', needApp: 'Blocking happens on your computers and Android phones. Install the app there and sign in with the same account.',
       noData: 'No computer has synced yet. Open Halyra Focus on your computer → Settings → Account & sync, and sign in with this account.',
-      tFocus: 'Focus', tLists: 'Lists', tSched: 'Schedules', tAcc: 'Account',
+      tFocus: 'Focus', tLists: 'Lists', tSched: 'Schedules', tAcc: 'Account', tStats: 'Stats',
+      stToday: 'Focused today', stWeek: 'This week', stStreak: 'Day streak', stTotal: 'Total focus', stDevices: 'All your devices together ({n})', stForest: 'Your forest & city', stGrown: 'grown', stWithered: 'withered', stEmpty: 'Finish a focus session in the app and your first tree or building grows here.', stGrow: 'What grows during focus', stNone: 'Nothing', stLocked: '{h} h', stNoStats: 'No stats yet — they appear after your devices sync (every few minutes).', min: 'min', hrs: 'h',
       running: 'Focus is on', idle: 'Ready when you are', left: 'left', until: 'until {t}', onAll: 'Runs on all your signed-in computers.',
       dur: 'Duration', what: 'What to block', how: 'How strict', start: 'Start focus everywhere', extend: '+15 min', stop: 'Stop',
       lockedNote: 'This block is locked — it can be extended here, but not stopped early.',
@@ -46,7 +47,8 @@
       notReady: 'A fiókrendszer beállítása folyamatban — hamarosan érkezik. Addig töltsd le az appot: fiók nélkül is teljesen működik.',
       dlMac: 'Letöltés Macre', dlWin: 'Letöltés Windowsra', dlAndroid: 'Letöltés Androidra', needApp: 'A tiltás a gépeiden és androidos telefonodon történik. Telepítsd ott az appot, és lépj be ugyanezzel a fiókkal.',
       noData: 'Még egyik géped sem szinkronizált. Nyisd meg a Halyra Focust a gépeden → Beállítások → Fiók és szinkron, és lépj be ezzel a fiókkal.',
-      tFocus: 'Fókusz', tLists: 'Listák', tSched: 'Időzítés', tAcc: 'Fiók',
+      tFocus: 'Fókusz', tLists: 'Listák', tSched: 'Időzítés', tAcc: 'Fiók', tStats: 'Statisztika',
+      stToday: 'Ma fókuszban', stWeek: 'Ezen a héten', stStreak: 'Napos sorozat', stTotal: 'Összes fókusz', stDevices: 'Az összes eszközöd együtt ({n})', stForest: 'Az erdőd és a városod', stGrown: 'felnőtt', stWithered: 'elszáradt', stEmpty: 'Fejezz be egy fókuszt az appban, és itt nő az első fád vagy épületed.', stGrow: 'Mi nőjön fókusz közben', stNone: 'Semmi', stLocked: '{h} óra', stNoStats: 'Még nincs statisztika — a gépeid szinkronizálása után jelenik meg (pár percenként).', min: 'perc', hrs: 'ó',
       running: 'Fókusz bekapcsolva', idle: 'Indulhatunk, ha készen állsz', left: 'van hátra', until: '{t}-ig', onAll: 'Minden bejelentkezett gépeden fut.',
       dur: 'Időtartam', what: 'Mit tiltson', how: 'Mennyire szigorú', start: 'Fókusz indítása mindenhol', extend: '+15 perc', stop: 'Leállítás',
       lockedNote: 'Ez a tiltás zárolt — innen meghosszabbítható, de idő előtt nem állítható le.',
@@ -145,6 +147,7 @@
     lists: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
     sched: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
     acc: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    stats: '<path d="M3 3v18h18"/><path d="M7 16v-4M12 16V8M17 16v-7"/>',
     lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
   };
   const LOGO = '<svg viewBox="0 0 64 64"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffb547"/><stop offset="1" stop-color="#ff7a3d"/></linearGradient></defs><circle cx="32" cy="32" r="22" fill="none" stroke="url(#lg)" stroke-width="7" stroke-dasharray="118 20" stroke-linecap="round" transform="rotate(-60 32 32)"/><circle cx="32" cy="32" r="8" fill="url(#lg)"/></svg>';
@@ -319,6 +322,63 @@
         h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: s.enabled, onchange: (e) => { const on = e.target.checked; act(() => change((x) => { const ss = (x.schedules || []).find((y) => y.id === s.id); if (!ss) return false; ss.enabled = on; return true; }), t('saved')); } }), h('span')))) : h('p', { class: 'muted', style: 'margin:0' }, t('noSched'))),
     ];
   }
+  // ---------------------------------------------------------------- stats & forest (all devices)
+  const dayKey = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+  function allStats() {
+    const devs = (row && row.data && row.data.devices) || {};
+    const days = {};
+    const garden = new Map();
+    for (const d of Object.values(devs)) {
+      for (const [k, v] of Object.entries((d && d.days) || {})) days[k] = (days[k] || 0) + (Number(v.f) || 0);
+      for (const g of (d && d.garden) || []) if (g && g.id && !garden.has(g.id)) garden.set(g.id, g);
+    }
+    const now = Date.now();
+    const at = (i) => { const d = new Date(now); return dayKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() - i, 12).getTime()); };
+    const week = [];
+    for (let i = 6; i >= 0; i -= 1) week.push({ k: at(i), m: Math.round((days[at(i)] || 0) / 60), wd: new Date(now - i * 86400000).getDay() });
+    let streak = 0;
+    for (let i = 0; i < 400; i += 1) { if ((days[at(i)] || 0) >= 25 * 60) streak += 1; else if (i > 0) break; }
+    const items = [...garden.values()].sort((a, b) => a.t - b.t);
+    return {
+      devices: Object.keys(devs).length, today: week[6].m, week, weekMin: week.reduce((a, b) => a + b.m, 0), streak,
+      totalH: Math.round(Object.values(days).reduce((a, b) => a + b, 0) / 360) / 10, items, grown: items.filter((g) => g.ok).length, withered: items.filter((g) => !g.ok).length,
+    };
+  }
+  function statsView() {
+    const d = row && row.data;
+    if (!d) return focusView();
+    const st = allStats();
+    const G = window.GROW;
+    const s = d.settings || {};
+    const cur = s.growOn === false ? null : (s.growItem || 'oak');
+    const max = Math.max(30, ...st.week.map((x) => x.m));
+    const dec = (x) => String(x).replace('.', lang === 'hu' ? ',' : '.');
+    const fmt = (m) => (m >= 60 ? `${dec(Math.round(m / 6) / 10)} ${t('hrs')}` : `${m} ${t('min')}`);
+    const pick = (id) => act(() => change((x) => { x.settings = x.settings || {}; if (id) { x.settings.growOn = true; x.settings.growItem = id; } else x.settings.growOn = false; return true; }), t('saved'));
+    return [
+      h('h1', null, t('tStats')),
+      st.devices ? h('p', { class: 'muted small', style: 'margin-top:-6px' }, t('stDevices', { n: st.devices })) : h('div', { class: 'note' }, t('stNoStats')),
+      h('div', { class: 'kpis' },
+        h('div', { class: 'card kpi' }, h('b', null, fmt(st.today)), h('span', null, t('stToday'))),
+        h('div', { class: 'card kpi' }, h('b', null, fmt(st.weekMin)), h('span', null, t('stWeek'))),
+        h('div', { class: 'card kpi' }, h('b', null, String(st.streak)), h('span', null, t('stStreak'))),
+        h('div', { class: 'card kpi' }, h('b', null, `${String(st.totalH).replace('.', lang === 'hu' ? ',' : '.')} ${t('hrs')}`), h('span', null, t('stTotal')))),
+      h('div', { class: 'card' }, h('div', { class: 'bars' }, st.week.map((x, i) => h('div', { class: `bc${i === 6 ? ' today' : ''}` },
+        h('small', null, x.m ? String(x.m) : ''), h('i', { style: `height:${Math.max(3, (x.m / max) * 110)}px` }), h('span', null, t('days')[x.wd]))))),
+      G ? h('div', { class: 'card forest' },
+        h('h2', null, t('stForest'), h('small', { class: 'muted' }, ` · ${st.grown} ${t('stGrown')} · ${st.withered} ${t('stWithered')}`)),
+        st.items.length ? h('div', { class: 'land', html: G.landscape(st.items, { wide: window.innerWidth > 720 }) }) : h('p', { class: 'muted small' }, t('stEmpty')),
+        h('div', { class: 'label' }, t('stGrow')),
+        h('div', { class: 'grow-row' },
+          G.CATALOG.map((c) => {
+            const locked = c.unlockH > st.totalH;
+            return h('button', { class: `grow${cur === c.id ? ' on' : ''}`, disabled: locked || busy, title: c.name[lang] || c.name.en, onclick: () => pick(c.id) },
+              h('span', { html: G.draw(c.id, 1, { minutes: 60 }) }), h('small', null, locked ? t('stLocked', { h: c.unlockH }) : (c.name[lang] || c.name.en)));
+          }),
+          h('button', { class: `grow none${cur ? '' : ' on'}`, disabled: busy, onclick: () => pick(null) }, h('span', null, '—'), h('small', null, t('stNone'))))) : null,
+    ];
+  }
+
   function accView() {
     const pcAt = !row ? 0 : String(row.device || '').startsWith('web-') ? (row.data && row.data.pcAt) || 0 : Date.parse(row.updated_at);
     const mins = pcAt ? Math.round((Date.now() - pcAt) / 60000) : null;
@@ -336,7 +396,7 @@
     ];
   }
   function tabs() {
-    const items = [['focus', 'tFocus', IC.focus], ['lists', 'tLists', IC.lists], ['schedules', 'tSched', IC.sched], ['account', 'tAcc', IC.acc]];
+    const items = [['focus', 'tFocus', IC.focus], ['lists', 'tLists', IC.lists], ['stats', 'tStats', IC.stats], ['schedules', 'tSched', IC.sched], ['account', 'tAcc', IC.acc]];
     return h('nav', { class: 'tabs', 'aria-label': 'Sections' }, h('div', { class: 'tabs-in' }, items.map(([id, k, ic]) => h('button', { class: tab === id ? 'on' : '', onclick: () => { tab = id; store.set('tab', id); render(); window.scrollTo(0, 0); } }, svg(ic), t(k)))));
   }
   function render() {
@@ -348,7 +408,7 @@
     const shell = h('div', { class: 'shell' }, top());
     if (!auth || !ENABLED) shell.append(...loginView());
     else if (loading && !row) shell.append(h('div', { class: 'spin' }));
-    else shell.append(...(tab === 'lists' ? listsView() : tab === 'schedules' ? schedView() : tab === 'account' ? accView() : focusView()));
+    else shell.append(...(tab === 'lists' ? listsView() : tab === 'stats' ? statsView() : tab === 'schedules' ? schedView() : tab === 'account' ? accView() : focusView()));
     root.append(shell);
     if (auth && ENABLED) root.append(tabs());
     window.scrollTo(0, y);

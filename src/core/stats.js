@@ -47,6 +47,31 @@ function addSession(stats, ms) {
   day(stats, ms).sessions += 1;
 }
 
+/** A finished (ok) or abandoned (withered) grow item. `id` = session start, so devices don't double it. */
+function addGrown(stats, rec) {
+  stats.garden = Array.isArray(stats.garden) ? stats.garden : [];
+  const id = String(rec.id);
+  if (stats.garden.some((g) => g.id === id)) return false;
+  stats.garden.push({ id, t: rec.t, i: rec.i, m: Math.max(1, Math.round(rec.m || 0)), ok: rec.ok !== false });
+  stats.garden.sort((a, b) => a.t - b.t);
+  if (stats.garden.length > 3000) stats.garden.splice(0, stats.garden.length - 3000);
+  return true;
+}
+
+function gardenSummary(stats, ms) {
+  const g = Array.isArray(stats.garden) ? stats.garden : [];
+  const today = dayKey(ms);
+  const weekAgo = ms - 7 * 86400000;
+  const grown = g.filter((x) => x.ok).length;
+  return {
+    items: g.slice(-240),
+    grown,
+    withered: g.length - grown,
+    today: g.filter((x) => x.ok && dayKey(x.t) === today).length,
+    week: g.filter((x) => x.ok && x.t >= weekAgo).length,
+  };
+}
+
 function prune(stats, ms, keepDays = 400) {
   const cutoff = dayKey(ms - keepDays * 86400000);
   for (const k of Object.keys(stats.days)) if (k < cutoff) delete stats.days[k];
@@ -96,7 +121,9 @@ function summarize(stats, ms, streakMinMinutes = 25) {
     streak,
     last7,
     top,
+    garden: gardenSummary(stats, ms),
   };
 }
 
-module.exports = { dayKey, emptyStats, addFocus, addBlock, addUsage, usageToday, addSession, prune, summarize };
+module.exports = {
+  addGrown, gardenSummary, dayKey, emptyStats, addFocus, addBlock, addUsage, usageToday, addSession, prune, summarize };

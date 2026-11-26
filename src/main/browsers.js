@@ -190,6 +190,17 @@ function titleStems(sites, keep = []) {
 
 // ---------------------------------------------------------------- controller
 
+/** Which supported browsers are running (from `ps`, so nothing is launched by asking). */
+function runningMacBrowsers() {
+  return new Promise((resolve) => {
+    execFile('/bin/ps', ['-x', '-o', 'comm='], { timeout: 4000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
+      if (err) { resolve([]); return; }
+      const text = String(stdout);
+      resolve(MAC_BROWSERS.map((b) => b.name).filter((n) => text.includes(`/${n}.app/Contents/MacOS/`)));
+    });
+  });
+}
+
 class BrowserGuard {
   constructor({ log } = {}) {
     this.log = log || (() => {});
@@ -197,13 +208,14 @@ class BrowserGuard {
     this.lastFull = 0;
     this.lastFront = 0;
     this.sig = '';
-    this.denied = new Set();
+    this.denied = new Set(); // the user said no in the macOS dialog
+    this.waiting = new Set(); // the macOS "allow to control" dialog is still open
     this.running = new Set();
     this.blockedTabs = 0;
     this.lastHit = null;
+    this.lastError = null;
     this.watcher = IS_WIN ? new WinWatcher(this.log) : null;
     this.onHit = null;
-    this.lastError = null;
   }
 
   /**
@@ -216,7 +228,7 @@ class BrowserGuard {
     const sig = active ? JSON.stringify([r.sites, r.paths, r.allow]) : '';
     const changed = sig !== this.sig;
     this.sig = sig;
-    if (changed) this.denied.clear();
+    if (changed) { this.denied.clear(); this.waiting.clear(); }
     if (IS_MAC) {
       if (!active || !blockUrl || this.busy) return;
       const full = changed || now - this.lastFull >= 10000;
@@ -232,24 +244,38 @@ class BrowserGuard {
     this.busy = true;
     if (full) this.lastFull = now;
     this.lastFront = now;
-    const browsers = MAC_BROWSERS.map((b) => b.name).filter((n) => !this.denied.has(n));
-    const arg = JSON.stringify({
-      hosts: expandHosts(r.sites).slice(0, 5000), paths: r.paths, allow: r.allow && r.allow.length ? r.allow : null,
-      blockUrl, browsers, frontOnly: !full,
-    });
+    const base = { hosts: expandHosts(r.sites).slice(0, 5000), paths: r.paths, allow: r.allow && r.allow.length ? r.allow : null, blockUrl };
     try {
-      const res = await runJxa(arg);
-      if (res.error) { this.lastError = res.error; this.log(`browsers: ${res.error}`); return; }
-      this.lastError = res.error || null;
-      if (full) this.running = new Set(res.running || []);
-      for (const d of res.denied || []) this.denied.add(d);
-      const ok = (res.hits || []).filter((h) => !h[2]);
-      if (ok.length) {
-        this.blockedTabs += ok.length;
-        this.lastHit = { at: Date.now(), site: ok[0][1], browser: ok[0][0] };
-        if (this.onHit) for (const h of ok) this.onHit(h[1], h[0]);
+      if (full) {
+        // One osascript per browser, so a browser whose permission dialog is still
+        // open (or that hangs) never holds up the others.
+        this.running = new Set(await runningMacBrowsers());
+        const targets = [...this.running].filter((n) => !this.denied.has(n));
+        const results = await Promise.all(targets.map(async (name) => [name, await runJxa(JSON.stringify({ ...base, browsers: [name], frontOnly: false }))]));
+        let err = null;
+        for (const [name, res] of results) {
+          if (res.error) { err = res.error; if (/timeout/.test(res.error)) this.waiting.add(name); continue; }
+          this.waiting.delete(name);
+          this.take(res);
+        }
+        this.lastError = err;
+        if (err) this.log(`browsers: ${err}`);
+      } else {
+        const targets = [...this.running].filter((n) => !this.denied.has(n) && !this.waiting.has(n));
+        if (!targets.length) return;
+        const res = await runJxa(JSON.stringify({ ...base, browsers: targets, frontOnly: true }), 5000);
+        if (!res.error) this.take(res);
       }
     } finally { this.busy = false; }
+  }
+
+  take(res) {
+    for (const d of res.denied || []) { this.denied.add(d); this.waiting.delete(d); }
+    const ok = (res.hits || []).filter((h) => !h[2]);
+    if (!ok.length) return;
+    this.blockedTabs += ok.length;
+    this.lastHit = { at: Date.now(), site: ok[0][1], browser: ok[0][0] };
+    if (this.onHit) for (const h of ok) this.onHit(h[1], h[0]);
   }
 
   /** For the UI. */
@@ -257,11 +283,12 @@ class BrowserGuard {
     return {
       supported: IS_MAC || IS_WIN,
       denied: [...this.denied],
+      waiting: [...this.waiting],
       running: [...this.running],
       blockedTabs: this.blockedTabs,
       reloads: this.watcher ? this.watcher.reloads : 0,
       lastHit: this.lastHit,
-      lastError: this.lastError || null,
+      lastError: this.lastError,
     };
   }
 

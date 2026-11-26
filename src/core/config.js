@@ -1,4 +1,5 @@
 'use strict';
+const GROW = require('../shared/grow');
 const crypto = require('crypto');
 const { PRESETS, PRESET_REV } = require('./presets');
 const { normalizeSite } = require('./domains');
@@ -52,6 +53,9 @@ function defaults(lang = 'en') {
       focusSound: 'off',
       focusVolume: 0.5,
       soundAuto: true,
+      growOn: true,
+      growItem: 'oak',
+      growWither: true,
       launchAtLogin: true,
       showOverlay: true,
       notifications: true,
@@ -182,6 +186,9 @@ function sanitizeSettings(input, base) {
     focusSound: ['off', 'rain', 'waves', 'brown', 'cafe', 'fire', 'white'].includes(i.focusSound) ? i.focusSound : (b.focusSound || 'off'),
     focusVolume: Number.isFinite(Number(i.focusVolume)) ? Math.min(1, Math.max(0, Number(i.focusVolume))) : (b.focusVolume == null ? 0.5 : b.focusVolume),
     soundAuto: bool(i.soundAuto, b.soundAuto == null ? true : b.soundAuto),
+    growOn: bool(i.growOn, b.growOn == null ? true : b.growOn),
+    growItem: GROW.BY_ID[i.growItem] ? i.growItem : (GROW.BY_ID[b.growItem] ? b.growItem : 'oak'),
+    growWither: bool(i.growWither, b.growWither == null ? true : b.growWither),
     launchAtLogin: bool(i.launchAtLogin, b.launchAtLogin),
     showOverlay: bool(i.showOverlay, b.showOverlay),
     notifications: bool(i.notifications, b.notifications),
@@ -237,6 +244,7 @@ function normalizeLoaded(raw, lang) {
       listIds: Array.isArray(s.listIds) ? s.listIds.filter((x) => typeof x === 'string') : [],
       mode: MODES.includes(s.mode) ? s.mode : 'flexible',
       goal: typeof s.goal === 'string' ? s.goal.slice(0, 80) : '',
+      grow: typeof s.grow === 'string' && GROW.BY_ID[s.grow] ? s.grow : null,
       pomodoro: s.pomodoro && s.pomodoro.work > 0 ? { work: int(s.pomodoro.work, 1, 240, 25), brk: int(s.pomodoro.brk, 0, 120, 5), cycles: int(s.pomodoro.cycles, 1, 24, 4) } : null,
     }
     : null;

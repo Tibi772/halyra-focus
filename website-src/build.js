@@ -384,6 +384,7 @@ write('site.webmanifest', JSON.stringify({
 // ---- web app (phone & browser companion), same account as the desktop app
 const CLOUD = (() => { try { return JSON.parse(fs.readFileSync(path.join(SRC, '..', 'src', 'shared', 'cloud.json'), 'utf8')); } catch (_) { return {}; } })();
 fs.cpSync(path.join(SRC, 'app'), path.join(OUT, 'app'), { recursive: true });
+fs.copyFileSync(path.join(SRC, '..', 'src', 'shared', 'grow.js'), path.join(OUT, 'app', 'grow.js'));
 write('app/config.js', `window.HALYRA_CFG = ${JSON.stringify({ url: CLOUD.url || '', anonKey: CLOUD.anonKey || '', dl: { mac: DL.mac, win: DL.win, android: DL.android }, home: LINK_INDEX ? '../index.html' : '../', version: VERSION })};\n`);
 write('app/manifest.webmanifest', JSON.stringify({
   name: 'Halyra Focus', short_name: 'Halyra', description: 'Start focus blocks on all your computers from your phone.', start_url: './', scope: './', display: 'standalone',

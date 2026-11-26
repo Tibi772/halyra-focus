@@ -326,8 +326,8 @@ function soundBar() {
 function structKey() {
   const ev = S.eval;
   return [S.rev, S.lang, S.settings.theme, ev.blocking, ev.mode, ev.sources.map((s) => `${s.id}:${s.phase}:${s.endsAt}`).join(','),
-    S.helper.installed, S.helper.verified, S.helper.outdated, S.browsers ? S.browsers.denied.join(',') : '', S.unlock ? S.unlock.kind : '', ui.view, JSON.stringify(permState()), S.stats.todayBlocks, Math.floor(S.stats.todayMinutes),
-    S.cloud ? `${S.cloud.signedIn}${S.cloud.lastSync}${S.cloud.error}` : '', ui.view === 'lists' ? Object.values(S.usage || {}).map((x) => Math.floor(x / 60)).join(',') : ''].join('|');
+    S.helper.installed, S.helper.verified, S.helper.outdated, S.browsers ? S.browsers.denied.join(',') + S.browsers.waiting.join(',') : '', S.unlock ? S.unlock.kind : '', ui.view, JSON.stringify(permState()), S.stats.todayBlocks, Math.floor(S.stats.todayMinutes),
+    S.cloud ? `${S.cloud.signedIn}${S.cloud.lastSync}${S.cloud.error}` : '', `${S.settings.growOn}${S.settings.growItem}${S.stats.garden ? S.stats.garden.grown + S.stats.garden.withered : 0}`, ui.view === 'lists' ? Object.values(S.usage || {}).map((x) => Math.floor(x / 60)).join(',') : ''].join('|');
 }
 
 const CUSTOM_KEYS = new Set();
@@ -386,6 +386,7 @@ function applyState(state) {
   }
   for (const m of modalStack) if (m.live) m.live();
   updateSound();
+  if (!first || S.settings.onboarded) maybeCelebrate();
   if (first && !S.settings.onboarded) openOnboarding();
 }
 
@@ -542,14 +543,126 @@ function renderRing() {
     return `<line x1="${150 + r1 * Math.cos(a)}" y1="${150 + r1 * Math.sin(a)}" x2="${150 + r2 * Math.cos(a)}" y2="${150 + r2 * Math.sin(a)}"/>`;
   }).join('');
   wrap.innerHTML = `<svg viewBox="0 0 300 300"><defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--accent)"/><stop offset="1" style="stop-color:var(--accent-2)"/></linearGradient></defs><g class="ring-ticks">${ticks}</g><circle class="ring-track" cx="150" cy="150" r="${RING_R}"/><circle class="ring-prog" data-live="ring" cx="150" cy="150" r="${RING_R}" stroke-dasharray="${RING_C}" stroke-dashoffset="${RING_C * (1 - m.progress)}"/></svg>`;
+  const gr = growModel();
+  const art = h('div', { class: `ring-grow${gr ? '' : ' none'}${gr && gr.idle ? ' idle' : ''}`, 'data-live': 'grow' });
+  if (gr) { art.innerHTML = growArt(gr.id, gr.p, gr.minutes); art.dataset.p = String(gr.p.toFixed(3)); }
+  if (gr) wrap.classList.add('growing');
   wrap.append(
     h('div', { class: 'ring-orbit' }),
     h('div', { class: 'ring-center' },
+      gr ? art : null,
       h('div', { class: 'ring-time', 'data-live': 'ring-time' }, m.time),
-      h('div', { class: 'ring-label' }, m.label),
-      m.sub ? h('div', { class: 'ring-sub' }, m.sub) : null),
+      h('div', { class: 'ring-label' }, gr && !gr.idle ? `${m.label} · ${Math.floor(gr.p * 100)}%` : m.label),
+      m.sub && !gr ? h('div', { class: 'ring-sub' }, m.sub) : null),
   );
   return wrap;
+}
+
+// ------------------------------------------------------------------ grow while you focus
+
+const growMono = () => ['crt', 'onebit'].includes(S.settings.theme);
+function growArt(id, p, minutes, extra = {}) {
+  return GROW.draw(id, p, { mono: growMono(), minutes, ...extra });
+}
+function growName(id) {
+  const it = GROW.BY_ID[id];
+  return it ? (it.name[S.lang] || it.name.en) : '';
+}
+/** What the ring shows: the session's item growing, or (idle) the item that will grow. */
+function growModel() {
+  const s = S.session && S.session.endsAt > S.now ? S.session : null;
+  if (s) {
+    if (!s.grow) return null;
+    const p = Math.max(0, Math.min(1, (S.now - s.startedAt) / (s.endsAt - s.startedAt)));
+    return { id: s.grow, p, minutes: Math.round((s.endsAt - s.startedAt) / 60000), idle: false };
+  }
+  if (S.eval.sources.length || S.settings.growOn === false) return null;
+  const mins = ui.setup.pomodoro ? ui.setup.pomo.cycles * (ui.setup.pomo.work + ui.setup.pomo.brk) : ui.setup.minutes;
+  return { id: S.settings.growItem || 'oak', p: 1, minutes: mins, idle: true };
+}
+
+function growHours() { return Number(S.stats.totalHours) || 0; }
+
+function growChooser() {
+  const on = S.settings.growOn !== false;
+  const id = S.settings.growItem || 'oak';
+  return h('div', { class: 'grow-pick-row' },
+    h('div', { class: 'grow-thumb', html: on ? growArt(id, 1, 60) : '' }),
+    h('div', { class: 'spacer' },
+      h('b', null, on ? growName(id) : t('grow.off')),
+      h('div', { class: 'muted small' }, on ? t('grow.tip') : t('grow.title'))),
+    h('button', { class: 'btn sm', 'data-fid': 'grow-change', onclick: openGrowPicker }, t('grow.change')));
+}
+
+function openGrowPicker() {
+  let tab = (GROW.BY_ID[S.settings.growItem] || GROW.BY_ID.oak).kind;
+  openModal((self) => {
+    const hours = growHours();
+    const items = GROW.CATALOG.filter((c) => c.kind === tab);
+    const cur = S.settings.growOn === false ? null : S.settings.growItem;
+    const pick = async (patch) => { await patchConfig({ settings: patch }); self.render(); };
+    return [
+      modalHead(t('grow.pick'), () => self.close()),
+      h('div', { class: 'seg', style: { marginBottom: '14px' } },
+        ['tree', 'building'].map((k) => h('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; self.render(); } }, t(k === 'tree' ? 'grow.trees' : 'grow.buildings')))),
+      h('div', { class: 'grow-grid' }, items.map((c) => {
+        const locked = c.unlockH > hours;
+        return h('button', {
+          class: `grow-card${cur === c.id ? ' on' : ''}${locked ? ' locked' : ''}`, disabled: locked, 'data-fid': `grow-${c.id}`,
+          onclick: () => pick({ growOn: true, growItem: c.id }),
+        }, h('div', { class: 'grow-card-art', html: growArt(c.id, 1, 60) }),
+        h('b', null, c.name[S.lang] || c.name.en),
+        h('small', null, locked ? t('grow.locked', { h: c.unlockH }) : cur === c.id ? '✓' : ''));
+      })),
+      h('div', { class: 'set-row', style: { marginTop: '12px' } },
+        h('div', { class: 'label' }, t('grow.wither')),
+        h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: S.settings.growWither !== false, onchange: (e) => pick({ growWither: e.target.checked }) }), h('span'))),
+      h('div', { class: 'modal-foot' },
+        h('button', { class: `btn${cur ? '' : ' primary'}`, onclick: () => pick({ growOn: false }) }, t('grow.off')),
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn primary', onclick: () => self.close() }, t('lists.done'))),
+    ];
+  }, { wide: true });
+}
+
+/** A finished or withered item → a small celebration (once per item). */
+function maybeCelebrate() {
+  const g = S.lastGrown;
+  if (!g || ui.celebrated === g.id) return;
+  let seen = '';
+  try { seen = localStorage.getItem('hf-grown') || ''; } catch (_) { seen = ''; }
+  ui.celebrated = g.id;
+  if (seen === g.id || S.now - g.at > 30 * 60000) return;
+  try { localStorage.setItem('hf-grown', g.id); } catch (_) { /* ignore */ }
+  const name = growName(g.i);
+  openModal((self) => [
+    h('div', { class: `grow-celebrate${g.ok ? '' : ' lost'}` },
+      h('div', { class: 'grow-celebrate-art', html: growArt(g.i, 1, g.m, { dead: !g.ok }) }),
+      h('h2', null, g.ok ? t('grow.ready') : t('grow.lost')),
+      h('p', { class: 'muted' }, g.ok ? t('grow.readySub', { name, m: g.m }) : t('grow.lostSub', { name }))),
+    h('div', { class: 'modal-foot' }, h('span', { class: 'spacer' }),
+      h('button', { class: 'btn', onclick: () => { self.close(); go('stats'); } }, t('grow.forest')),
+      h('button', { class: 'btn primary', onclick: () => self.close() }, t('grow.nice'))),
+  ]);
+  if (g.ok) chime(true);
+}
+
+function gardenCard() {
+  const gd = S.stats.garden || { items: [], grown: 0, withered: 0, today: 0, week: 0 };
+  const un = GROW.unlocked(growHours());
+  const land = h('div', { class: 'garden-land', html: gd.items.length ? GROW.landscape(gd.items, { mono: growMono(), wide: !isMobile() }) : '' });
+  if (!gd.items.length) land.append(h('div', { class: 'garden-empty' }, h('div', { class: 'grow-thumb', html: growArt(S.settings.growItem || 'oak', 0.3, 60) }), h('span', null, t('grow.empty'))));
+  return h('div', { class: 'card garden' },
+    h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('grow.forest')),
+      h('button', { class: 'btn sm', onclick: openGrowPicker }, t('grow.change'))),
+    land,
+    h('div', { class: 'garden-kpis' },
+      h('div', null, h('b', null, String(gd.today)), h('span', null, t('grow.today'))),
+      h('div', null, h('b', null, String(gd.week)), h('span', null, t('grow.week'))),
+      h('div', null, h('b', null, String(gd.grown)), h('span', null, t('grow.total'))),
+      h('div', null, h('b', null, String(gd.withered)), h('span', null, t('grow.withered'))),
+      un.next ? h('div', { class: 'garden-next' }, h('span', { class: 'grow-thumb sm', html: growArt(un.next.id, 1, 60) }),
+        h('span', null, t('grow.next', { name: un.next.name[S.lang] || un.next.name.en, h: Math.max(0.1, Math.round((un.next.unlockH - growHours()) * 10) / 10).toString().replace('.', S.lang === 'hu' ? ',' : '.') }))) : null));
 }
 
 function updateLive() {
@@ -564,6 +677,9 @@ function updateLive() {
     if (tEl) tEl.textContent = m.time;
     const ring = document.querySelector('[data-live="ring"]');
     if (ring) ring.setAttribute('stroke-dashoffset', String(RING_C * (1 - m.progress)));
+    const gEl = document.querySelector('[data-live="grow"]');
+    const gr = gEl && growModel();
+    if (gr && Math.abs(Number(gEl.dataset.p || 0) - gr.p) >= 0.004) { gEl.innerHTML = growArt(gr.id, gr.p, gr.minutes); gEl.dataset.p = String(gr.p.toFixed(3)); }
   }
 }
 
@@ -656,6 +772,10 @@ function renderFocus() {
       h('div', { class: 'b-text' }, h('b', null, t('helper.outdated')), h('span', null, t('helper.outdatedSub'))),
       h('button', { class: 'btn primary', onclick: installHelper }, icon('shield'), t('helper.update'))));
   }
+  if (S.browsers && S.browsers.waiting && S.browsers.waiting.length && !(S.browsers.denied || []).length) {
+    parts.push(h('div', { class: 'banner' }, icon('globe'),
+      h('div', { class: 'b-text' }, h('b', null, t('browsers.waiting', { list: S.browsers.waiting.join(', ') })), h('span', null, t('browsers.waitingSub')))));
+  }
   if (S.browsers && S.browsers.denied && S.browsers.denied.length) {
     parts.push(h('div', { class: 'banner' }, icon('globe'),
       h('div', { class: 'b-text' }, h('b', null, t('browsers.denied', { list: S.browsers.denied.join(', ') })), h('span', null, t('browsers.deniedSub'))),
@@ -675,6 +795,7 @@ function renderFocus() {
       h('div', { class: 'setup-sec' }, h('div', { class: 'eyebrow' }, t('focus.lists')),
         listChips(s.listIds, (id) => { s.listIds = s.listIds.includes(id) ? s.listIds.filter((x) => x !== id) : [...s.listIds, id]; renderAll(); })),
       h('div', { class: 'setup-sec' }, h('div', { class: 'eyebrow' }, t('focus.mode')), modeCards(s.mode, (m) => { s.mode = m; renderAll(); })),
+      h('div', { class: 'setup-sec' }, h('div', { class: 'eyebrow' }, t('grow.title')), growChooser()),
       h('div', { class: 'row' }, h('button', { class: 'btn accent big', onclick: () => startFocus() }, icon('play'), t('focus.start')),
         ev.next ? h('span', { class: 'muted small' }, t('focus.next', { name: ev.next.name, when: fmtWhen(ev.next.at) })) : null),
     );
@@ -1085,9 +1206,10 @@ function renderStats() {
   const wk = fmtMinutes(st.weekMinutes);
   const topMax = Math.max(1, ...st.top.map((x) => x.count));
   return [
-    head(t('nav.stats'), t('stats.title'), t('stats.sub')),
+    head(t('nav.stats'), t('stats.title'), st.devices > 1 ? t('stats.subSynced', { n: st.devices }) : t('stats.sub')),
     (S.insights || []).length ? h('div', { style: { marginBottom: '16px', marginTop: '-16px' } }, insightsCard(S.insights)) : null,
-    h('div', { class: 'grid g4' },
+    gardenCard(),
+    h('div', { class: 'grid g4', style: { marginTop: '16px' } },
       h('div', { class: 'card kpi' }, h('div', { class: 'kpi-num' }, String(fm.n), h('small', null, fm.u)), h('div', { class: 'kpi-label' }, icon('clock'), t('today.focus'))),
       h('div', { class: 'card kpi' }, h('div', { class: 'kpi-num' }, String(st.todayBlocks)), h('div', { class: 'kpi-label' }, icon('shield'), t('today.blocks'))),
       h('div', { class: 'card kpi' }, h('div', { class: 'kpi-num' }, String(st.streak)), h('div', { class: 'kpi-label' }, icon('flame'), t('today.streak'))),

@@ -16,7 +16,13 @@ users.set('anna@halyra.app', { id: 'u1', email: 'anna@halyra.app', password: 'co
 const desktop = cfg.defaults('hu');
 desktop.lists[0].limitMin = 45;
 desktop.schedules[0].enabled = true;
-rows.set('u1', { data: sync.buildPayload(desktop, 'dev-mac', Date.now() - 120000), device: 'dev-mac', updated_at: new Date(Date.now() - 120000).toISOString() });
+const statsLib = require(R + '/src/core/stats');
+const macStats = statsLib.emptyStats(); const winStats = statsLib.emptyStats();
+for (let d = 0; d < 7; d += 1) for (let i = 0; i < 6 * (30 + d * 10); i += 1) statsLib.addFocus(macStats, Date.now() - d * 86400000, 10);
+for (let i = 0; i < 6 * 40; i += 1) statsLib.addFocus(winStats, Date.now(), 10);
+['oak', 'pine', 'house', 'cherry', 'windmill', 'oak'].forEach((it, k) => statsLib.addGrown(k % 2 ? winStats : macStats, { id: 100 + k, t: Date.now() - k * 3600000, i: it, m: 50, ok: k !== 3 }));
+const devices = { 'dev-mac': sync.deviceEntry(macStats, Date.now(), { name: 'MacBook', platform: 'darwin' }), 'dev-win': sync.deviceEntry(winStats, Date.now(), { name: 'PC', platform: 'win32' }) };
+rows.set('u1', { data: sync.buildPayload(desktop, 'dev-mac', Date.now() - 120000, devices), device: 'dev-mac', updated_at: new Date(Date.now() - 120000).toISOString() });
 const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'apikey, authorization, content-type, prefer', 'access-control-allow-methods': 'GET, POST, OPTIONS' };
 const sb = http.createServer((req, res) => {
   let body = ''; req.on('data', (d) => body += d); req.on('end', () => {
@@ -90,6 +96,15 @@ const listen = (s) => new Promise((r) => s.listen(0, '127.0.0.1', () => r(s.addr
   await p.click('.list-h >> nth=0'); await p.waitForTimeout(300);
   ok('locked list shows note', (await p.textContent('body')).includes('zárolt tiltás használja'));
   await p.screenshot({ path: OUT + '/4b-locked-list.png' });
+  // stats of all devices + the forest; picking what grows syncs to the computers
+  await p.click('.tabs >> text=Statisztika'); await p.waitForTimeout(400);
+  await p.screenshot({ path: OUT + '/4c-stats.png', fullPage: true });
+  const stTxt = await p.textContent('body');
+  ok('stats tab merges devices', stTxt.includes('eszközöd együtt (2)') && !!(await p.$('.forest .land svg')));
+  ok('forest shows grown and withered', stTxt.includes('5 felnőtt') && stTxt.includes('1 elszáradt'));
+  await p.click('.grow[title="Fenyő"]'); await p.waitForTimeout(700);
+  ok('grow choice saved from web', rows.get('u1').data.settings.growItem === 'pine' && rows.get('u1').data.devices && rows.get('u1').data.devices['dev-mac']);
+  ok('desktop takes the grow choice', sync.applyRemote(desktop, rows.get('u1').data, Date.now()).config.settings.growItem === 'pine');
   await p.click('.tabs >> text=Időzítés'); await p.waitForTimeout(300);
   await p.screenshot({ path: OUT + '/5-sched.png' });
   const before = rows.get('u1').data.schedules[0].enabled;

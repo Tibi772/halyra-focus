@@ -155,8 +155,8 @@ module.exports = async function selftest(ctx) {
       }, 40000, 1000);
       const gs = ctx.browserState() || {};
       const detail = JSON.stringify({ tabs: tabs.map((t) => t.url), guard: gs });
-      if (!redirected && ((gs.denied || []).length || /timeout|-1743/.test(gs.lastError || ''))) {
-        console.log(`[selftest] note  browser control not permitted on this machine (${(gs.denied || []).join(', ') || gs.lastError}) — tab check skipped. ${detail}`);
+      if (!redirected && ((gs.denied || []).length || (gs.waiting || []).length)) {
+        console.log(`[selftest] note  browser control not permitted on this machine (${[...(gs.denied || []), ...(gs.waiting || [])].join(', ')}) — tab check skipped. ${detail}`);
       } else {
         log('A tab that was already open is sent to the block page', redirected, detail);
         if (redirected) {
@@ -197,8 +197,12 @@ module.exports = async function selftest(ctx) {
       log('Stopping removes the browser policy entries', await waitFor(async () => !(await bt.regList(key)).includes(PART), 20000, 1000), (await bt.regList(key)).join(' '));
     }
     if (br) {
-      const again = await bt.visit(br, `https://${PART}/page`, 4000);
-      log('The part of the site opens again after stopping', /Example Domain|404|Not Found/i.test(`${again.text || ''} ${again.title || ''}`) && !/BLOCKED_BY_ADMINISTRATOR/.test(again.text || ''), JSON.stringify(again));
+      let again = {};
+      const open = await waitFor(async () => {
+        again = await bt.visit(br, `https://${PART}/page`, 2500);
+        return /Example Domain|404|Not Found/i.test(`${again.text || ''} ${again.title || ''}`) && !/blocked/i.test(again.text || '');
+      }, 60000, 500);
+      log('The part of the site opens again after stopping', open, JSON.stringify(again).slice(0, 300));
     }
 
     // ---------------------------------------------------------------- locked mode

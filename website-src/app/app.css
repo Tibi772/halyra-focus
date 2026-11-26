@@ -96,3 +96,29 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 @media (min-width: 700px) { .shell { padding-top: 40px; } }
 .note svg { width: 16px; height: 16px; vertical-align: -3px; }
 .btn svg { width: 18px; height: 18px; }
+
+/* stats & forest */
+.kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
+@media (min-width: 720px) { .kpis { grid-template-columns: repeat(4, 1fr); } }
+.kpis .card { margin: 0; }
+.kpi b { display: block; font-size: 22px; letter-spacing: -.02em; }
+.kpi span { color: var(--muted); font-size: 12.5px; }
+.bars { display: flex; align-items: flex-end; gap: 8px; height: 150px; }
+.bc { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 5px; height: 100%; }
+.bc i { display: block; width: 100%; max-width: 34px; border-radius: 8px 8px 4px 4px; background: rgba(255, 255, 255, .12); }
+.bc.today i { background: linear-gradient(180deg, #ffb547, #ff7a3d); }
+.bc small { color: var(--muted); font-size: 11px; min-height: 13px; }
+.bc span { color: var(--muted); font-size: 11.5px; }
+.forest h2 small { font-weight: 500; font-size: 13px; }
+.forest .land { height: 170px; margin: 8px -18px 8px; background: linear-gradient(180deg, rgba(255, 181, 71, .07), transparent 70%); }
+.forest .land svg { width: 100%; height: 100%; display: block; }
+.grow-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 8px; }
+.grow { border: 1px solid var(--border); background: var(--panel-2); color: var(--text); border-radius: 14px; padding: 6px 4px 8px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; }
+.grow span { width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--muted); }
+.grow svg { width: 100%; height: 100%; }
+.grow small { font-size: 10.5px; color: var(--muted); text-align: center; line-height: 1.2; }
+.grow.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(255, 181, 71, .25); }
+.grow:disabled { cursor: not-allowed; }
+.grow:disabled span { filter: grayscale(1) brightness(.6); opacity: .5; }
+.grow-art .gw-spin { animation: gw-spin 6s linear infinite; }
+@keyframes gw-spin { to { transform: rotate(360deg); } }

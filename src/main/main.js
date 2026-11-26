@@ -22,6 +22,7 @@ const sync = require('../core/sync');
 const { CloudClient } = require('./cloud');
 const webusage = require('../core/webusage');
 const blockrules = require('../core/blockrules');
+const GROW = require('../shared/grow');
 const { blockInfo } = require('../core/blockinfo');
 const CLOUD_CONF = (() => { try { return require('../shared/cloud.json'); } catch (_) { return {}; } })();
 
@@ -46,10 +47,16 @@ let lastTick = Date.now();
 let lastEval = null;
 let lastHostsKey = null;
 let guard = null; // browser tabs / policy (computers)
+let lastGrown = null; // the latest finished / withered grow item, for the UI's celebration
 let blockPage = null; // local block page server { url, port }
 let hostsState = { installed: false, verified: false, expected: 0 };
 let installedAppsCache = null;
 let statsDirty = false;
+let statsSyncDirty = false; // stats changed since the last cloud push
+let remoteDevices = {}; // other devices' compact stats from the sync row
+let lastStatsPush = 0;
+let statsSyncNow = false; // push stats on the next sync (e.g. a tree just finished growing)
+let mergedCache = { at: 0, key: '', summary: null };
 let appCheckBusy = false;
 let tickCount = 0;
 const lastOverlay = new Map();
@@ -128,6 +135,8 @@ async function syncNow() {
   syncState.busy = true;
   try {
     const row = await cloud.pull();
+    const nowMs = Date.now();
+    if (row && row.data) remoteDevices = sync.otherDevices(row.data, deviceId, nowMs);
     if (row && row.data && row.device !== deviceId && Date.parse(row.updated_at) > lastRemoteAt) {
       lastRemoteAt = Date.parse(row.updated_at);
       const hadSession = Boolean(config.session && config.session.endsAt > Date.now());
@@ -143,9 +152,14 @@ async function syncNow() {
       }
       if (r.keptLocal) dirty = true;
     }
-    if (dirty || !row) {
-      await cloud.push(sync.buildPayload(config, deviceId, Date.now()), deviceId);
+    const statsDue = statsSyncDirty && nowMs - lastStatsPush > 5 * 60000;
+    if (dirty || !row || statsDue || statsSyncNow) {
+      const devices = { ...remoteDevices, [deviceId]: sync.deviceEntry(stats, nowMs, { name: deviceName(), platform: process.platform }) };
+      await cloud.push(sync.buildPayload(config, deviceId, nowMs, devices), deviceId);
       dirty = false;
+      statsSyncDirty = false;
+      statsSyncNow = false;
+      lastStatsPush = nowMs;
     }
     syncState.lastSync = Date.now();
     syncState.error = null;
@@ -157,6 +171,21 @@ async function syncNow() {
     applyingRemote = false;
     push();
   }
+}
+
+function deviceName() {
+  try { return (platform.deviceName && platform.deviceName()) || require('os').hostname() || process.platform; } catch (_) { return process.platform; }
+}
+
+/** Stats summary: this device, or all signed-in devices together. */
+function statsSummary(now) {
+  const ids = Object.keys(remoteDevices);
+  if (!ids.length || !(cloud && cloud.signedIn())) return { ...statsLib.summarize(stats, now), devices: 1 };
+  const key = ids.map((id) => `${id}:${remoteDevices[id].at}`).join(',');
+  if (mergedCache.summary && mergedCache.key === key && now - mergedCache.at < 10000) return mergedCache.summary;
+  const summary = { ...statsLib.summarize(sync.mergeStats(stats, remoteDevices), now), devices: ids.length + 1 };
+  mergedCache = { at: now, key, summary };
+  return summary;
 }
 
 function cloudPublic() {
@@ -223,11 +252,12 @@ function fullState() {
     unlock: unlocker.status(),
     helper: { ...hostsState, supported: platform.IS_MAC || platform.IS_WIN, outdated: Boolean(platform.helperOutdated && hostsState.installed && platform.helperOutdated()) },
     browsers: guard ? guard.state() : null,
-    stats: statsLib.summarize(stats, now),
+    stats: statsSummary(now),
     customThemes: (config.customThemes || []).map((t) => ({ ...t, vars: stylegen.cssVars(t) })),
     insights: currentInsights(now),
     aiModel: ai.MODEL,
     cloud: cloudPublic(),
+    lastGrown,
     usage: usageNow(now),
     ...(platform.extraState ? platform.extraState() : {}),
   };
@@ -307,7 +337,7 @@ async function enforceApps(ev) {
       if (now - (lastOverlay.get(h.app.name) || 0) < 5000) continue;
       lastOverlay.set(h.app.name, now);
       statsLib.addBlock(stats, now, h.app.name);
-      statsDirty = true;
+      statsDirty = statsSyncDirty = true;
       showOverlay(h.app.name, ev);
     }
   } catch (e) {
@@ -333,7 +363,7 @@ async function trackUsage(ev, now) {
     ]);
     const running = new Set(hits.map((h) => engine.appKey(h.app)));
     for (const l of limited) {
-      if (l.apps.some((a) => running.has(engine.appKey(a))) || webusage.pageMatches(page, l.sites)) { statsLib.addUsage(stats, now, l.id, dt); statsDirty = true; }
+      if (l.apps.some((a) => running.has(engine.appKey(a))) || webusage.pageMatches(page, l.sites)) { statsLib.addUsage(stats, now, l.id, dt); statsDirty = statsSyncDirty = true; }
     }
   } catch (_) { /* ignore */ } finally { usageBusy = false; }
 }
@@ -361,11 +391,20 @@ function tick() {
 
   let changed = false;
   if (config.session && now >= config.session.endsAt) {
-    const mins = Math.round((config.session.endsAt - config.session.startedAt) / 60000);
+    const s = config.session;
+    const mins = Math.round((s.endsAt - s.startedAt) / 60000);
     config.session = null;
     unlocker.cancel();
     changed = true;
-    notify(t('note.ended'), t('note.endedBody', { m: mins }));
+    if (s.grow && statsLib.addGrown(stats, { id: s.startedAt, t: s.endsAt, i: s.grow, m: mins, ok: true })) {
+      statsDirty = statsSyncDirty = true;
+      lastGrown = { id: String(s.startedAt), i: s.grow, m: mins, ok: true, at: now };
+      statsSyncNow = true;
+      const it = GROW.BY_ID[s.grow];
+      notify(t('grow.doneTitle', { name: it.name[lang()] || it.name.en }), t('note.endedBody', { m: mins }));
+    } else {
+      notify(t('note.ended'), t('note.endedBody', { m: mins }));
+    }
   }
   for (const [id, until] of Object.entries(config.skips || {})) {
     if (until <= now) { delete config.skips[id]; changed = true; }
@@ -373,12 +412,12 @@ function tick() {
   if (changed) saveConfig();
 
   const ev = evalNow(now);
-  if (platform.onTick && platform.onTick({ config, ev, now, rev, lang: lang(), theme: activeCustomTheme(), stats })) statsDirty = true;
+  if (platform.onTick && platform.onTick({ config, ev, now, rev, lang: lang(), theme: activeCustomTheme(), stats })) statsDirty = statsSyncDirty = true;
   transitions(lastEval, ev, now);
   const blockingChanged = !lastEval || lastEval.blocking !== ev.blocking;
   lastEval = ev;
 
-  if (ev.blocking && dt > 0) { statsLib.addFocus(stats, now, dt); statsDirty = true; }
+  if (ev.blocking && dt > 0) { statsLib.addFocus(stats, now, dt); statsDirty = statsSyncDirty = true; }
   syncHosts(ev);
   if (guard) guard.update(webRules(ev), { blockUrl: blockPage && blockPage.url, policyOk: hostsState.installed && !(platform.helperOutdated && platform.helperOutdated()), now });
   if (blockingChanged) verifyHostsLater();
@@ -398,6 +437,16 @@ function tick() {
 
 function stopAll() {
   const ev = evalNow();
+  const s = config.session;
+  const now = Date.now();
+  // Giving up early: the tree withers / the building is left in ruins (can be turned off).
+  if (s && s.grow && s.endsAt > now && now - s.startedAt >= 60000 && config.settings.growWither !== false) {
+    if (statsLib.addGrown(stats, { id: s.startedAt, t: now, i: s.grow, m: (now - s.startedAt) / 60000, ok: false })) {
+      statsDirty = statsSyncDirty = true;
+      lastGrown = { id: String(s.startedAt), i: s.grow, m: Math.round((now - s.startedAt) / 60000), ok: false, at: now };
+      statsSyncNow = true;
+    }
+  }
   config.session = null;
   markSessionChange();
   for (const s of ev.sources) if (s.type === 'schedule' || s.type === 'limit') config.skips[s.id] = s.endsAt;
@@ -425,13 +474,13 @@ function startSession({ listIds, minutes, mode, pomodoro, goal }) {
     const mins = Math.min(24 * 60, Math.max(1, Math.round(Number(minutes) || 25)));
     endsAt = now + mins * 60000;
   }
-  config.session = { startedAt: now, endsAt, listIds: ids, mode: m, pomodoro: pomo, goal: typeof goal === 'string' ? goal.trim().slice(0, 80) : '' };
+  config.session = { startedAt: now, endsAt, listIds: ids, mode: m, pomodoro: pomo, goal: typeof goal === 'string' ? goal.trim().slice(0, 80) : '', grow: config.settings.growOn !== false ? config.settings.growItem : null };
   markSessionChange();
   config.settings.defaultListIds = ids;
   config.settings.defaultMode = m;
   if (!pomo) config.settings.defaultMinutes = Math.round((endsAt - now) / 60000);
   statsLib.addSession(stats, now);
-  statsDirty = true;
+  statsDirty = statsSyncDirty = true;
   saveConfig();
   notify(t('note.started'), t('note.startedBody', { time: fmtClock(endsAt) }));
   tick();
@@ -924,7 +973,7 @@ function ipc() {
     return { signedIn: true };
   }));
   handle('cloud:reset', ({ email }) => cloudCall(() => cloud.resetPassword(String(email || '').trim())));
-  handle('cloud:signOut', () => { cloud.signOut(); syncState.lastSync = 0; return { ok: true, state: fullState() }; });
+  handle('cloud:signOut', () => { cloud.signOut(); syncState.lastSync = 0; remoteDevices = {}; return { ok: true, state: fullState() }; });
   handle('cloud:syncNow', async () => { dirty = true; await syncNow(); return { ok: !syncState.error, error: syncState.error, state: fullState() }; });
 
   handle('app:open-external', ({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { ok: true }; });
@@ -966,7 +1015,7 @@ function boot() {
   }
   if (platform.createBrowserGuard) {
     guard = platform.createBrowserGuard({ log: (m) => console.log(m) });
-    guard.onHit = (site) => { statsLib.addBlock(stats, Date.now(), site); statsDirty = true; };
+    guard.onHit = (site) => { statsLib.addBlock(stats, Date.now(), site); statsDirty = statsSyncDirty = true; };
   }
   try { if (!SELFTEST) app.setAsDefaultProtocolClient('halyrafocus'); } catch (_) { /* ignore */ }
   ipc();

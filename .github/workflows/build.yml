@@ -57,13 +57,16 @@ jobs:
         if: runner.os == 'macOS'
         continue-on-error: true
         run: |
+          APP="dist/mac-universal/Halyra Focus.app"
+          CHROME="/Applications/Google Chrome.app"
+          req() { codesign -d -r- "$1" 2>&1 | sed -n 's/^designated => //p' > "$RUNNER_TEMP/req.txt"; csreq -r "$RUNNER_TEMP/req.txt" -b "$RUNNER_TEMP/req.bin" && xxd -p "$RUNNER_TEMP/req.bin" | tr -d '\n'; }
+          CLIENT_REQ=$(req "$APP"); TARGET_REQ=$(req "$CHROME")
+          echo "client req: ${#CLIENT_REQ} hex chars, target req: ${#TARGET_REQ} hex chars"
           for db in "$HOME/Library/Application Support/com.apple.TCC/TCC.db" "/Library/Application Support/com.apple.TCC/TCC.db"; do
-            for client in com.halyra.focus com.github.Electron; do
-              sudo sqlite3 "$db" "INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version, indirect_object_identifier_type, indirect_object_identifier, flags, last_modified) VALUES ('kTCCServiceAppleEvents', '$client', 0, 2, 3, 1, 0, 'com.google.Chrome', 0, CAST(strftime('%s','now') AS INTEGER));" && echo "granted $client in $db" || echo "could not write $db"
-            done
-            sudo sqlite3 "$db" "INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version, indirect_object_identifier_type, indirect_object_identifier, flags, last_modified) VALUES ('kTCCServiceAppleEvents', '/usr/bin/osascript', 1, 2, 3, 1, 0, 'com.google.Chrome', 0, CAST(strftime('%s','now') AS INTEGER));" || true
+            sudo sqlite3 "$db" "DELETE FROM access WHERE service='kTCCServiceAppleEvents' AND client='com.halyra.focus';" || true
+            sudo sqlite3 "$db" "INSERT INTO access (service, client, client_type, auth_value, auth_reason, auth_version, csreq, indirect_object_identifier_type, indirect_object_identifier, indirect_object_code_identity, flags, last_modified) VALUES ('kTCCServiceAppleEvents', 'com.halyra.focus', 0, 2, 3, 1, X'$CLIENT_REQ', 0, 'com.google.Chrome', X'$TARGET_REQ', 0, CAST(strftime('%s','now') AS INTEGER));" && echo "granted in $db" || echo "could not write $db"
           done
-          ls -la "/Applications/Google Chrome.app" | head -3 || echo "Chrome not installed"
+          sudo killall tccd 2>/dev/null || true; killall tccd 2>/dev/null || true
 
       # A failing self-test stops the release: a broken installer never reaches users.
       - name: End-to-end self-test (macOS)

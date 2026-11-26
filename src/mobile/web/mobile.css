@@ -97,3 +97,9 @@ body[data-theme='crt'] .view-title, body[data-theme='onebit'] .view-title { font
 .nav-label { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 body[data-theme='crt'] .nav-btn, body[data-theme='onebit'] .nav-btn { font-size: 9.5px; letter-spacing: 0; }
 .src-row b, .source b { white-space: nowrap; }
+.ring-grow { width: 104px; height: 104px; }
+.ring-wrap.growing .ring-time { font-size: clamp(34px, 10vw, 42px); }
+.garden-land { height: 170px; margin: 4px -16px 0; }
+.garden-next { margin-left: 0; width: 100%; }
+.grow-grid { grid-template-columns: repeat(3, 1fr); }
+.grow-card-art { width: 70px; height: 70px; }
