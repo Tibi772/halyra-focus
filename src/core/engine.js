@@ -89,12 +89,22 @@ function evaluate(config, nowMs, { usage } = {}) {
   for (const s of blockingSources) for (const id of s.listIds) listIds.add(id);
 
   const sites = new Set();
+  const paths = new Set();
+  const allow = new Set();
+  let allowOnly = false;
   const apps = new Map();
   for (const list of config.lists || []) {
     if (!listIds.has(list.id)) continue;
-    for (const site of list.sites || []) {
-      const n = normalizeSite(site);
-      if (n) sites.add(n);
+    if (list.allowOnly) {
+      // "Only these sites": the list names what stays reachable in the browser
+      // (its apps are still blocked). A list with no sites does nothing here.
+      for (const site of list.sites || []) { const n = normalizeSite(site); if (n) { allow.add(n); allowOnly = true; } }
+    } else {
+      for (const site of list.sites || []) {
+        const n = normalizeSite(site);
+        if (n) sites.add(n);
+      }
+      for (const p of list.paths || []) paths.add(p);
     }
     for (const app of list.apps || []) {
       const k = appKey(app);
@@ -117,6 +127,8 @@ function evaluate(config, nowMs, { usage } = {}) {
     sources,
     listIds: [...listIds],
     sites: [...sites].sort(),
+    paths: [...paths].sort(),
+    allow: allowOnly ? [...allow].sort() : null,
     apps: [...apps.values()],
     endsAt,
     next,
@@ -130,6 +142,9 @@ function isReduction(current, candidate, nowMs, opts = {}) {
   const b = evaluate(candidate, nowMs, opts);
   const bSites = new Set(b.sites);
   if (a.sites.some((s) => !bSites.has(s))) return true;
+  const bPaths = new Set(b.paths);
+  if (a.paths.some((p) => !bPaths.has(p))) return true;
+  if (a.allow && (!b.allow || b.allow.some((x) => !a.allow.includes(x)))) return true;
   const bApps = new Map(b.apps.map((x) => [appKey(x), x]));
   for (const app of a.apps) {
     const other = bApps.get(appKey(app));

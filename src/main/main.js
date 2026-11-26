@@ -21,6 +21,8 @@ const ai = require('./ai');
 const sync = require('../core/sync');
 const { CloudClient } = require('./cloud');
 const webusage = require('../core/webusage');
+const blockrules = require('../core/blockrules');
+const { blockInfo } = require('../core/blockinfo');
 const CLOUD_CONF = (() => { try { return require('../shared/cloud.json'); } catch (_) { return {}; } })();
 
 const SELFTEST = process.argv.includes('--selftest');
@@ -43,6 +45,8 @@ let rev = 1;
 let lastTick = Date.now();
 let lastEval = null;
 let lastHostsKey = null;
+let guard = null; // browser tabs / policy (computers)
+let blockPage = null; // local block page server { url, port }
 let hostsState = { installed: false, verified: false, expected: 0 };
 let installedAppsCache = null;
 let statsDirty = false;
@@ -214,9 +218,11 @@ function fullState() {
     eval: {
       blocking: ev.blocking, mode: ev.mode, sources: ev.sources, endsAt: ev.endsAt, next: ev.next,
       sitesCount: ev.sites.length, appsCount: ev.apps.length, listIds: ev.listIds,
+      pathsCount: (ev.paths || []).length, allowOnly: Boolean(ev.allow && ev.allow.length),
     },
     unlock: unlocker.status(),
-    helper: { ...hostsState, supported: platform.IS_MAC || platform.IS_WIN },
+    helper: { ...hostsState, supported: platform.IS_MAC || platform.IS_WIN, outdated: Boolean(platform.helperOutdated && hostsState.installed && platform.helperOutdated()) },
+    browsers: guard ? guard.state() : null,
     stats: statsLib.summarize(stats, now),
     customThemes: (config.customThemes || []).map((t) => ({ ...t, vars: stylegen.cssVars(t) })),
     insights: currentInsights(now),
@@ -243,11 +249,33 @@ function syncHosts(ev, force = false) {
   // The helper drops the blocks by itself at this time, so a website block can
   // never outlive its timer (even if the app is force-quit or deleted).
   const expiresAt = ev.blocking ? ev.endsAt : null;
-  const key = `${hosts.join(',')}|${expiresAt}`;
+  const extra = webRules(ev);
+  const key = `${hosts.join(',')}|${extra.paths.join(',')}|${(extra.allow || []).join(',')}|${expiresAt}`;
   if (hostsState.installed && (force || key !== lastHostsKey)) {
-    if (platform.writeRules(hosts, expiresAt)) lastHostsKey = key;
+    if (platform.writeRules(hosts, expiresAt, { paths: extra.paths, allow: extra.allow || [] })) lastHostsKey = key;
   }
   hostsState.expected = hosts.length;
+}
+
+/** Rules for browser-level blocking: { sites, paths, allow } (empty when nothing is blocked). */
+function webRules(ev) {
+  if (!ev || !ev.blocking) return { sites: [], paths: [], allow: null };
+  return { sites: ev.sites, paths: ev.paths || [], allow: ev.allow && ev.allow.length ? ev.allow : null };
+}
+
+/** Data for the local block page a blocked browser tab is sent to. */
+function blockPageData(q) {
+  const ev = lastEval || evalNow();
+  const u = /^https?:\/\//.test(q.u || '') ? q.u : `https://${String(q.site || '').replace(/^\/+/, '')}/`;
+  const hit = blockrules.urlBlocked(u, webRules(ev));
+  const limit = ev.sources.find((s) => s.type === 'limit');
+  return {
+    blocked: Boolean(hit),
+    kind: limit && !ev.sources.some((s) => s.type !== 'limit') ? 'limit' : 'site',
+    endsAt: ev.blocking ? ev.endsAt : null,
+    mode: ev.blocking ? ev.mode : null,
+    block: blockInfo({ lang: lang(), theme: activeCustomTheme(), config }),
+  };
 }
 
 function verifyHostsLater() {
@@ -263,6 +291,8 @@ async function enforceApps(ev) {
   if (appCheckBusy) return;
   let apps = ev.blocking ? ev.apps : [];
   if (ev.blocking && ev.mode === 'strict' && config.settings.strictBlocksTools) apps = [...apps, ...TAMPER_TOOLS];
+  // "Only these sites": browsers we cannot filter tab by tab are closed while it is on.
+  if (ev.blocking && ev.allow && ev.allow.length && platform.unfilterableBrowsers) apps = [...apps, ...platform.unfilterableBrowsers()];
   if (!apps.length) return;
   appCheckBusy = true;
   try {
@@ -350,6 +380,7 @@ function tick() {
 
   if (ev.blocking && dt > 0) { statsLib.addFocus(stats, now, dt); statsDirty = true; }
   syncHosts(ev);
+  if (guard) guard.update(webRules(ev), { blockUrl: blockPage && blockPage.url, policyOk: hostsState.installed && !(platform.helperOutdated && platform.helperOutdated()), now });
   if (blockingChanged) verifyHostsLater();
   if (tickCount % 2 === 0 || blockingChanged) enforceApps(ev);
   if (tickCount % (platform.IS_WIN ? 6 : 2) === 1) trackUsage(ev, now);
@@ -682,6 +713,17 @@ function ipc() {
   handle('session:start', (o) => ({ ...startSession(o), state: fullState() }));
   handle('session:extend', ({ minutes }) => ({ ...extendSession(minutes), state: fullState() }));
   handle('sites:normalize', ({ sites }) => (Array.isArray(sites) ? sites : []).slice(0, 3000).map(normalizeSite).filter(Boolean));
+  // "youtube.com/shorts" → part-of-site rule; anything else → whole site.
+  handle('rules:normalize', ({ items }) => {
+    const out = { sites: [], paths: [] };
+    for (const raw of (Array.isArray(items) ? items : []).slice(0, 3000)) {
+      const p = blockrules.normalizePathRule(raw);
+      if (p) { out.paths.push(p); continue; }
+      const s = normalizeSite(raw);
+      if (s) out.sites.push(s);
+    }
+    return out;
+  });
 
   handle('unlock:request', ({ pin }) => unlockRequest(pin));
   handle('unlock:emergency', ({ pin }) => {
@@ -919,6 +961,14 @@ function boot() {
   if (platform.IS_MAC && app.isPackaged) {
     try { if (app.getLoginItemSettings().wasOpenedAtLogin) startHidden = true; } catch (_) { /* ignore */ }
   }
+  if (platform.startBlockServer) {
+    blockPage = platform.startBlockServer({ root: path.join(__dirname, '..', 'renderer'), data: (q) => blockPageData(q) });
+  }
+  if (platform.createBrowserGuard) {
+    guard = platform.createBrowserGuard({ log: (m) => console.log(m) });
+    guard.onHit = (site) => { statsLib.addBlock(stats, Date.now(), site); statsDirty = true; };
+  }
+  try { if (!SELFTEST) app.setAsDefaultProtocolClient('halyrafocus'); } catch (_) { /* ignore */ }
   ipc();
   buildAppMenu();
   applyLoginItem();
@@ -951,9 +1001,10 @@ function runSelftest() {
     tryQuitDry: () => quitAllowed(),
     forceClearSession: () => { config.session = null; unlocker.cancel(); saveConfig(); tick(); },
     rendererLog: () => rendererLog.slice(),
+    browserState: () => (guard ? guard.state() : null),
     blockCount: (name) => Object.values(stats.days).reduce((n, d) => n + (d.blocks[name] || 0), 0),
   };
-  const watchdog = setTimeout(() => { console.error('[selftest] timed out'); app.exit(2); }, 8 * 60000);
+  const watchdog = setTimeout(() => { console.error('[selftest] timed out'); app.exit(2); }, 10 * 60000);
   selftest(ctx).then((ok) => {
     clearTimeout(watchdog);
     app.isQuittingForReal = true;
@@ -965,6 +1016,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => showWindow());
+  app.on('open-url', (e) => { if (e && e.preventDefault) e.preventDefault(); if (app.isReady()) showWindow(); });
   app.whenReady().then(boot);
   app.on('activate', () => showWindow());
   app.on('window-all-closed', (e) => { if (e && e.preventDefault) e.preventDefault(); });
@@ -978,6 +1030,7 @@ if (!app.requestSingleInstanceLock()) {
       if (!ev.blocking || (ev.mode === 'flexible' && !config.settings.pinHash)) {
         if (platform.helperInstalled()) platform.writeRules([]);
       }
+      if (guard) guard.stop();
     } catch (_) { /* best effort */ }
   });
 }

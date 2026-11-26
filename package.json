@@ -55,7 +55,7 @@
       "artifactName": "HalyraFocus-mac.${ext}",
       "minimumSystemVersion": "12.0",
       "extendInfo": {
-        "NSAppleEventsUsageDescription": "Halyra Focus uses this to turn on website blocking (one admin prompt) and, for daily limits, to see which website is open in your browser. Nothing leaves your computer."
+        "NSAppleEventsUsageDescription": "Halyra Focus uses this to block websites in your browser tabs (also ones that were already open), to turn on website blocking with one admin prompt and, for daily limits, to see which website is open. Nothing leaves your computer."
       }
     },
     "dmg": {
@@ -98,6 +98,14 @@
       "shortcutName": "Halyra Focus",
       "runAfterFinish": true,
       "include": "build/installer.nsh"
-    }
+    },
+    "protocols": [
+      {
+        "name": "Halyra Focus",
+        "schemes": [
+          "halyrafocus"
+        ]
+      }
+    ]
   }
 }

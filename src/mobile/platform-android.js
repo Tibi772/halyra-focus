@@ -5,7 +5,7 @@
 const n = require('./shims/native');
 const electron = require('./shims/electron');
 const { buildPlan } = require('./plan');
-const stylegen = require('../core/stylegen');
+const { blockInfo } = require('../core/blockinfo');
 const I18N = require('../shared/i18n');
 const statsLib = require('../core/stats');
 
@@ -30,24 +30,6 @@ function usageToday(config, now) {
   const out = {};
   for (const l of lists) out[l.id] = (l.apps || []).flatMap((a) => a.android || []).reduce((s, p) => s + (usageCache.v[p] || 0), 0);
   return out;
-}
-
-function blockInfo({ lang, theme, config }) {
-  const t = I18N.make(lang);
-  const custom = theme || null;
-  return {
-    lang,
-    theme: custom ? 'custom' : config.settings.theme,
-    vars: custom ? stylegen.cssVars(custom) : null,
-    font: custom ? custom.font : null,
-    effect: custom ? custom.effect : null,
-    quotes: t('quotes'),
-    texts: {
-      title: t('mob.blockTitle'), until: t('mob.until'), untilMidnight: t('mob.untilMidnight'), home: t('mob.home'), open: t('mob.open'),
-      site: t('mob.siteBlocked'), strict: t('mode.strict'), patient: t('mode.patient'), flexible: t('mode.flexible'), limit: t('mob.limitReached'),
-      running: t('focus.on'), watching: t('mob.watching'), ended: t('mob.ended'),
-    },
-  };
 }
 
 let lastPlanKey = '';

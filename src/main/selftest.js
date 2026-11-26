@@ -9,6 +9,7 @@ const path = require('path');
 const dns = require('dns').promises;
 const net = require('net');
 const { spawn } = require('child_process');
+const bt = require('./selftest-browser');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -55,6 +56,9 @@ module.exports = async function selftest(ctx) {
   };
   const isMac = process.platform === 'darwin';
   const BLOCK_SITE = 'example.org';
+  const isWin = process.platform === 'win32';
+  const PART = 'example.com/halyra-selftest'; // part-of-site rule (hosts can't do this, the browser layer must)
+  let br = null;
   const TEST_APP = isMac ? { name: 'TestApp', mac: ['Chess'], win: [] } : { name: 'TestApp', mac: [], win: ['notepad.exe'] };
 
   try {
@@ -100,11 +104,19 @@ module.exports = async function selftest(ctx) {
     const inst = await ctx.platform.installHelper('selftest', { nonInteractive: true });
     log('Website-blocking helper installs', inst.ok, inst.error || '');
     log('Helper reported as installed', ctx.platform.helperInstalled());
+    log('Helper is the current version', !ctx.platform.helperOutdated(), `v${ctx.platform.helperVersion()}`);
+
+    // ---------------------------------------------------------------- a real browser, open before the block starts
+    if (isWin) await sleep(4000); // the helper prepares the browser policy keys
+    br = await bt.launch({ headless: isWin, url: isMac ? `https://${PART}/open-before` : 'about:blank' });
+    log('Test browser starts', !br.error, br.error || br.name);
+    if (br.error) br = null;
+    if (br && isMac) await sleep(4000);
 
     // ---------------------------------------------------------------- start a block
     const before = await lookupAll(BLOCK_SITE);
     log(`${BLOCK_SITE} resolves normally before blocking`, before.some((a) => a !== '0.0.0.0' && a !== '::' && !a.startsWith('ERR')), before.join(' '));
-    const list = { id: 'selftest', name: 'Selftest', emoji: '🧪', sites: [BLOCK_SITE], apps: [TEST_APP] };
+    const list = { id: 'selftest', name: 'Selftest', emoji: '🧪', sites: [BLOCK_SITE], paths: [PART], apps: [TEST_APP] };
     await ctx.setConfig({ lists: [...ctx.config().lists, list] });
     const started = ctx.startSession({ listIds: ['selftest'], minutes: 15, mode: 'flexible' });
     log('Focus session starts', started.ok);
@@ -119,6 +131,46 @@ module.exports = async function selftest(ctx) {
     log(`${BLOCK_SITE} no longer resolves to its real address while blocked`, blockedDns, (await lookupAll(BLOCK_SITE)).join(' '));
     log(`Connection to ${BLOCK_SITE}:443 fails while blocked`, !(await tryConnect(BLOCK_SITE, 443)));
     log('UI shows website blocking as active', await waitFor(() => js("!!document.querySelector('.okline')"), 20000));
+
+    // ---------------------------------------------------------------- browser level
+    if (br && isWin) {
+      const key = 'HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge\\URLBlocklist';
+      const pol = await waitFor(async () => (await bt.regList(key)).includes(PART), 20000, 1000);
+      log('Browser policy written for Edge / Chrome / Brave', pol, (await bt.regList(key)).join(' '));
+      let v = {};
+      const blockedNav = await waitFor(async () => {
+        v = await bt.visit(br, `https://${PART}/page`, 3000);
+        return /BLOCKED_BY_ADMINISTRATOR|blocked/i.test(`${v.text || ''} ${v.title || ''}`);
+      }, 45000, 500);
+      log('Part of a site is blocked in a real browser that was already open', blockedNav, JSON.stringify(v));
+      await bt.screenshot(br, path.join(out, '08-browser-part-blocked.png'));
+      const other = await bt.visit(br, 'https://example.com/', 4000);
+      log('The rest of that site still opens', /Example Domain/i.test(`${other.text || ''} ${other.title || ''}`), JSON.stringify(other));
+    }
+    if (br && isMac) {
+      let tabs = [];
+      const redirected = await waitFor(async () => {
+        tabs = await bt.pages(br);
+        return tabs.some((t) => /^http:\/\/127\.0\.0\.1:\d+\/blocked/.test(t.url));
+      }, 40000, 1000);
+      const gs = ctx.browserState() || {};
+      const detail = JSON.stringify({ tabs: tabs.map((t) => t.url), guard: gs });
+      if (!redirected && ((gs.denied || []).length || /timeout|-1743/.test(gs.lastError || ''))) {
+        console.log(`[selftest] note  browser control not permitted on this machine (${(gs.denied || []).join(', ') || gs.lastError}) — tab check skipped. ${detail}`);
+      } else {
+        log('A tab that was already open is sent to the block page', redirected, detail);
+        if (redirected) {
+          const cdp = await bt.attach(br, (t) => /\/blocked/.test(t.url));
+          let shown = null;
+          if (cdp) {
+            await waitFor(async () => { shown = await cdp.eval("(document.getElementById('app') || {}).textContent"); return Boolean(shown); }, 10000, 500);
+            cdp.close();
+          }
+          log('Block page shows the blocked site', shown === PART, String(shown));
+          await bt.screenshot(br, path.join(out, '08-browser-block-page.png'), (t) => /\/blocked/.test(t.url));
+        }
+      }
+    }
 
     // app blocked?
     const statsBefore = ctx.blockCount(TEST_APP.name);
@@ -140,6 +192,14 @@ module.exports = async function selftest(ctx) {
     log('Stopping removes the site from the hosts file', cleaned);
     const back = await waitFor(async () => (await lookupAll(BLOCK_SITE)).some((a) => a !== '0.0.0.0' && a !== '::' && !a.startsWith('ERR')), 20000, 800);
     log(`${BLOCK_SITE} resolves normally again after stopping`, back, (await lookupAll(BLOCK_SITE)).join(' '));
+    if (isWin) {
+      const key = 'HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge\\URLBlocklist';
+      log('Stopping removes the browser policy entries', await waitFor(async () => !(await bt.regList(key)).includes(PART), 20000, 1000), (await bt.regList(key)).join(' '));
+    }
+    if (br) {
+      const again = await bt.visit(br, `https://${PART}/page`, 4000);
+      log('The part of the site opens again after stopping', /Example Domain|404|Not Found/i.test(`${again.text || ''} ${again.title || ''}`) && !/BLOCKED_BY_ADMINISTRATOR/.test(again.text || ''), JSON.stringify(again));
+    }
 
     // ---------------------------------------------------------------- locked mode
     ctx.startSession({ listIds: ['selftest'], minutes: 5, mode: 'strict' });
@@ -170,6 +230,8 @@ module.exports = async function selftest(ctx) {
     log('Hosts file has no leftover section', !fs.readFileSync(ctx.platform.hostsPath(), 'utf8').includes('HalyraFocus'));
   } catch (e) {
     log('Self-test crashed', false, e && e.stack);
+  } finally {
+    bt.close(br);
   }
 
   const ok = checks.length > 0 && checks.every((c) => c.ok);

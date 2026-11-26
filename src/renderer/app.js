@@ -326,7 +326,7 @@ function soundBar() {
 function structKey() {
   const ev = S.eval;
   return [S.rev, S.lang, S.settings.theme, ev.blocking, ev.mode, ev.sources.map((s) => `${s.id}:${s.phase}:${s.endsAt}`).join(','),
-    S.helper.installed, S.helper.verified, S.unlock ? S.unlock.kind : '', ui.view, JSON.stringify(permState()), S.stats.todayBlocks, Math.floor(S.stats.todayMinutes),
+    S.helper.installed, S.helper.verified, S.helper.outdated, S.browsers ? S.browsers.denied.join(',') : '', S.unlock ? S.unlock.kind : '', ui.view, JSON.stringify(permState()), S.stats.todayBlocks, Math.floor(S.stats.todayMinutes),
     S.cloud ? `${S.cloud.signedIn}${S.cloud.lastSync}${S.cloud.error}` : '', ui.view === 'lists' ? Object.values(S.usage || {}).map((x) => Math.floor(x / 60)).join(',') : ''].join('|');
 }
 
@@ -601,9 +601,20 @@ function listChips(selected, onToggle) {
     h('span', { class: 'emoji' }, l.emoji), l.name, h('small', null, String(l.sites.length + appsHere(l).length)))));
 }
 
-async function startFocus() {
+async function startFocus(force) {
   const s = ui.setup;
   if (!s.listIds.length) { toast(t('focus.noLists'), 'error'); return; }
+  const hasWeb = s.listIds.map(listById).some((l) => l && ((l.sites || []).length || (l.paths || []).length));
+  if (force !== true && hasWeb && !isMobile() && S.helper.supported && (!S.helper.installed || S.helper.outdated)) {
+    openModal((self) => [
+      modalHead(t('start.needHelper'), () => self.close()),
+      h('p', { class: 'muted' }, t('start.needHelperSub')),
+      h('div', { class: 'modal-foot' },
+        h('button', { class: 'btn', 'data-fid': 'start-anyway', onclick: () => { self.close(); startFocus(true); } }, t('start.withoutSites')),
+        h('button', { class: 'btn accent', 'data-fid': 'start-enable', onclick: async () => { const ok = await installHelper(); self.close(); if (ok) startFocus(true); } }, icon('shield'), t('helper.enable'))),
+    ]);
+    return;
+  }
   const r = await api.startSession({ listIds: s.listIds, minutes: s.minutes, mode: s.mode, pomodoro: s.pomodoro ? s.pomo : null, goal: s.goal });
   if (r.state) applyState(r.state);
   if (!r.ok) toast(t(`err.${r.error === 'noLists' ? 'generic' : r.error || 'generic'}`), 'error');
@@ -640,6 +651,15 @@ function renderFocus() {
     parts.push(h('div', { class: 'banner' }, icon('globe'),
       h('div', { class: 'b-text' }, h('b', null, t('helper.title')), h('span', null, t('helper.sub'))),
       h('button', { class: 'btn primary', onclick: installHelper }, icon('shield'), t('helper.enable'))));
+  } else if (S.helper.supported && S.helper.outdated) {
+    parts.push(h('div', { class: 'banner' }, icon('globe'),
+      h('div', { class: 'b-text' }, h('b', null, t('helper.outdated')), h('span', null, t('helper.outdatedSub'))),
+      h('button', { class: 'btn primary', onclick: installHelper }, icon('shield'), t('helper.update'))));
+  }
+  if (S.browsers && S.browsers.denied && S.browsers.denied.length) {
+    parts.push(h('div', { class: 'banner' }, icon('globe'),
+      h('div', { class: 'b-text' }, h('b', null, t('browsers.denied', { list: S.browsers.denied.join(', ') })), h('span', null, t('browsers.deniedSub'))),
+      h('button', { class: 'btn primary', onclick: () => api.platformCall('openAutomation') }, t('browsers.open'))));
   }
 
   const right = h('div', { class: 'setup' });
@@ -655,7 +675,7 @@ function renderFocus() {
       h('div', { class: 'setup-sec' }, h('div', { class: 'eyebrow' }, t('focus.lists')),
         listChips(s.listIds, (id) => { s.listIds = s.listIds.includes(id) ? s.listIds.filter((x) => x !== id) : [...s.listIds, id]; renderAll(); })),
       h('div', { class: 'setup-sec' }, h('div', { class: 'eyebrow' }, t('focus.mode')), modeCards(s.mode, (m) => { s.mode = m; renderAll(); })),
-      h('div', { class: 'row' }, h('button', { class: 'btn accent big', onclick: startFocus }, icon('play'), t('focus.start')),
+      h('div', { class: 'row' }, h('button', { class: 'btn accent big', onclick: () => startFocus() }, icon('play'), t('focus.start')),
         ev.next ? h('span', { class: 'muted small' }, t('focus.next', { name: ev.next.name, when: fmtWhen(ev.next.at) })) : null),
     );
   } else {
@@ -881,9 +901,12 @@ function openListEditor(id) {
     const addSites = async () => {
       const raw = siteInput.split(/[\s,;]+/).filter(Boolean);
       if (!raw.length) return;
-      const norm = await api.normalizeSites(raw);
+      const norm = api.normalizeRules ? await api.normalizeRules(raw) : { sites: await api.normalizeSites(raw), paths: [] };
       const c = clone();
-      c.sites = [...new Set([...c.sites, ...norm])];
+      c.sites = [...new Set([...c.sites, ...norm.sites])];
+      // In an "only these sites" list a part-of-site entry just allows the whole site.
+      if (c.allowOnly) c.sites = [...new Set([...c.sites, ...norm.paths.map((p) => p.split('/')[0])])];
+      else c.paths = [...new Set([...(c.paths || []), ...norm.paths])];
       siteInput = '';
       await saveList(c);
       self.render();
@@ -902,13 +925,21 @@ function openListEditor(id) {
           l.limitMin > 0 ? h('div', { class: 'muted small', style: { paddingBottom: '10px' } }, t('lim.today', { used: Math.floor((S.usage[l.id] || 0) / 60), max: l.limitMin })) : null),
         h('div', { class: 'muted small' }, t(isMobile() ? 'lim.hintMobile' : 'lim.hint')),
         h('hr', { class: 'sep' }),
-        h('div', { class: 'row' }, icon('globe'), h('b', null, t('lists.sites')), h('span', { class: 'muted small' }, String(l.sites.length))),
+        isMobile() ? null : h('div', { class: 'set-row', style: { padding: '0' } },
+          h('div', { class: 'label' }, t('lists.allowOnly'), h('small', null, t('lists.allowOnlySub'))),
+          h('label', { class: 'switch' }, h('input', { type: 'checkbox', 'data-fid': 'allow-only', checked: Boolean(l.allowOnly), onchange: async (e) => { const c = clone(); c.allowOnly = e.target.checked; await saveList(c); self.render(); } }), h('span'))),
+        l.allowOnly && !isMobile() ? h('div', { class: 'note-box' }, icon('shield'), t('lists.allowNote', { browsers: S.platform === 'win32' ? 'Chrome, Edge, Brave' : 'Safari, Chrome, Edge, Brave, Arc, Vivaldi' })) : null,
+        h('div', { class: 'row' }, icon('globe'), h('b', null, t(l.allowOnly ? 'lists.allowedSites' : 'lists.sites')), h('span', { class: 'muted small' }, String(l.sites.length + (l.allowOnly ? 0 : (l.paths || []).length)))),
         h('div', { class: 'row', style: { flexWrap: 'nowrap' } },
-          h('input', { class: 'input', placeholder: t('lists.addSite'), 'data-fid': 'site-in', value: siteInput, oninput: (e) => { siteInput = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') addSites(); } }),
-          h('button', { class: 'btn primary', onclick: addSites }, t('lists.add'))),
+          h('input', { class: 'input', placeholder: t(l.allowOnly ? 'lists.allowAdd' : 'lists.addSite'), 'data-fid': 'site-in', value: siteInput, oninput: (e) => { siteInput = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') addSites(); } }),
+          h('button', { class: 'btn primary', 'data-fid': 'site-add', onclick: addSites }, t('lists.add'))),
         h('div', { class: 'muted small' }, t('lists.sitesHint')),
-        l.sites.length ? h('div', { class: 'tags' }, l.sites.map((s) => h('span', { class: 'tag' }, s,
-          h('button', { onclick: async () => { const c = clone(); c.sites = c.sites.filter((x) => x !== s); await saveList(c); self.render(); } }, icon('x'))))) : h('div', { class: 'muted small' }, t('lists.empty')),
+        l.sites.length || (!l.allowOnly && (l.paths || []).length) ? h('div', { class: 'tags' },
+          l.sites.map((s) => h('span', { class: 'tag' }, s,
+            h('button', { onclick: async () => { const c = clone(); c.sites = c.sites.filter((x) => x !== s); await saveList(c); self.render(); } }, icon('x')))),
+          l.allowOnly ? null : (l.paths || []).map((p) => h('span', { class: 'tag path' }, h('span', { class: 'mini-tag' }, t('lists.part')), p,
+            h('button', { onclick: async () => { const c = clone(); c.paths = (c.paths || []).filter((x) => x !== p); await saveList(c); self.render(); } }, icon('x')))))
+          : h('div', { class: 'muted small' }, t('lists.empty')),
         h('hr', { class: 'sep' }),
         h('div', { class: 'row' }, icon('grid'), h('b', null, t('lists.apps')), h('span', { class: 'muted small' }, String(appsHere(l).length)), h('span', { class: 'spacer' }),
           h('button', { class: 'btn sm', onclick: () => openAppPicker(id, () => self.render()) }, icon('plus'), t('lists.addApp'))),

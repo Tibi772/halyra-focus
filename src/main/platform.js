@@ -202,13 +202,56 @@ function helperInstalled() {
   } catch (_) { return false; }
 }
 
-function writeRules(hosts, expiresAt) {
+function writeRules(hosts, expiresAt, extra) {
   const p = rulesPath();
   if (!p) return false;
   try {
-    fs.writeFileSync(p, hostsLib.blocklistFile(hosts, expiresAt));
+    fs.writeFileSync(p, hostsLib.blocklistFile(hosts, expiresAt, extra));
     return true;
   } catch (_) { return false; }
+}
+
+/** Version of the installed helper (scripts carry a "halyra-helper-version: N" line; none = 1). */
+function helperVersion() {
+  try {
+    const file = IS_MAC ? helper.MAC.helperScript : path.join(path.dirname(rulesPath()), 'helper.ps1');
+    const m = /halyra-helper-version: (\d+)/.exec(fs.readFileSync(file, 'utf8'));
+    return m ? Number(m[1]) : 1;
+  } catch (_) { return 0; }
+}
+
+/** The helper works but an update (one admin prompt) adds features, e.g. browser policy on Windows. */
+function helperOutdated() {
+  if (!IS_MAC && !IS_WIN) return false;
+  const v = helperVersion();
+  return v > 0 && v < helper.HELPER_VERSION[IS_MAC ? 'mac' : 'win'];
+}
+
+// ---------------------------------------------------------------- browsers
+
+function createBrowserGuard(opts) {
+  const { BrowserGuard } = require('./browsers');
+  return new BrowserGuard(opts);
+}
+
+function startBlockServer(opts) {
+  return require('./blockserver').start(opts);
+}
+
+function unfilterableBrowsers() {
+  return require('./browsers').UNFILTERABLE;
+}
+
+/** Open the macOS Automation privacy pane (to allow controlling a browser). */
+function openAutomationSettings() {
+  if (IS_MAC) run('/usr/bin/open', ['x-apple.systempreferences:com.apple.preference.security?Privacy_Automation']);
+}
+
+/** Actions the renderer can call through platform:call. */
+function handlers() {
+  return {
+    openAutomation: () => { openAutomationSettings(); return { ok: true }; },
+  };
 }
 
 /** Which of `expected` hostnames are currently present in the hosts file. */
@@ -275,5 +318,6 @@ async function uninstallHelper(prompt, { nonInteractive = false } = {}) {
 
 module.exports = {
   IS_MAC, IS_WIN, findBlocked, activeWebPage, kill, listInstalledApps, appFromPath,
-  helperInstalled, writeRules, verifyHosts, installHelper, uninstallHelper, rulesPath, hostsPath,
+  helperInstalled, helperVersion, helperOutdated, writeRules, verifyHosts, installHelper, uninstallHelper, rulesPath, hostsPath,
+  createBrowserGuard, startBlockServer, unfilterableBrowsers, openAutomationSettings, handlers,
 };

@@ -546,3 +546,8 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .acc-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acc-chip .ic { width: 15px; height: 15px; color: var(--accent); }
 .dev-badge { font-size: 11px; margin-right: 2px; opacity: .85; }
+
+/* list editor: part-of-site tags + "only these sites" note */
+.tag.path .mini-tag { margin-right: 6px; padding: 1px 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--text); }
+.note-box { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r-md, 12px); background: color-mix(in srgb, var(--accent) 10%, var(--panel-2)); color: var(--text); font-size: 13px; line-height: 1.45; }
+.note-box svg { flex: none; width: 18px; height: 18px; margin-top: 1px; color: var(--accent); }

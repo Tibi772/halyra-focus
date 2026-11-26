@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('api', {
   startSession: call('session:start'),
   extendSession: call('session:extend'),
   normalizeSites: (sites) => ipcRenderer.invoke('sites:normalize', { sites }),
+  normalizeRules: (items) => ipcRenderer.invoke('rules:normalize', { items }),
   unlockRequest: call('unlock:request'),
   unlockEmergency: call('unlock:emergency'),
   unlockConfirm: call('unlock:confirm'),

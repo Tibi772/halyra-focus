@@ -2,6 +2,7 @@
 const crypto = require('crypto');
 const { PRESETS, PRESET_REV } = require('./presets');
 const { normalizeSite } = require('./domains');
+const { normalizePathRule } = require('./blockrules');
 const { parseHM } = require('./schedule');
 const { MODES } = require('./engine');
 const stylegen = require('./stylegen');
@@ -123,6 +124,9 @@ function sanitizeLists(lists) {
       apps,
       limitMin: int(l.limitMin, 0, 720, 0),
       limitMode: MODES.includes(l.limitMode) ? l.limitMode : 'patient',
+      // Parts of sites ("youtube.com/shorts") and "only these sites" lists.
+      paths: [...new Set((Array.isArray(l.paths) ? l.paths.slice(0, 300) : []).map(normalizePathRule).filter(Boolean))],
+      allowOnly: l.allowOnly === true,
       ...(l.presetId ? { presetRev: int(l.presetRev, 0, 999, 0) } : {}),
     });
   }

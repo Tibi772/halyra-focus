@@ -5,6 +5,7 @@
 // validates every line, so the worst a rogue process could do with that file
 // is block extra sites — it can never redirect a domain somewhere else.
 const BRAND = require('../shared/brand');
+const { POLICY_ALWAYS_ALLOW } = require('./hosts');
 
 const DOMAIN_RE_POSIX = '^[a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)+$';
 
@@ -128,37 +129,46 @@ const WIN = {
   dir: (programData) => `${programData}\\${BRAND.short}`,
 };
 
+// Bumped whenever a helper script changes, so the app can ask for a one-time update.
+const HELPER_VERSION = { mac: 1, win: 2 };
+
 function winHelperPs1() {
-  return `# ${BRAND.name} helper - runs as SYSTEM, mirrors blocklist.txt into the hosts file.
+  return `# ${BRAND.name} helper - runs as SYSTEM, mirrors blocklist.txt into the hosts file
+# and into Chrome / Edge / Brave policy (URLBlocklist / URLAllowlist).
+# halyra-helper-version: ${HELPER_VERSION.win}
 # It only writes "0.0.0.0 <domain>" and ":: <domain>" lines for strictly validated
-# domain names, inside its own marked section.
+# domain names, inside its own marked section, and only policy entries it owns.
 $ErrorActionPreference = 'SilentlyContinue'
 $Dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Rules = Join-Path $Dir 'blocklist.txt'
+$Owned = Join-Path $Dir 'policy-owned.txt'
 $HostsFile = Join-Path $env:SystemRoot 'System32\\drivers\\etc\\hosts'
 $Begin = '${BRAND.hostsMarkerBegin}'
 $End = '${BRAND.hostsMarkerEnd}'
 $Re = '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
+$PathRe = '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[a-z0-9._~%/+=,-]*$'
+$PolicyRoots = @('SOFTWARE\\Policies\\Google\\Chrome', 'SOFTWARE\\Policies\\Microsoft\\Edge', 'SOFTWARE\\Policies\\BraveSoftware\\Brave', 'SOFTWARE\\Policies\\Chromium')
+$AlwaysAllow = @(${POLICY_ALWAYS_ALLOW.map((x) => `'${x}'`).join(', ')})
 $Utf8 = New-Object System.Text.UTF8Encoding($false)
 
-function Sync-Hosts {
-  $domains = @()
-  if (Test-Path -LiteralPath $Rules -PathType Leaf) {
-    $item = Get-Item -LiteralPath $Rules
-    if (-not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-      $lines = @(Get-Content -LiteralPath $Rules -TotalCount 20000)
-      $expired = $false
-      foreach ($l in $lines) {
-        if ($l -match '^# expires=(\d+)$') {
-          $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-          if ($now -ge [int64]$Matches[1]) { $expired = $true }
-        }
-      }
-      if (-not $expired) {
-        $domains = @($lines | ForEach-Object { $_.Trim() } | Where-Object { $_ -cmatch $Re } | Sort-Object -Unique)
-      }
+function Read-Rules {
+  $r = @{ Domains = @(); Paths = @(); Allow = @() }
+  if (-not (Test-Path -LiteralPath $Rules -PathType Leaf)) { return $r }
+  $item = Get-Item -LiteralPath $Rules
+  if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $r }
+  $lines = @(Get-Content -LiteralPath $Rules -TotalCount 20000)
+  foreach ($l in $lines) {
+    if ($l -match '^# expires=(\\d+)$') {
+      if ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() -ge [int64]$Matches[1]) { return $r }
     }
   }
+  $r.Domains = @($lines | ForEach-Object { $_.Trim() } | Where-Object { $_ -cmatch $Re } | Sort-Object -Unique)
+  $r.Paths = @($lines | Where-Object { $_ -cmatch '^# path ' } | ForEach-Object { $_.Substring(7).Trim() } | Where-Object { $_ -cmatch $PathRe } | Sort-Object -Unique)
+  $r.Allow = @($lines | Where-Object { $_ -cmatch '^# allow ' } | ForEach-Object { $_.Substring(8).Trim() } | Where-Object { $_ -cmatch $Re } | Sort-Object -Unique)
+  return $r
+}
+
+function Sync-Hosts($domains) {
   $old = ''
   if (Test-Path -LiteralPath $HostsFile) { $old = [IO.File]::ReadAllText($HostsFile) }
   $kept = New-Object System.Collections.Generic.List[string]
@@ -183,14 +193,81 @@ function Sync-Hosts {
   }
 }
 
-if ($args -contains '-Once') { Sync-Hosts; exit 0 }
+# Sets one list policy (e.g. ...\\Chrome\\URLBlocklist) to: entries owned by
+# someone else (kept untouched) + ours. Returns the entries we now own.
+function Set-ListPolicy([string]$path, [string[]]$want, $owned) {
+  $hklm = [Microsoft.Win32.Registry]::LocalMachine
+  $k = $hklm.OpenSubKey($path, $true)
+  $cur = New-Object System.Collections.Generic.List[string]
+  if ($k) {
+    foreach ($n in @($k.GetValueNames() | Where-Object { $_ -match '^\\d+$' } | Sort-Object { [int]$_ })) { $cur.Add([string]$k.GetValue($n)) }
+  }
+  $final = New-Object System.Collections.Generic.List[string]
+  foreach ($v in $cur) { if (-not $owned.ContainsKey("$path|$v") -and -not $final.Contains($v)) { $final.Add($v) } }
+  $mine = New-Object System.Collections.Generic.List[string]
+  foreach ($v in $want) { if ($v -and -not $final.Contains($v)) { $final.Add($v); $mine.Add($v) } }
+  if (($final -join "\`n") -cne ($cur -join "\`n")) {
+    if ($k) { foreach ($n in @($k.GetValueNames())) { if ($n -match '^\\d+$') { $k.DeleteValue($n) } } }
+    if ($final.Count -gt 0) {
+      if (-not $k) { $k = $hklm.CreateSubKey($path) }
+      $i = 1
+      foreach ($v in $final) { $k.SetValue([string]$i, [string]$v, [Microsoft.Win32.RegistryValueKind]::String); $i++ }
+    }
+  }
+  if ($k) {
+    $empty = ($k.ValueCount -eq 0 -and $k.SubKeyCount -eq 0)
+    $k.Close()
+    if ($empty) { $hklm.DeleteSubKey($path, $false) }
+  }
+  return ,$mine
+}
+
+function Sync-Policy($r) {
+  $block = New-Object System.Collections.Generic.List[string]
+  $allow = New-Object System.Collections.Generic.List[string]
+  if ($r.Allow.Count -gt 0) {
+    $block.Add('*')
+    foreach ($a in $r.Allow) { $allow.Add($a) }
+    foreach ($a in $AlwaysAllow) { $allow.Add($a) }
+  } else {
+    $set = @{}
+    foreach ($d in $r.Domains) { $set[$d] = $true }
+    foreach ($d in $r.Domains) {
+      $keep = $true
+      $p = $d
+      while ($p.Contains('.')) { $p = $p.Substring($p.IndexOf('.') + 1); if ($set.ContainsKey($p)) { $keep = $false; break } }
+      if ($keep -and $block.Count -lt 1000) { $block.Add($d) }
+    }
+    foreach ($p in $r.Paths) { if ($block.Count -lt 1000) { $block.Add($p) } }
+  }
+  $owned = @{}
+  if (Test-Path -LiteralPath $Owned) { foreach ($l in @(Get-Content -LiteralPath $Owned)) { if ($l) { $owned[$l] = $true } } }
+  $now = New-Object System.Collections.Generic.List[string]
+  foreach ($root in $PolicyRoots) {
+    foreach ($v in (Set-ListPolicy "$root\\URLBlocklist" $block.ToArray() $owned)) { $now.Add("$root\\URLBlocklist|$v") }
+    foreach ($v in (Set-ListPolicy "$root\\URLAllowlist" $allow.ToArray() $owned)) { $now.Add("$root\\URLAllowlist|$v") }
+    # Keep the (empty) browser key itself: Chrome/Edge only notice live policy
+    # changes under a key that already existed when they started.
+    $rk = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey($root)
+    if ($rk) { $rk.Close() }
+  }
+  [IO.File]::WriteAllLines($Owned, [string[]]$now.ToArray())
+}
+
+function Sync-All {
+  $r = Read-Rules
+  Sync-Hosts $r.Domains
+  Sync-Policy $r
+}
+
+if ($args -contains '-Once') { Sync-All; exit 0 }
 
 $last = $null
 $tick = 0
 while ($true) {
   $stamp = ''
   if (Test-Path -LiteralPath $Rules) { $f = Get-Item -LiteralPath $Rules; $stamp = "$($f.LastWriteTimeUtc.Ticks)-$($f.Length)" }
-  if ($stamp -ne $last -or $tick -ge 30) { Sync-Hosts; $last = $stamp; $tick = 0 }
+  if ($stamp -ne $last -or $tick -ge 30) { Sync-All; $last = $stamp; $tick = 0 }
   Start-Sleep -Seconds 2
   $tick += 2
 }
@@ -214,6 +291,9 @@ $Action = New-ScheduledTaskAction -Execute $Ps -Argument ('-NoProfile -NonIntera
 $Trigger = New-ScheduledTaskTrigger -AtStartup
 $Principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\\SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 10 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew
+foreach ($k in @('HKLM:\\SOFTWARE\\Policies\\Google\\Chrome', 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Edge', 'HKLM:\\SOFTWARE\\Policies\\BraveSoftware\\Brave', 'HKLM:\\SOFTWARE\\Policies\\Chromium')) {
+  if (-not (Test-Path -LiteralPath $k)) { New-Item -Path $k -Force | Out-Null }
+}
 Register-ScheduledTask -TaskName $Task -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Force | Out-Null
 Start-ScheduledTask -TaskName $Task
 exit 0
@@ -259,6 +339,6 @@ function macElevateAppleScript(scriptPath, args, prompt) {
 }
 
 module.exports = {
-  MAC, WIN, macHelperSh, macPlist, macInstallSh, macUninstallSh,
+  HELPER_VERSION, MAC, WIN, macHelperSh, macPlist, macInstallSh, macUninstallSh,
   winHelperPs1, winInstallPs1, winUninstallPs1, winElevateCommand, macElevateAppleScript,
 };
