@@ -12,7 +12,7 @@ const en = {
   hero: {
     eyebrow: 'Free · Mac, Windows & Android · Account optional',
     h1: 'Block the apps that <em>eat your day.</em>',
-    lede: 'Halyra Focus shuts distracting apps and websites for as long as you decide — in every browser, on Mac and Windows. Free, private, and you can always turn it off.',
+    lede: 'Halyra Focus shuts distracting apps and websites for as long as you decide — in every browser, on Mac, Windows and Android. Free, private, and you can always turn it off.',
     mac: 'Download for Mac', macSub: 'Apple Silicon & Intel · macOS 12+',
     win: 'Download for Windows', winSub: 'Windows 10 & 11 · 64-bit',
     note: 'Free download · Account optional · Open source (MIT)',
@@ -254,7 +254,7 @@ const hu = {
   hero: {
     eyebrow: 'Ingyenes · Mac, Windows és Android · Fiók csak ha akarod',
     h1: 'Tiltsd le az appokat, amik <em>megeszik a napodat.</em>',
-    lede: 'A Halyra Focus addig zárja ki a figyelemelterelő appokat és weboldalakat, ameddig te szeretnéd — minden böngészőben, Macen és Windowson. Ingyenes, privát, és bármikor kikapcsolhatod.',
+    lede: 'A Halyra Focus addig zárja ki a figyelemelterelő appokat és weboldalakat, ameddig te szeretnéd — minden böngészőben, Macen, Windowson és Androidon. Ingyenes, privát, és bármikor kikapcsolhatod.',
     mac: 'Letöltés Macre', macSub: 'Apple Silicon és Intel · macOS 12+',
     win: 'Letöltés Windowsra', winSub: 'Windows 10 és 11 · 64 bit',
     note: 'Ingyenes letöltés · Fiók nem kötelező · Nyílt forráskód (MIT)',
