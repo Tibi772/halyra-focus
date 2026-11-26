@@ -1,7 +1,8 @@
 /* Halyra Focus — UI. Vanilla JS, no framework, talks to the app only via window.api. */
 'use strict';
 
-const api = window.api;
+// `api` is the global that preload's contextBridge defines (non-configurable),
+// so it must never be redeclared here — that is a SyntaxError in Electron.
 let S = null;
 let t = I18N.make('en');
 const ui = {

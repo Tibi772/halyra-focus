@@ -358,3 +358,11 @@ test('config keeps custom themes and validates theme choice', () => {
   assert.equal(loaded.customThemes.length, 1);
   assert.equal(loaded.session.goal.length, 80);
 });
+
+test('renderer never redeclares the contextBridge global `api` (SyntaxError in Electron)', () => {
+  const fs = require('fs');
+  for (const f of ['app.js', 'overlay.js']) {
+    const src = fs.readFileSync(require('path').join(__dirname, '..', 'src', 'renderer', f), 'utf8');
+    assert.ok(!/^\s*(const|let|var|function|class)\s+api\b/m.test(src), `${f} redeclares api`);
+  }
+});

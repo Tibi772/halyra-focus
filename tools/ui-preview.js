@@ -126,7 +126,7 @@ __mods.coach = ${wrap('coach.js')};
   if (q.get('platform')) S.platform = q.get('platform');
   let push = null;
   const ok = async () => ({ ok: true, state: S });
-  window.api = {
+  const mockApi = {
     getState: async () => S, getPresets: async () => PRESETS,
     setConfig: async (patch) => { if (patch.lists) S.lists = patch.lists; if (patch.schedules) S.schedules = patch.schedules; if (patch.settings) Object.assign(S.settings, patch.settings); S.rev++; return { ok: true, state: JSON.parse(JSON.stringify(S)) }; },
     startSession: ok, extendSession: ok, normalizeSites: async (a) => a.map((x) => x.toLowerCase().replace(/^https?:\\/\\//, '').replace(/^www\\./, '').split('/')[0]),
@@ -147,6 +147,9 @@ __mods.coach = ${wrap('coach.js')};
     browseApps: async () => [], installHelper: ok, uninstallHelper: ok, exportConfig: ok, importConfig: ok, openExternal: ok, quit: ok,
     onState: (cb) => { push = cb; return () => {}; }, onToast: () => () => {}, onNavigate: () => () => {}, onOpenUnlock: () => () => {}, onOverlay: () => () => {},
   };
+  // Same shape as Electron's contextBridge: a non-configurable global, so a stray
+  // top-level 'const api' in app.js fails here too instead of only in the real app.
+  Object.defineProperty(window, 'api', { value: mockApi, enumerable: true, configurable: false, writable: false });
   window.__open = q.get('open');
   setTimeout(() => {
     const v = q.get('view');
