@@ -680,7 +680,7 @@ void main() {
   function frame(now) {
     requestAnimationFrame(frame);
     if (!visible || !running) { last = now; return; }
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const dt = Math.min(0.2, (now - last) / 1000);
     last = now;
     if (dt > 0.04) { slow += 1; if (slow > 40 && dpr > 1) { dpr = 1; resize(); slow = -1e9; } }
     const t = now / 1000;
