@@ -44,12 +44,14 @@ module.exports = async function selftest(ctx) {
   };
   const win = () => ctx.win();
   const js = (code) => win().webContents.executeJavaScript(code, true);
+  // Screenshots are evidence, not checks: a GPU-less CI runner can't always capture
+  // transparent always-on-top windows, so a capture error is reported, never failed.
   const shot = async (name, w = win()) => {
     try {
       await sleep(350);
       const img = await w.webContents.capturePage();
       fs.writeFileSync(path.join(out, `${name}.png`), img.toPNG());
-    } catch (e) { log(`screenshot ${name}`, false, e.message); }
+    } catch (e) { console.log(`[selftest] note  screenshot ${name} not captured (${e.message})`); }
   };
   const isMac = process.platform === 'darwin';
   const BLOCK_SITE = 'example.org';
@@ -112,8 +114,9 @@ module.exports = async function selftest(ctx) {
     // website blocked?
     const inHosts = await waitFor(() => fs.readFileSync(ctx.platform.hostsPath(), 'utf8').includes(`0.0.0.0 ${BLOCK_SITE}`), 30000);
     log('Blocked site written to the hosts file by the helper', inHosts);
-    const blockedDns = await waitFor(async () => (await lookupAll(BLOCK_SITE)).every((a) => a === '0.0.0.0' || a === '::'), 20000, 800);
-    log(`${BLOCK_SITE} resolves to 0.0.0.0 while blocked`, blockedDns, (await lookupAll(BLOCK_SITE)).join(' '));
+    // macOS answers 0.0.0.0 / ::, Windows answers "no such host" for 0.0.0.0 hosts entries — both mean blocked.
+    const blockedDns = await waitFor(async () => (await lookupAll(BLOCK_SITE)).every((a) => a === '0.0.0.0' || a === '::' || /^ERR (ENOENT|ENOTFOUND|EAI_NONAME|ENODATA)/.test(a)), 20000, 800);
+    log(`${BLOCK_SITE} no longer resolves to its real address while blocked`, blockedDns, (await lookupAll(BLOCK_SITE)).join(' '));
     log(`Connection to ${BLOCK_SITE}:443 fails while blocked`, !(await tryConnect(BLOCK_SITE, 443)));
     log('UI shows website blocking as active', await waitFor(() => js("!!document.querySelector('.okline')"), 20000));
 
@@ -128,6 +131,7 @@ module.exports = async function selftest(ctx) {
     log(`Blocked app (${isMac ? 'Chess' : 'Notepad'}) is detected and closed`, seen);
     const gone = await waitFor(async () => (await ctx.platform.findBlocked([TEST_APP])).length === 0, 15000);
     log('Blocked app is no longer running', gone);
+    log('Block banner window was shown', Boolean(ctx.overlay()));
     await shot('06-block-banner', ctx.overlay() || win());
 
     // ---------------------------------------------------------------- stop
