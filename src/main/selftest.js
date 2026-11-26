@@ -147,6 +147,7 @@ module.exports = async function selftest(ctx) {
       const other = await bt.visit(br, 'https://example.com/', 4000);
       log('The rest of that site still opens', /Example Domain/i.test(`${other.text || ''} ${other.title || ''}`), JSON.stringify(other));
     }
+    let tabControl = false;
     if (br && isMac) {
       let tabs = [];
       const redirected = await waitFor(async () => {
@@ -159,6 +160,7 @@ module.exports = async function selftest(ctx) {
         console.log(`[selftest] note  browser control not permitted on this machine (${[...(gs.denied || []), ...(gs.waiting || [])].join(', ')}) — tab check skipped. ${detail}`);
       } else {
         log('A tab that was already open is sent to the block page', redirected, detail);
+        tabControl = redirected;
         if (redirected) {
           const cdp = await bt.attach(br, (t) => /\/blocked/.test(t.url));
           let shown = null;
@@ -277,7 +279,7 @@ module.exports = async function selftest(ctx) {
     log(`${SHIELD_SITE} is blocked by the always-on list`, await waitFor(async () => !(await tryConnect(SHIELD_SITE, 443)), 20000, 1000));
     if (br && isMac) {
       const gs = ctx.browserState() || {};
-      if ((gs.denied || []).length || (gs.waiting || []).length) {
+      if (!tabControl || (gs.denied || []).length || (gs.waiting || []).length) {
         console.log('[selftest] note  browser control not permitted — keyword tab check skipped');
       } else {
         await bt.visit(br, `https://example.com/?q=${KW}`, 2000);
