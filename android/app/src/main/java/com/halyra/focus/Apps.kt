@@ -15,10 +15,15 @@ object Apps {
         pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
     } catch (_: Exception) { pkg }
 
-    fun homePackage(ctx: Context): String? = try {
+    /**
+     * Launchers (home screens) — never blocked, so the user can always get back home.
+     * Settings registers a fallback home screen used during boot; it is not a launcher.
+     */
+    fun homePackages(ctx: Context): Set<String> = try {
         val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        ctx.packageManager.resolveActivity(i, 0)?.activityInfo?.packageName
-    } catch (_: Exception) { null }
+        ctx.packageManager.queryIntentActivities(i, 0).map { it.activityInfo.packageName }
+            .filter { it != "android" && it != "com.android.settings" && !it.endsWith(".provision") }.toSet()
+    } catch (_: Exception) { emptySet() }
 
     /** Launchable apps with small PNG icons, for the block-list app picker. */
     fun listJson(ctx: Context): String {

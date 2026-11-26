@@ -48,7 +48,8 @@ T=$(top); echo "top: $T"
 check "Opening a blocked app shows the block screen" 'echo "$T" | grep -q BlockActivity' "$T"
 shot 03-block-screen
 DNS=$(resolve example.org); echo "blocked: $DNS"
-check "Blocked website doesn't resolve to its real address" 'echo "$DNS" | grep -qE "\(0\.0\.0\.0\)|unknown host|Unknown host"' "$DNS"
+# Android maps the filter's 0.0.0.0 answer to 127.0.0.1 (this phone) — either way the real site is unreachable.
+check "Blocked website doesn't resolve to its real address" 'echo "$DNS" | grep -qE "\((0\.0\.0\.0|127\.0\.0\.1)\)|unknown host|Unknown host"' "$DNS"
 OK=$(resolve google.com); echo "allowed: $OK"
 check "Other websites still work" 'echo "$OK" | grep -qE "PING google.com \([0-9]+\." && ! echo "$OK" | grep -q "0.0.0.0"' "$OK"
 
@@ -68,7 +69,7 @@ adb shell am start -a android.settings.SETTINGS >/dev/null; sleep 4
 T=$(top)
 check "After stopping, the app opens normally" 'echo "$T" | grep -q "com.android.settings" && ! echo "$T" | grep -q BlockActivity' "$T"
 DNS2=$(resolve example.org)
-check "After stopping, the website works again" '! echo "$DNS2" | grep -q "0.0.0.0"' "$DNS2"
+check "After stopping, the website works again" '! echo "$DNS2" | grep -qE "0\.0\.0\.0|127\.0\.0\.1"' "$DNS2"
 
 # Daily limit: 1 minute of Settings, then it's blocked until midnight.
 adb shell am start -n $PKG/.MainActivity >/dev/null; sleep 3
@@ -96,6 +97,7 @@ shot 07-block-screen-crt
 check "Block screen also appears in retro theme" 'top | grep -q BlockActivity'
 check "No script errors after the whole run" '[ "$(js "window.__halyraErrors.length")" = "0" ]' "$(js 'window.__halyraErrors')"
 
+adb logcat -d -s HalyraFocus:V | tail -60 > "$OUT/service-log.txt"; echo "--- service log ---"; cat "$OUT/service-log.txt"
 adb logcat -d -s AndroidRuntime:E | tail -30 > "$OUT/crashes.txt"
 check "No app crashes" '! grep -q "com.halyra.focus" "$OUT/crashes.txt"' "$(head -20 "$OUT/crashes.txt")"
 

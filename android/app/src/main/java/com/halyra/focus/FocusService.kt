@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -35,10 +36,11 @@ class FocusService : Service() {
     private var wasActive = false
     private var lastTickAt = 0L
     private val allowed = HashSet<String>()
+    private var lastSeen: String? = null
 
     private val loop = object : Runnable {
         override fun run() {
-            val next = try { tick() } catch (e: Exception) { 2000L }
+            val next = try { tick() } catch (e: Exception) { Log.e(TAG, "tick failed", e); 2000L }
             h.removeCallbacks(this)
             h.postDelayed(this, next)
         }
@@ -51,7 +53,8 @@ class FocusService : Service() {
         fg = Usage.Foreground(this)
         allowed.addAll(listOf(packageName, "com.android.systemui", "com.android.phone", "com.android.dialer", "com.google.android.dialer",
             "com.samsung.android.dialer", "com.android.emergency", "com.google.android.apps.safetyhub", "com.android.incallui"))
-        Apps.homePackage(this)?.let { allowed.add(it) }
+        allowed.addAll(Apps.homePackages(this))
+        Log.i(TAG, "service up; never blocked: $allowed")
         val n = buildNotification(null, System.currentTimeMillis())
         if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         else startForeground(NOTIF_ID, n)
@@ -93,6 +96,7 @@ class FocusService : Service() {
 
         if (a.packages.isNotEmpty() && Usage.hasAccess(this)) {
             val cur = fg.current(now)
+            if (cur != lastSeen) { lastSeen = cur; Log.d(TAG, "front app: $cur (blocked: ${cur != null && cur in a.packages && cur !in allowed})") }
             if (cur != null && cur in a.packages && cur !in allowed) launchBlock(cur, a, now)
         }
 
@@ -141,7 +145,9 @@ class FocusService : Service() {
             .putExtra(BlockActivity.EXTRA_KIND, if (pkg in a.limitPackages) "limit" else "app")
             .putExtra(BlockActivity.EXTRA_ENDS, a.endsAt ?: 0L)
             .putExtra(BlockActivity.EXTRA_MODE, a.mode ?: "flexible")
-        try { startActivity(i) } catch (_: Exception) {
+        Log.i(TAG, "blocking $pkg")
+        try { startActivity(i) } catch (e: Exception) {
+            Log.w(TAG, "block screen refused: $e")
             // Without "display over other apps" Android may refuse; fall back to the home screen.
             try { startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) { }
         }
@@ -194,6 +200,7 @@ class FocusService : Service() {
     }
 
     companion object {
+        const val TAG = "HalyraFocus"
         const val NOTIF_ID = 7
         const val EVENT_ID = 8
 
