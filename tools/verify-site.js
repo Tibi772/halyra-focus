@@ -97,8 +97,10 @@ async function head(url) {
       check(`${short} shows the current version v${VERSION}`, info.version === `v${VERSION}`, info.version);
       const scene = await page.evaluate(() => ({ labels: document.querySelectorAll('#city-labels .c-label').length, gl: Boolean(document.querySelector('.stage.is-3d')), eggs: Boolean(document.getElementById('egg-text')) }));
       check(`${short} hero scene runs (${scene.gl ? '3D' : '2D fallback'})`, scene.labels >= 6 && scene.eggs, JSON.stringify(scene));
+      // The hero demos focus mode by itself until someone touches it: take over first.
+      if (await page.getAttribute('#focus-toggle', 'aria-pressed') === 'true') await page.click('#focus-toggle');
       await page.click('#focus-toggle');
-      await page.waitForTimeout(2500);
+      await page.waitForTimeout(3000);
       const blocked = await page.evaluate(() => document.querySelectorAll('#city-labels .c-label.blocked').length);
       check(`${short} focus mode locks the distraction buildings`, blocked >= 4, `${blocked} locked`);
       if (info.og) images.add(info.og);
