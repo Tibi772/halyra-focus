@@ -122,8 +122,18 @@ async function head(url) {
     check(`${name} downloads directly (file, ${mb} MB)`, r.status === 200 && r.len > 50 * 1048576 && (/attachment/i.test(r.disp || '') || /octet-stream|x-apple-diskimage|x-msdownload|x-msdos/i.test(r.type || '')), `${r.status} ${r.type || ''} ${(r.disp || r.error || '').slice(0, 80)}`);
   }
   try {
-    const rel = await (await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/releases/latest`, { headers: { authorization: `Bearer ${process.env.GH_TOKEN || ''}` } })).json();
-    check(`Latest release is v${VERSION}`, rel.tag_name === `v${VERSION}`, rel.tag_name);
+    const gh = (p) => fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/${p}`, { headers: { authorization: `Bearer ${process.env.GH_TOKEN || ''}` } }).then((r) => r.json());
+    const rel = await gh('releases/latest');
+    if (rel.tag_name === `v${VERSION}`) check(`Latest release is v${VERSION}`, true, rel.tag_name);
+    else {
+      // Right after a version bump the website deploys in seconds, the installers take
+      // a few minutes. If the build for this commit is still running, that's not an
+      // error — the run that follows the build checks the release again.
+      const runs = await gh(`actions/workflows/build.yml/runs?head_sha=${process.env.VERIFY_SHA || ''}&per_page=5`);
+      const building = (runs.workflow_runs || []).some((r) => r.status !== 'completed');
+      if (building) console.log(`NOTE  v${VERSION} installers are still being built (download buttons serve ${rel.tag_name} until then) — checked again after the build`);
+      else check(`Latest release is v${VERSION}`, false, rel.tag_name);
+    }
   } catch (e) { check(`Latest release is v${VERSION}`, false, e.message); }
 
   // ---- phones

@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: verify
@@ -45,6 +46,8 @@ jobs:
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
+          VERIFY_TRIGGER: ${{ github.event.workflow_run.name || github.event_name }}
+          VERIFY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           DOMAIN=$(node -p "require('./website-src/site.config.json').domain || ''")
           if [ -n "$DOMAIN" ]; then BASE="https://$DOMAIN/"; else BASE="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/"; fi
