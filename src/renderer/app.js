@@ -397,7 +397,7 @@ function renderSidebar() {
   const onBreak = session && session.phase === 'break';
   const sb = document.getElementById('sidebar');
   sb.replaceChildren(
-    h('div', { class: 'brand' }, logo(30), h('div', { class: 'brand-name' }, 'Halyra Focus', h('small', null, 'App & site blocker'))),
+    h('div', { class: 'brand' }, logo(30), h('div', { class: 'brand-name' }, 'Halyra Focus', h('small', null, t('brand.sub')))),
     h('nav', { class: 'nav' }, nav.map(([id, ic]) => h('button', { class: `nav-btn${ui.view === id ? ' on' : ''}`, onclick: () => go(id) }, icon(ic), t(`nav.${id}`)))),
     h('div', { class: 'side-foot' },
       S.cloud && S.cloud.enabled ? h('button', { class: 'acc-chip', onclick: () => go('settings') }, icon(S.cloud.signedIn ? 'cloud' : 'user'),

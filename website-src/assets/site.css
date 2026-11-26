@@ -74,7 +74,7 @@ h1 em { font-style: normal; background: linear-gradient(120deg, #ffd27a, var(--a
 .lede { font-size: clamp(17px, 1.5vw, 19px); color: var(--muted); max-width: 520px; margin: 0 0 30px; }
 .cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .hero-note { margin-top: 16px; font-size: 13px; color: var(--faint); }
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 52px; border-top: 1px solid var(--border); padding-top: 22px; position: relative; z-index: 2; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 32px; margin-top: 52px; border-top: 1px solid var(--border); padding-top: 22px; position: relative; z-index: 2; }
 .stat .n { font-size: 34px; font-weight: 600; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
 .stat .l { color: var(--muted); font-size: 13px; margin-top: 8px; line-height: 1.35; }
 
