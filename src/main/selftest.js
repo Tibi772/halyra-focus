@@ -227,6 +227,21 @@ module.exports = async function selftest(ctx) {
     await js("document.querySelectorAll('.nav-btn')[0].click(); true");
     await sleep(300);
     log('Focus sounds card renders', await js("!!document.querySelector('.sound-bar')"));
+    log('What grows during focus can be chosen', await js("!!document.querySelector('[data-fid=grow-change]') && !!document.querySelector('.ring-grow svg')"));
+
+    // ---------------------------------------------------------------- Halyra AI (offline mode on CI: no key)
+    await js("document.querySelector('[data-fid=ai-open]').click(); true");
+    const chatOk = await waitFor(() => js("!!document.querySelector('.chat-panel textarea')"), 8000);
+    await js("(() => { const i = document.querySelector('[data-fid=chat-in]'); i.value = 'How much did I focus this week?'; i.dispatchEvent(new Event('input')); document.querySelector('[data-fid=chat-send]').click(); return true; })()");
+    const replied = await waitFor(() => js("[...document.querySelectorAll('.msg.ai .bubble')].some((b) => /\\d/.test(b.textContent))"), 20000, 500);
+    log('Halyra AI opens and answers', chatOk && replied, await js("(document.querySelector('.chat-msgs') || {}).innerText || ''"));
+    await shot('09-halyra-ai');
+    await js("(() => { const b = document.querySelector('.chat-back'); if (b) b.click(); return true; })()");
+    await js("document.querySelectorAll('.nav-btn')[3].click(); true");
+    await sleep(500);
+    log('Forest & city card renders in Stats', await js("!!document.querySelector('.card.garden')"));
+    await shot('10-stats-forest');
+    await js("document.querySelectorAll('.nav-btn')[0].click(); true");
 
     // ---------------------------------------------------------------- remove helper
     const un = await ctx.platform.uninstallHelper('selftest', { nonInteractive: true });

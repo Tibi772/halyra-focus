@@ -452,10 +452,12 @@ function renderSidebar() {
   const session = ev.sources.find((s) => s.type === 'session');
   const onBreak = session && session.phase === 'break';
   const sb = document.getElementById('sidebar');
+  ensureAiFab();
   sb.replaceChildren(
     h('div', { class: 'brand' }, logo(30), h('div', { class: 'brand-name' }, 'Halyra Focus', h('small', null, t('brand.sub')))),
     h('nav', { class: 'nav' }, nav.map(([id, ic]) => h('button', { class: `nav-btn${ui.view === id ? ' on' : ''}`, onclick: () => go(id) }, icon(ic), h('span', { class: 'nav-label' }, t(isMobile() ? `navShort.${id}` : `nav.${id}`))))),
     h('div', { class: 'side-foot' },
+      h('button', { class: 'ai-launch', 'data-fid': 'ai-open', onclick: () => openChat(), title: 'Ctrl/⌘ K' }, icon('sparkle'), h('span', null, 'Halyra AI'), h('kbd', null, S.platform === 'darwin' ? '⌘K' : 'Ctrl K')),
       S.cloud && S.cloud.enabled ? h('button', { class: 'acc-chip', onclick: () => go('settings') }, icon(S.cloud.signedIn ? 'cloud' : 'user'),
         h('span', null, S.cloud.signedIn ? (S.cloud.email || t('acc.chipIn')) : t('acc.chipOut'))) : null,
       h('div', { class: `status-pill${ev.blocking ? ' on' : ''}` },
@@ -464,6 +466,130 @@ function renderSidebar() {
           ev.blocking ? t('focus.on') : onBreak ? t('focus.break') : t('tray.idle'),
           (ev.blocking || onBreak) ? h('b', { 'data-live': 'side-left' }, ringModel().time) : null))),
   );
+}
+
+// ------------------------------------------------------------------ Halyra AI chat
+
+/** Minimal, safe Markdown → DOM (bold, italic, code, links, lists, headings). */
+function md(text) {
+  const esc = (x) => x.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const inline = (x) => esc(x)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>')
+    .replace(/\[([^\]]+)\]\((https:\/\/[^\s)]+)\)/g, '<a href="$2" data-ext="1">$1</a>');
+  const out = [];
+  let list = null;
+  for (const raw of String(text || '').split(/\n/)) {
+    const line = raw.trimEnd();
+    const li = /^\s*(?:[-*•]|\d+[.)])\s+(.*)$/.exec(line);
+    if (li) { if (!list) { list = []; out.push(list); } list.push(`<li>${inline(li[1])}</li>`); continue; }
+    list = null;
+    const hd = /^#{1,4}\s+(.*)$/.exec(line);
+    if (hd) out.push(`<p class="md-h">${inline(hd[1])}</p>`);
+    else if (line.trim()) out.push(`<p>${inline(line)}</p>`);
+  }
+  const html = out.map((x) => (Array.isArray(x) ? `<ul>${x.join('')}</ul>` : x)).join('');
+  const el = h('div', { class: 'md', html });
+  el.querySelectorAll('a[data-ext]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); api.openExternal(a.getAttribute('href')); }));
+  return el;
+}
+
+const CHAT_EXAMPLES = {
+  en: ['Block YouTube Shorts and Reddit for 2 hours', 'Start a 50-minute strict focus', 'Weekdays 9–12: block social media', 'How much did I focus this week?', 'Explain the Pomodoro technique in 3 lines', 'Grow a cherry tree'],
+  hu: ['Tiltsd le a YouTube Shortsot és a Redditet 2 órára', 'Indíts 50 perc szigorú fókuszt', 'Hétköznap 9–12: tiltsd a közösségi médiát', 'Mennyit fókuszáltam ezen a héten?', 'Magyarázd el a fotoszintézist 3 mondatban', 'Növessz cseresznyefát'],
+};
+
+function chatActionLabel(a) {
+  const k = `chat.act.${a.name}`;
+  const txt = t(k);
+  return txt === k ? a.name : txt;
+}
+
+async function openChat() {
+  if (ui.chat && ui.chat.open) { const i = document.querySelector('[data-fid="chat-in"]'); if (i) i.focus(); return; }
+  ui.chat = ui.chat || { log: [], mode: S.aiMode || 'offline', draft: '', busy: false };
+  ui.chat.open = true;
+  const panel = h('div', { class: 'chat-panel', role: 'dialog', 'aria-label': 'Halyra AI' });
+  const back = h('div', { class: 'chat-back', onclick: (e) => { if (e.target === back) closeChat(); } }, panel);
+  document.body.append(back);
+  ui.chat.el = back;
+  const render = () => {
+    const c = ui.chat;
+    const badge = c.mode === 'key' ? t('chat.modeKey') : c.mode === 'cloud' ? t('chat.modeCloud') : t('chat.modeOffline');
+    const msgs = h('div', { class: 'chat-msgs' });
+    if (!c.log.length) {
+      msgs.append(h('div', { class: 'chat-hello' },
+        h('div', { class: 'chat-orb' }, icon('sparkle')),
+        h('h3', null, t('chat.hello')),
+        h('p', { class: 'muted' }, t(c.mode === 'offline' ? 'chat.helloOffline' : 'chat.helloSub')),
+        h('div', { class: 'chat-ex' }, (CHAT_EXAMPLES[S.lang] || CHAT_EXAMPLES.en).map((x) => h('button', { class: 'chip', onclick: () => send(x) }, x)))));
+    }
+    for (const m of c.log) {
+      if (m.role === 'user') { msgs.append(h('div', { class: 'msg me' }, h('div', { class: 'bubble' }, m.text))); continue; }
+      const body = m.error ? h('div', { class: 'md' }, h('p', null, t(`chat.err.${m.error}`) === `chat.err.${m.error}` ? t('chat.err.apiError') : t(`chat.err.${m.error}`))) : md(m.text || '…');
+      msgs.append(h('div', { class: `msg ai${m.error ? ' err' : ''}` }, h('div', { class: 'bubble' }, body,
+        (m.actions || []).length ? h('div', { class: 'chat-acts' }, m.actions.map((a) => h('span', { class: `act${a.ok ? '' : ' no'}` }, icon(a.ok ? 'check' : 'x'), chatActionLabel(a)))) : null,
+        (m.sources || []).length ? h('div', { class: 'chat-src' }, m.sources.map((x, i) => h('a', { href: x.url, onclick: (e) => { e.preventDefault(); api.openExternal(x.url); } }, `${i + 1}. ${(x.title || x.url).slice(0, 60)}`))) : null)));
+    }
+    if (c.busy) msgs.append(h('div', { class: 'msg ai' }, h('div', { class: 'bubble typing' }, h('span'), h('span'), h('span'))));
+    const input = h('textarea', { class: 'input chat-in', rows: 1, 'data-fid': 'chat-in', placeholder: t('chat.placeholder'), value: c.draft,
+      oninput: (e) => { c.draft = e.target.value; e.target.style.height = 'auto'; e.target.style.height = `${Math.min(140, e.target.scrollHeight)}px`; },
+      onkeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(c.draft); } } });
+    panel.replaceChildren(...[
+      h('div', { class: 'chat-head' },
+        h('div', { class: 'chat-title' }, icon('sparkle'), h('b', null, 'Halyra AI'), h('span', { class: `badge chat-mode ${c.mode}` }, badge)),
+        h('span', { class: 'spacer' }),
+        c.log.length ? h('button', { class: 'btn sm', onclick: async () => { const r = await api.chatReset(); c.log = r.log; render(); } }, t('chat.new')) : null,
+        h('button', { class: 'btn icon-only', 'aria-label': t('unlock.close'), onclick: closeChat }, icon('x'))),
+      c.mode === 'offline' ? h('div', { class: 'chat-note' }, h('span', null, t('chat.offlineNote')), h('button', { class: 'link', onclick: () => { closeChat(); go('settings'); setTimeout(() => { const el = document.querySelector('[data-fid="ai-card"]'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 120); } }, t('chat.turnOn'))) : null,
+      msgs,
+      h('div', { class: 'chat-foot' }, input, h('button', { class: 'btn accent', 'data-fid': 'chat-send', disabled: c.busy, onclick: () => send(c.draft) }, icon('play')))].filter(Boolean));
+    msgs.scrollTop = msgs.scrollHeight;
+    if (!c.busy) setTimeout(() => input.focus(), 0);
+  };
+  const send = async (text) => {
+    const c = ui.chat;
+    const msg = String(text || '').trim();
+    if (!msg || c.busy) return;
+    c.busy = true;
+    c.draft = '';
+    c.log = [...c.log, { role: 'user', text: msg }];
+    render();
+    try {
+      const r = await api.chat(msg);
+      if (r.log) c.log = r.log;
+      if (r.mode) c.mode = r.mode;
+      if (r.state) applyState(r.state);
+    } catch (_) {
+      c.log = [...c.log, { role: 'assistant', error: 'network' }];
+    }
+    c.busy = false;
+    render();
+  };
+  ui.chat.render = render;
+  render();
+  try { const r = await api.chatGet(); ui.chat.log = r.log || []; ui.chat.mode = r.mode || ui.chat.mode; render(); } catch (_) { /* preview */ }
+}
+
+function closeChat() {
+  if (!ui.chat || !ui.chat.open) return;
+  ui.chat.open = false;
+  if (ui.chat.el) ui.chat.el.remove();
+}
+
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); if (ui.chat && ui.chat.open) closeChat(); else openChat(); }
+  else if (e.key === 'Escape' && ui.chat && ui.chat.open && !modalStack.length) closeChat();
+});
+
+function ensureAiFab() {
+  let fab = document.getElementById('ai-fab');
+  if (!isMobile()) { if (fab) fab.remove(); return; }
+  if (!fab) {
+    fab = h('button', { id: 'ai-fab', class: 'ai-fab', 'aria-label': 'Halyra AI', 'data-fid': 'ai-fab', onclick: () => openChat() }, icon('sparkle'));
+    document.body.append(fab);
+  }
 }
 
 function go(view) {
@@ -1422,10 +1548,12 @@ function accountCard() {
 function aiCard() {
   let key = '';
   const on = S.settings.hasAiKey;
-  return h('div', { class: 'card' },
+  const cloudOn = !on && S.aiMode === 'cloud';
+  return h('div', { class: 'card', 'data-fid': 'ai-card' },
     h('div', { class: 'card-head' }, h('div', { class: 'card-title row', style: { gap: '8px' } }, icon('sparkle'), t('ai.title')),
-      h('span', { class: on ? 'okline' : 'muted small' }, on ? icon('check') : null, on ? t('ai.active', { model: S.aiModel }) : t('ai.inactive'))),
+      h('span', { class: on || cloudOn ? 'okline' : 'muted small' }, on || cloudOn ? icon('check') : null, on ? t('ai.active', { model: 'Claude' }) : cloudOn ? t('chat.modeCloud') : t('ai.inactive'))),
     h('p', { class: 'muted', style: { marginTop: 0 } }, t('ai.sub')),
+    h('div', { class: 'row', style: { marginBottom: '10px' } }, h('button', { class: 'btn accent', onclick: () => openChat() }, icon('sparkle'), t('chat.open'))),
     on ? h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => openStyleStudio(null) }, icon('sparkle'), t('style.new')),
       h('button', { class: 'btn danger', onclick: async () => { const r = await api.removeAiKey(); if (r.state) applyState(r.state); } }, t('ai.remove')))
       : h('div', { class: 'row', style: { flexWrap: 'nowrap' } },

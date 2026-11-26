@@ -7,7 +7,7 @@ name: Build, test & release
 on:
   push:
     branches: [main]
-    paths-ignore: ['website-src/**', '**.md', 'tools/verify-site.js', 'tools/test-webapp.js', '.github/workflows/verify.yml', '.github/workflows/pages.yml']
+    paths-ignore: ['website-src/**', '**.md', 'supabase/**', 'docs/**', '.github/workflows/supabase.yml', 'tools/verify-site.js', 'tools/test-webapp.js', '.github/workflows/verify.yml', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:

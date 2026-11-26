@@ -188,6 +188,22 @@ test('main process boots and IPC works end-to-end', async () => {
   assert.equal(lim.state.lists[0].limitMin, 45);
   assert.equal(lim.state.settings.focusSound, 'rain');
 
+  // Halyra AI (offline: no key, no account): adds sites to a list during the running strict block
+  const chat0 = await call('ai:chatGet');
+  assert.equal(chat0.mode, 'offline');
+  const c1 = await call('ai:chat', { text: 'block youtube.com/shorts and 9gag.com' });
+  assert.equal(c1.ok, true);
+  const lastMsg = c1.log[c1.log.length - 1];
+  assert.equal(lastMsg.role, 'assistant');
+  assert.ok(lastMsg.actions.some((a) => a.name === 'block_sites' && a.ok), JSON.stringify(lastMsg));
+  const aiList = c1.state.lists.find((l) => /AI/.test(l.name));
+  assert.ok(aiList && aiList.paths.includes('youtube.com/shorts') && aiList.sites.includes('9gag.com'));
+  const c2 = await call('ai:chat', { text: 'állítsd le' });
+  assert.match(c2.log[c2.log.length - 1].text, /⚠️/, 'a strict block is not stopped by the AI');
+  const c3 = await call('ai:chat', { text: 'what is the meaning of life' });
+  assert.match(c3.log[c3.log.length - 1].text, /Halyra AI|AI-t/);
+  assert.equal((await call('ai:chatReset')).log.length, 0);
+
   // state is pushed to the window
   assert.ok(sent.some(([ch]) => ch === 'state'));
   // will-quit handler is safe

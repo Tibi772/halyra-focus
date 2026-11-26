@@ -130,7 +130,7 @@ const WIN = {
 };
 
 // Bumped whenever a helper script changes, so the app can ask for a one-time update.
-const HELPER_VERSION = { mac: 1, win: 2 };
+const HELPER_VERSION = { mac: 1, win: 3 };
 
 function winHelperPs1() {
   return `# ${BRAND.name} helper - runs as SYSTEM, mirrors blocklist.txt into the hosts file
@@ -207,6 +207,7 @@ function Set-ListPolicy([string]$path, [string[]]$want, $owned) {
   $mine = New-Object System.Collections.Generic.List[string]
   foreach ($v in $want) { if ($v -and -not $final.Contains($v)) { $final.Add($v); $mine.Add($v) } }
   if (($final -join "\`n") -cne ($cur -join "\`n")) {
+    $script:PolicyChanged = $true
     if ($k) { foreach ($n in @($k.GetValueNames())) { if ($n -match '^\\d+$') { $k.DeleteValue($n) } } }
     if ($final.Count -gt 0) {
       if (-not $k) { $k = $hklm.CreateSubKey($path) }
@@ -223,6 +224,7 @@ function Set-ListPolicy([string]$path, [string[]]$want, $owned) {
 }
 
 function Sync-Policy($r) {
+  $script:PolicyChanged = $false
   $block = New-Object System.Collections.Generic.List[string]
   $allow = New-Object System.Collections.Generic.List[string]
   if ($r.Allow.Count -gt 0) {
@@ -252,6 +254,15 @@ function Sync-Policy($r) {
     if ($rk) { $rk.Close() }
   }
   [IO.File]::WriteAllLines($Owned, [string[]]$now.ToArray())
+  if ($script:PolicyChanged) {
+    # Browsers re-arm their registry watch after each change; a second, later
+    # change makes sure they also see the final state (e.g. a removal).
+    Start-Sleep -Seconds 2
+    foreach ($root in $PolicyRoots) {
+      $rk = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey($root)
+      if ($rk) { $rk.SetValue('HalyraFocusSync', 1, [Microsoft.Win32.RegistryValueKind]::DWord); $rk.DeleteValue('HalyraFocusSync', $false); $rk.Close() }
+    }
+  }
 }
 
 function Sync-All {

@@ -4,7 +4,8 @@
 // feature needs is sent (a style description, or a goal + list names).
 const { safeStorage } = require('electron');
 
-const MODEL = 'claude-haiku-5-5';
+const MODEL = 'claude-haiku-5-5'; // quick jobs: styles, focus plans
+const CHAT_MODEL = 'claude-sonnet-5-5'; // Halyra AI chat: smart, with tools and web search
 const API = 'https://api.anthropic.com/v1/messages';
 
 async function complete(key, { system, prompt, maxTokens = 600, timeoutMs = 20000 }) {
@@ -89,4 +90,82 @@ Choose what to block and how. Return JSON:
   return extractJson(text);
 }
 
-module.exports = { MODEL, complete, encryptKey, decryptKey, styleSpec, suggest };
+/**
+ * One Messages API call. transport = { kind: 'key', key } (the user's own key) or
+ * { kind: 'proxy', url, token, anonKey } (Halyra's server, signed-in users).
+ */
+async function callMessages(transport, body, timeoutMs = 60000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const headers = transport.kind === 'proxy'
+      ? { 'content-type': 'application/json', authorization: `Bearer ${transport.token}`, apikey: transport.anonKey }
+      : { 'content-type': 'application/json', 'x-api-key': transport.key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
+    const res = await fetch(transport.kind === 'proxy' ? transport.url : API, { method: 'POST', signal: ctrl.signal, headers, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = (data && data.error && (data.error.message || data.error)) || data.message || `HTTP ${res.status}`;
+      const err = new Error(String(msg));
+      err.status = res.status;
+      err.code = res.status === 401 || res.status === 403 ? (transport.kind === 'proxy' ? 'aiAuth' : 'invalidKey')
+        : res.status === 429 ? (data && data.code === 'quota' ? 'quota' : 'rateLimit')
+          : res.status === 404 && transport.kind === 'proxy' ? 'noProxy' : 'apiError';
+      throw err;
+    }
+    return data;
+  } catch (e) {
+    if (e.name === 'AbortError') e.code = 'timeout';
+    if (!e.code) e.code = 'network';
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * The assistant loop: Claude answers, calls app tools (run(name, input) → result)
+ * and searches the web, until it has a final answer.
+ * Returns { text, sources: [{url,title}], actions: [{name,input,result}] }.
+ */
+async function chat(transport, { system, messages, tools, webSearch, run, maxSteps = 8 }) {
+  const msgs = messages.slice();
+  const actions = [];
+  let search = Boolean(webSearch);
+  let text = '';
+  const sources = new Map();
+  for (let step = 0; step < maxSteps; step += 1) {
+    let data;
+    try {
+      data = await callMessages(transport, { model: CHAT_MODEL, max_tokens: 1600, system, tools: search ? [...tools, webSearch] : tools, messages: msgs });
+    } catch (e) {
+      // Some API keys/organizations have web search turned off: carry on without it.
+      if (search && e.code === 'apiError' && /web.?search|server.?tool|not enabled|tool/i.test(e.message)) { search = false; step -= 1; continue; }
+      throw e;
+    }
+    const content = Array.isArray(data.content) ? data.content : [];
+    msgs.push({ role: 'assistant', content });
+    for (const b of content) {
+      if (b.type !== 'text') continue;
+      for (const c of b.citations || []) if (c.url && !sources.has(c.url)) sources.set(c.url, { url: c.url, title: c.title || c.url });
+    }
+    const stepText = content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+    if (stepText.trim()) text = stepText;
+    if (data.stop_reason === 'tool_use') {
+      const results = [];
+      for (const b of content) {
+        if (b.type !== 'tool_use') continue;
+        let result;
+        try { result = await run(b.name, b.input || {}); } catch (e) { result = { ok: false, error: String(e.message || e) }; }
+        actions.push({ name: b.name, input: b.input || {}, result });
+        results.push({ type: 'tool_result', tool_use_id: b.id, content: JSON.stringify(result).slice(0, 20000) });
+      }
+      msgs.push({ role: 'user', content: results });
+      continue;
+    }
+    if (data.stop_reason === 'pause_turn') continue;
+    break;
+  }
+  return { text: text.trim(), sources: [...sources.values()].slice(0, 5), actions };
+}
+
+module.exports = { MODEL, CHAT_MODEL, complete, encryptKey, decryptKey, styleSpec, suggest, callMessages, chat };

@@ -23,6 +23,7 @@ const { CloudClient } = require('./cloud');
 const webusage = require('../core/webusage');
 const blockrules = require('../core/blockrules');
 const GROW = require('../shared/grow');
+const assistant = require('../core/assistant');
 const { blockInfo } = require('../core/blockinfo');
 const CLOUD_CONF = (() => { try { return require('../shared/cloud.json'); } catch (_) { return {}; } })();
 
@@ -47,7 +48,9 @@ let lastTick = Date.now();
 let lastEval = null;
 let lastHostsKey = null;
 let guard = null; // browser tabs / policy (computers)
-let lastGrown = null; // the latest finished / withered grow item, for the UI's celebration
+let lastGrown = null;
+let chatLog = null; // Halyra AI conversation [{role, text, sources?, actions?, at}] (kept on this device only)
+let chatBusy = false; // the latest finished / withered grow item, for the UI's celebration
 let blockPage = null; // local block page server { url, port }
 let hostsState = { installed: false, verified: false, expected: 0 };
 let installedAppsCache = null;
@@ -173,6 +176,75 @@ async function syncNow() {
   }
 }
 
+// ------------------------------------------------------------------ Halyra AI
+
+function aiKey() { return ai.decryptKey(config.settings.aiKeyEnc); }
+
+function chatFile() { return path.join(app.getPath('userData'), 'assistant.json'); }
+function chatHistory() {
+  if (!chatLog) { const raw = readJson(chatFile()); chatLog = Array.isArray(raw && raw.log) ? raw.log.slice(-60) : []; }
+  return chatLog;
+}
+function saveChat() { try { fs.writeFileSync(chatFile(), JSON.stringify({ log: chatLog || [] })); } catch (_) { /* ignore */ } }
+
+/** How Halyra AI answers right now: the user's key, Halyra's server (signed in), or offline. */
+function aiMode() {
+  if (aiKey()) return 'key';
+  if (CLOUD_CONF.url && CLOUD_CONF.ai !== false && cloud && cloud.signedIn()) return 'cloud';
+  return 'offline';
+}
+
+function assistantCtx() {
+  return {
+    lang: lang(),
+    now: () => Date.now(),
+    config: () => config,
+    evaluate: () => evalNow(),
+    stats: () => statsSummary(Date.now()),
+    startSession: (o) => startSession(o),
+    stopAll: () => stopAll(),
+    extendSession: (m) => extendSession(m),
+    applyConfigChange: (p) => applyConfigChange(p),
+    normalizeRule: (raw) => { const p = blockrules.normalizePathRule(raw); if (p) return { path: p }; const site = normalizeSite(raw); return site ? { site } : null; },
+    knownApps: () => [...(installedAppsCache || []), ...PRESETS.flatMap((p) => p.apps || [])],
+    helperInstalled: () => hostsState.installed,
+    makeTheme: async (describe) => {
+      const key = aiKey();
+      if (key) { try { const spec = await ai.styleSpec(key, describe); if (spec && stylegen.fromHex(spec.accent) && stylegen.fromHex(spec.bg)) return stylegen.fromSpec({ ...spec, name: spec.name || describe }, { prompt: describe }); } catch (_) { /* fall back */ } }
+      return stylegen.generate(describe, 0);
+    },
+  };
+}
+
+async function askAssistant(text, history) {
+  const ctx = assistantCtx();
+  const mode = aiMode();
+  if (mode !== 'offline') {
+    const transport = mode === 'key' ? { kind: 'key', key: aiKey() } : { kind: 'proxy', url: `${String(CLOUD_CONF.url).replace(/\/+$/, '')}/functions/v1/halyra-ai`, token: await cloud.token(), anonKey: CLOUD_CONF.anonKey };
+    const messages = [];
+    for (const m of history.slice(-16)) {
+      if (!m.text) continue;
+      const role = m.role === 'assistant' ? 'assistant' : 'user';
+      if (messages.length && messages[messages.length - 1].role === role) messages[messages.length - 1].content += `\n\n${m.text}`;
+      else messages.push({ role, content: m.text });
+    }
+    while (messages.length && messages[0].role !== 'user') messages.shift();
+    messages.push({ role: 'user', content: text });
+    try {
+      const r = await ai.chat(transport, { system: assistant.systemPrompt(ctx), messages, tools: assistant.TOOLS, webSearch: assistant.WEB_SEARCH, run: (name, input) => assistant.runTool(ctx, name, input) });
+      return { text: r.text, sources: r.sources, actions: r.actions.filter((a) => !/^get_/.test(a.name)).map((a) => ({ name: a.name, ok: a.result && a.result.ok !== false })), via: mode };
+    } catch (e) {
+      // The account server isn't set up yet: still help with the offline commands.
+      if (mode !== 'cloud' || !['noProxy', 'network', 'timeout'].includes(e.code)) throw e;
+    }
+  }
+  const o = assistant.offline(text, lang());
+  if (!o.handled) return { text: assistant.offlineHelp(lang()), via: 'offline' };
+  const results = [];
+  for (const c of o.calls) results.push({ name: c.name, result: await assistant.runTool(ctx, c.name, c.input) });
+  return { text: assistant.offlineReply(lang(), results), actions: results.filter((r) => !/^get_/.test(r.name)).map((r) => ({ name: r.name, ok: r.result && r.result.ok !== false })), via: 'offline' };
+}
+
 function deviceName() {
   try { return (platform.deviceName && platform.deviceName()) || require('os').hostname() || process.platform; } catch (_) { return process.platform; }
 }
@@ -256,6 +328,7 @@ function fullState() {
     customThemes: (config.customThemes || []).map((t) => ({ ...t, vars: stylegen.cssVars(t) })),
     insights: currentInsights(now),
     aiModel: ai.MODEL,
+    aiMode: aiMode(),
     cloud: cloudPublic(),
     lastGrown,
     usage: usageNow(now),
@@ -860,7 +933,6 @@ function ipc() {
   });
 
   // ---------------------------------------------------------------- AI & coach
-  const aiKey = () => ai.decryptKey(config.settings.aiKeyEnc);
   handle('style:generate', async ({ prompt, seed }) => {
     const text = String(prompt || '').trim().slice(0, 200);
     if (!text) return { ok: false, error: 'generic' };
@@ -908,6 +980,29 @@ function ipc() {
     return { ok: true, state: fullState() };
   });
   handle('ai:removeKey', () => { config.settings.aiKeyEnc = null; saveConfig(); return { ok: true, state: fullState() }; });
+  // ---------------------------------------------------------------- Halyra AI chat
+  handle('ai:chatGet', () => ({ log: chatHistory(), mode: aiMode() }));
+  handle('ai:chatReset', () => { chatLog = []; saveChat(); return { log: [], mode: aiMode() }; });
+  handle('ai:chat', async ({ text }) => {
+    const msg = String(text || '').trim().slice(0, 4000);
+    if (!msg) return { ok: false, error: 'generic' };
+    if (chatBusy) return { ok: false, error: 'busy' };
+    chatBusy = true;
+    const log = chatHistory();
+    log.push({ role: 'user', text: msg, at: Date.now() });
+    try {
+      const reply = await askAssistant(msg, log.slice(0, -1));
+      log.push({ role: 'assistant', at: Date.now(), ...reply });
+    } catch (e) {
+      log.push({ role: 'assistant', at: Date.now(), error: e.code || 'apiError', text: '' });
+    } finally {
+      chatBusy = false;
+    }
+    chatLog = log.slice(-60);
+    saveChat();
+    return { ok: true, log: chatLog, mode: aiMode(), state: fullState() };
+  });
+
   handle('coach:suggest', async ({ goal }) => {
     const g = String(goal || '').trim().slice(0, 160);
     const lang0 = lang();

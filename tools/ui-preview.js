@@ -113,6 +113,17 @@ for (const lang of ['en', 'hu']) {
   scenarios[`nohelper-${lang}`] = { ...scenarios[`idle-${lang}`], helper: { installed: false, verified: false, supported: true }, settings: { ...scenarios[`idle-${lang}`].settings, onboarded: false } };
 }
 
+const DEMO_CHAT = {
+  en: [{ role: 'user', text: 'Block YouTube Shorts and Reddit until 6 pm, strict. I have a chemistry exam tomorrow.' },
+      { role: 'assistant', text: 'Done — **strict focus until 18:00**. YouTube Shorts and Reddit are blocked on all your devices; the rest of YouTube still works for lectures.\n\nQuick plan for tomorrow:\n- 50 min: redo last year\'s exam\n- 10 min break\n- 50 min: weakest topic (redox?)\n\nYou\'ve got this. 🌱 A cherry tree is growing while you study.', actions: [{ name: 'block_sites', ok: true }, { name: 'start_focus', ok: true }] },
+      { role: 'user', text: 'What is the oxidation number of Mn in KMnO4?' },
+      { role: 'assistant', text: '**+7.** K is +1, each O is −2 (4 × −2 = −8), so Mn must be +7 for the compound to be neutral: +1 + x − 8 = 0 → x = +7.', sources: [] }],
+  hu: [{ role: 'user', text: 'Tiltsd le a YouTube Shortsot és a Redditet 18 óráig, szigorúan. Holnap kémia vizsgám lesz.' },
+      { role: 'assistant', text: 'Kész — **szigorú fókusz 18:00-ig**. A YouTube Shorts és a Reddit minden eszközödön tiltva; a YouTube többi része megy az előadásokhoz.\n\nGyors terv holnapra:\n- 50 perc: tavalyi vizsgasor\n- 10 perc szünet\n- 50 perc: a leggyengébb téma (redoxi?)\n\nMeg fogod csinálni. 🌱 Amíg tanulsz, egy cseresznyefa nő.', actions: [{ name: 'block_sites', ok: true }, { name: 'start_focus', ok: true }] },
+      { role: 'user', text: 'Mennyi a Mn oxidációs száma a KMnO4-ben?' },
+      { role: 'assistant', text: '**+7.** A K +1, minden O −2 (4 × −2 = −8), így a Mn +7, hogy a vegyület semleges legyen: +1 + x − 8 = 0 → x = +7.' }],
+  };
+
 const wrap = (file) => `(function(){const module={exports:{}};const exports=module.exports;${fs.readFileSync(path.join(root, 'core', file), 'utf8').replace(/require\(['"]\.\/(\w+)['"]\)/g, (m, n) => `__mods.${n}`)};return module.exports;})()`;
 const mock = `'use strict';
 var __mods = {};
@@ -122,6 +133,8 @@ __mods.coach = ${wrap('coach.js')};
 (function(){
   const SC = ${JSON.stringify(scenarios)};
   const PRESETS = ${JSON.stringify(PRESETS)};
+  const DEMO_CHAT = ${JSON.stringify(DEMO_CHAT)};
+
   const q = new URLSearchParams(location.hash.slice(1));
   const S = JSON.parse(JSON.stringify(SC[q.get('scenario') || 'idle-en']));
   if (q.get('theme')) S.settings.theme = q.get('theme');
@@ -148,6 +161,8 @@ __mods.coach = ${wrap('coach.js')};
     cloudSignOut: async () => { S.cloud = { enabled: true, signedIn: false, email: null, lastSync: 0, error: null }; S.rev++; return { ok: true, state: JSON.parse(JSON.stringify(S)) }; },
     coachSuggest: async ({ goal }) => { const r = __mods.coach.suggestSetup(goal, S.lang); return { ok: true, source: 'offline', listIds: S.lists.filter((l) => r.presets.includes(l.presetId)).map((l) => l.id), minutes: r.minutes, pomodoro: r.pomodoro, mode: r.mode, reason: r.reason }; },
     coachLine: async () => ({ text: __mods.coach.coachLine({ goal: S.session && S.session.goal, leftMs: 33 * 60000, totalMs: 51 * 60000, streak: S.stats.streak, todayMin: 20 }, S.lang), streak: S.stats.streak }),
+    chatGet: async () => ({ log: q.get('chat') === 'demo' ? DEMO_CHAT[S.lang] : [], mode: q.get('aimode') || 'key' }), chatReset: async () => ({ log: [], mode: 'key' }),
+    chat: async (text) => ({ log: [...DEMO_CHAT[S.lang], { role: 'user', text }, { role: 'assistant', text: '…' }], mode: 'key' }),
     browseApps: async () => [], installHelper: ok, uninstallHelper: ok, exportConfig: ok, importConfig: ok, openExternal: ok, quit: ok,
     onState: (cb) => { push = cb; return () => {}; }, onToast: () => () => {}, onNavigate: () => () => {}, onOpenUnlock: () => () => {}, onOverlay: () => () => {},
   };
@@ -162,6 +177,7 @@ __mods.coach = ${wrap('coach.js')};
     if (q.get('open') === 'schedule') { const c = document.querySelector('.sched-card .btn'); if (c) c.click(); }
     if (q.get('open') === 'studio') { const c = document.querySelector('.theme-card.new-style'); if (c) c.click(); setTimeout(() => { const chip = document.querySelectorAll('.studio .chip')[+(q.get('ex') || 0)]; if (chip) chip.click(); }, 200); }
     if (q.get('open') === 'smart') { const i = document.querySelector('[data-fid=goal]'); if (i) { i.value = q.get('goal') || 'Vizsgára tanulok'; i.dispatchEvent(new Event('input')); i.nextSibling.click(); } }
+    if (q.get('open') === 'chat') { const b = document.querySelector('[data-fid=ai-open]') || document.querySelector('[data-fid=ai-fab]'); if (b) b.click(); }
     if (q.get('open') === 'grow') { const b = document.querySelector('[data-fid=grow-change]'); if (b) b.click(); }
     if (q.get('open') === 'unlock') { const b = document.querySelector('.btn.danger'); if (b) b.click(); }
   }, 150);

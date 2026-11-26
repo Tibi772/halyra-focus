@@ -1,0 +1,36 @@
+# Deploys the Halyra AI server (Supabase Edge Function) when its code changes.
+# Needs these repository secrets (Settings → Secrets and variables → Actions):
+#   SUPABASE_ACCESS_TOKEN  (supabase.com → Account → Access Tokens)
+#   SUPABASE_PROJECT_REF   (the xxxx in https://xxxx.supabase.co)
+#   ANTHROPIC_API_KEY      (console.anthropic.com → API keys)
+# Without them this workflow does nothing.
+name: Halyra AI server
+
+on:
+  push:
+    branches: [main]
+    paths: ['supabase/**', '.github/workflows/supabase.yml']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check secrets
+        id: check
+        run: |
+          if [ -n "$SUPABASE_ACCESS_TOKEN" ] && [ -n "$REF" ] && [ -n "$ANTHROPIC_API_KEY" ]; then echo "ok=1" >> "$GITHUB_OUTPUT"; else echo "Secrets not set yet — skipping deploy."; fi
+      - uses: supabase/setup-cli@v1
+        if: steps.check.outputs.ok == '1'
+        with:
+          version: latest
+      - name: Deploy function and key
+        if: steps.check.outputs.ok == '1'
+        run: |
+          supabase secrets set --project-ref "$REF" ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"
+          supabase functions deploy halyra-ai --project-ref "$REF"
