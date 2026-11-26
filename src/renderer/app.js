@@ -194,8 +194,32 @@ async function patchConfig(patch) {
     r = await api.setConfig(patch, pin);
   }
   if (r.state) applyState(r.state);
+  if (!r.ok && r.error === 'cooldown') { coolDownModal(r.coolDown); return r; }
   if (!r.ok) toast(t(`err.${r.error || 'generic'}`), 'error');
   return r;
+}
+
+function coolDownText(cd) {
+  if (!cd || cd.state === 'off') return '';
+  if (cd.state === 'waiting') return t('cool.waiting', { time: fmtWhen(cd.at) });
+  if (cd.state === 'open') return t('cool.open', { time: fmtWhen(cd.closes) });
+  return t('cool.idle');
+}
+
+/** A change that weakens always-on protection was refused: explain the wait and offer to start it. */
+function coolDownModal(cd) {
+  cd = cd || S.coolDown || {};
+  openModal((self) => [
+    modalHead(t('cool.lockedTitle'), () => self.close()),
+    h('p', null, t('cool.lockedBody', { n: cd.hours || 24 })),
+    cd.state === 'waiting' ? h('p', { class: 'muted' }, coolDownText(cd)) : null,
+    h('div', { class: 'modal-foot' },
+      h('button', { class: 'btn', onclick: () => self.close() }, t('common.cancel')),
+      cd.state === 'waiting' ? null : h('button', {
+        class: 'btn primary',
+        onclick: async () => { const r = await api.coolDown(true); if (r.state) applyState(r.state); self.close(); toast(coolDownText(r.state && r.state.coolDown)); },
+      }, t('cool.start'))),
+  ].filter(Boolean));
 }
 
 
@@ -460,10 +484,10 @@ function renderSidebar() {
       h('button', { class: 'ai-launch', 'data-fid': 'ai-open', onclick: () => openChat(), title: 'Ctrl/⌘ K' }, icon('sparkle'), h('span', null, 'Halyra AI'), h('kbd', null, S.platform === 'darwin' ? '⌘K' : 'Ctrl K')),
       S.cloud && S.cloud.enabled ? h('button', { class: 'acc-chip', onclick: () => go('settings') }, icon(S.cloud.signedIn ? 'cloud' : 'user'),
         h('span', null, S.cloud.signedIn ? (S.cloud.email || t('acc.chipIn')) : t('acc.chipOut'))) : null,
-      h('div', { class: `status-pill${ev.blocking ? ' on' : ''}` },
+      h('div', { class: `status-pill${ev.blocking ? ' on' : ''}${!ev.blocking && !onBreak && ev.standing && ev.standing.any ? ' shield' : ''}` },
         h('span', { class: 'status-dot' }),
         h('div', { class: 'status-text' },
-          ev.blocking ? t('focus.on') : onBreak ? t('focus.break') : t('tray.idle'),
+          ev.blocking ? t('focus.on') : onBreak ? t('focus.break') : ev.standing && ev.standing.any ? t('tray.shield') : t('tray.idle'),
           (ev.blocking || onBreak) ? h('b', { 'data-live': 'side-left' }, ringModel().time) : null))),
   );
 }
@@ -839,7 +863,8 @@ function modeCards(current, onPick) {
 }
 
 function listChips(selected, onToggle) {
-  return h('div', { class: 'row' }, S.lists.map((l) => h('button', { class: `chip${selected.includes(l.id) ? ' on' : ''}`, onclick: () => onToggle(l.id) },
+  // Always-on lists are blocked anyway, so they're not offered for focus or schedules.
+  return h('div', { class: 'row' }, S.lists.filter((l) => !l.always || selected.includes(l.id)).map((l) => h('button', { class: `chip${selected.includes(l.id) ? ' on' : ''}`, onclick: () => onToggle(l.id) },
     h('span', { class: 'emoji' }, l.emoji), l.name, h('small', null, String(l.sites.length + (l.paths || []).length + appsHere(l).length)))));
 }
 
@@ -945,6 +970,8 @@ function renderFocus() {
   }
 
   parts.push(h('div', { class: 'card focus-hero' }, renderRing(), right));
+  const standingCard = standingAndWallet();
+  if (standingCard) parts.push(standingCard);
   parts.push(soundBar());
 
   const st = S.stats;
@@ -955,6 +982,41 @@ function renderFocus() {
     h('div', { class: 'card kpi' }, h('div', { class: 'kpi-num' }, String(st.streak)), h('div', { class: 'kpi-label' }, icon('flame'), t('today.streak')))));
   if (!active && (S.insights || []).length) parts.push(insightsCard(S.insights.slice(0, 2)));
   return parts;
+}
+
+/** Always-on lists and the earned-time wallet for earn-to-unlock lists. */
+function standingAndWallet() {
+  const always = S.lists.filter((l) => l.always);
+  const earn = S.lists.filter((l) => l.earn);
+  if (!always.length && !earn.length) return null;
+  const w = S.wallet || { balance: 0, ratio: 3 };
+  const rows = [];
+  for (const l of always) {
+    rows.push(h('div', { class: 'stand-row' }, h('span', { class: 'stand-emoji' }, l.emoji),
+      h('div', { class: 'spacer' }, h('b', null, l.name), h('div', { class: 'muted small' }, l.safe ? t('stand.alwaysSafe') : t('stand.always'))),
+      h('span', { class: 'badge kind' }, t('badge.always'))));
+  }
+  for (const l of earn) {
+    const until = (S.passes || {})[l.id] || 0;
+    const open = until > S.now;
+    rows.push(h('div', { class: `stand-row${open ? ' open' : ''}` }, h('span', { class: 'stand-emoji' }, l.emoji),
+      h('div', { class: 'spacer' }, h('b', null, l.name), h('div', { class: 'muted small' }, open ? t('earn.openUntil', { t: fmtClock(until) }) : t('earn.locked'))),
+      open ? h('button', { class: 'btn sm', 'data-fid': `earn-lock-${l.id}`, onclick: () => spend(l.id, 0) }, icon('shield'), t('earn.lock')) : null,
+      [5, 10, 15].map((m) => h('button', { class: 'btn sm', disabled: w.balance < m, 'data-fid': `earn-${m}-${l.id}`, onclick: () => spend(l.id, m) }, t('earn.spend', { m })))));
+  }
+  async function spend(id, m) {
+    const r = await api.spendEarned(id, m);
+    if (r && r.ok === false) toast(t(r.error === 'balance' ? 'earn.notEnough' : 'err.generic'), 'error');
+    else { const st = await api.getState(); if (st) applyState(st); }
+  }
+  return h('div', { class: 'card stand-card', style: { marginTop: '16px' } },
+    h('div', { class: 'card-head' },
+      h('div', { class: 'card-title row', style: { gap: '8px' } }, icon('shield'), earn.length ? t('earn.title') : t('stand.title')),
+      earn.length ? h('div', { class: 'wallet' }, h('b', { 'data-fid': 'wallet' }, String(w.balance)), h('span', null, t('earn.minutes'))) : null),
+    earn.length ? h('p', { class: 'muted small', style: { marginTop: 0 } }, t('earn.sub', { r: w.ratio })) : null,
+    h('div', { class: 'stand-rows' }, rows),
+    always.length && S.coolDown && S.coolDown.state !== 'off'
+      ? h('div', { class: 'muted small cool-note', style: { marginTop: '10px' } }, icon('clock'), ' ', coolDownText(S.coolDown)) : null);
 }
 
 async function smartSetup() {
@@ -1108,7 +1170,7 @@ function renderLists() {
   const grid = h('div', { class: 'list-grid' },
     S.lists.map((l) => h('button', { class: 'card list-card', onclick: () => openListEditor(l.id) },
       h('div', { class: 'lc-emoji' }, l.emoji),
-      h('div', { class: 'lc-name' }, l.name),
+      h('div', { class: 'lc-name' }, l.name, l.always ? h('span', { class: 'badge kind' }, t('badge.always')) : l.earn ? h('span', { class: 'badge kind earn' }, t('badge.earn')) : null),
       h('div', { class: 'lc-meta' }, t('lists.count', { sites: l.sites.length + (l.paths || []).length, apps: appsHere(l).length })),
       l.limitMin > 0 ? h('div', { class: 'lim-bar' }, h('span', { style: { width: `${Math.min(100, ((S.usage[l.id] || 0) / 60 / l.limitMin) * 100)}%` } }),
         h('em', null, t('lim.today', { used: Math.floor((S.usage[l.id] || 0) / 60), max: l.limitMin }))) : null,
@@ -1133,11 +1195,32 @@ async function newList() {
 
 async function addPreset(p) {
   const id = newId();
-  await patchConfig({ lists: [...S.lists, { id, presetId: p.id, name: p.name[S.lang] || p.name.en, emoji: p.emoji, sites: [...p.sites], paths: [...(p.paths || [])], apps: p.apps.map((a) => ({ ...a })) }] });
+  await patchConfig({ lists: [...S.lists, { id, presetId: p.id, name: p.name[S.lang] || p.name.en, emoji: p.emoji, sites: [...p.sites], paths: [...(p.paths || [])], keywords: [...(p.keywords || [])], safe: Boolean(p.safe), always: Boolean(p.always), apps: p.apps.map((a) => ({ ...a })) }] });
 }
 
 function saveList(updated) {
   return patchConfig({ lists: S.lists.map((l) => (l.id === updated.id ? updated : l)) });
+}
+
+function keywordEditor(l, clone, self) {
+  let draft = '';
+  const add = async () => {
+    const words = draft.split(/[,;\n]+/).map((x) => x.trim().toLowerCase()).filter((x) => x.length >= 3);
+    if (!words.length) return;
+    const c = clone();
+    c.keywords = [...new Set([...(c.keywords || []), ...words])];
+    draft = '';
+    await saveList(c);
+    self.render();
+  };
+  return h('div', { class: 'stack', style: { gap: '8px' } },
+    h('div', { class: 'row' }, icon('search'), h('b', null, t('lists.keywords')), h('span', { class: 'muted small' }, String((l.keywords || []).length))),
+    h('div', { class: 'row', style: { flexWrap: 'nowrap' } },
+      h('input', { class: 'input', placeholder: t('lists.keywordAdd'), 'data-fid': 'kw-in', oninput: (e) => { draft = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') add(); } }),
+      h('button', { class: 'btn', 'data-fid': 'kw-add', onclick: add }, t('lists.add'))),
+    h('div', { class: 'muted small' }, t('lists.keywordsSub')),
+    (l.keywords || []).length ? h('div', { class: 'tags' }, l.keywords.map((k) => h('span', { class: 'tag' }, k,
+      h('button', { onclick: async () => { const c = clone(); c.keywords = (c.keywords || []).filter((x) => x !== k); await saveList(c); self.render(); } }, icon('x'))))) : null);
 }
 
 function openListEditor(id) {
@@ -1166,6 +1249,17 @@ function openListEditor(id) {
         h('label', { class: 'field' }, t('lists.name'),
           h('input', { class: 'input', value: l.name, maxlength: 60, onchange: async (e) => { const c = clone(); c.name = e.target.value.trim() || l.name; await saveList(c); self.render(); } })),
         h('div', { class: 'emoji-row' }, EMOJIS.map((em) => h('button', { class: em === l.emoji ? 'on' : '', onclick: async () => { const c = clone(); c.emoji = em; await saveList(c); self.render(); } }, em))),
+        // When is this list blocked: during focus (default), always, or until earned minutes are spent.
+        h('div', { class: 'field' }, t('lists.kind'),
+          h('div', { class: 'seg kind-seg' }, ['normal', 'always', 'earn'].map((k) => {
+            const cur = l.always ? 'always' : l.earn ? 'earn' : 'normal';
+            return h('button', { class: cur === k ? 'on' : '', 'data-fid': `kind-${k}`, onclick: async () => {
+              if (cur === k) return;
+              const c = clone(); c.always = k === 'always'; c.earn = k === 'earn';
+              await saveList(c); self.render();
+            } }, t(`lists.kind_${k}`));
+          })),
+          h('small', { class: 'muted' }, t(`lists.kind_${l.always ? 'always' : l.earn ? 'earn' : 'normal'}Sub`, { r: (S.wallet || {}).ratio || 3 }))),
         h('div', { class: 'row', style: { flexWrap: 'nowrap', alignItems: 'flex-end' } },
           h('label', { class: 'field', style: { flex: 1 } }, t('lim.title'),
             h('select', { class: 'select', onchange: async (e) => { const c = clone(); c.limitMin = Number(e.target.value); await saveList(c); self.render(); } },
@@ -1173,6 +1267,10 @@ function openListEditor(id) {
           l.limitMin > 0 ? h('div', { class: 'muted small', style: { paddingBottom: '10px' } }, t('lim.today', { used: Math.floor((S.usage[l.id] || 0) / 60), max: l.limitMin })) : null),
         h('div', { class: 'muted small' }, t(isMobile() ? 'lim.hintMobile' : 'lim.hint')),
         h('hr', { class: 'sep' }),
+        h('div', { class: 'set-row', style: { padding: '0' } },
+          h('div', { class: 'label' }, t('lists.safe'), h('small', null, t(isMobile() ? 'lists.safeSubMobile' : 'lists.safeSub'))),
+          h('label', { class: 'switch' }, h('input', { type: 'checkbox', 'data-fid': 'safe', checked: Boolean(l.safe), onchange: async (e) => { const c = clone(); c.safe = e.target.checked; await saveList(c); self.render(); } }), h('span'))),
+        isMobile() ? null : keywordEditor(l, clone, self),
         isMobile() ? null : h('div', { class: 'set-row', style: { padding: '0' } },
           h('div', { class: 'label' }, t('lists.allowOnly'), h('small', null, t('lists.allowOnlySub'))),
           h('label', { class: 'switch' }, h('input', { type: 'checkbox', 'data-fid': 'allow-only', checked: Boolean(l.allowOnly), onchange: async (e) => { const c = clone(); c.allowOnly = e.target.checked; await saveList(c); self.render(); } }), h('span'))),
@@ -1496,7 +1594,11 @@ function renderSettings() {
         toggleRow(t('set.notifications'), 'notifications'), toggleRow(t('set.sound'), 'sound')),
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.unlock'))),
         numRow(t('set.patientDelay'), 'patientDelaySec', 10, 3600), numRow(t('set.emergencyDelay'), 'emergencyDelaySec', 1, 120, 60), numRow(t('set.challenge'), 'challengeLength', 30, 600),
-        toggleRow(t(isMobile() ? 'set.toolsMobile' : 'set.tools'), 'strictBlocksTools')),
+        toggleRow(t(isMobile() ? 'set.toolsMobile' : 'set.tools'), 'strictBlocksTools'),
+        h('div', { class: 'set-row' }, h('div', { class: 'label' }, t('earn.ratio'), h('small', null, t('earn.ratioSub'))),
+          h('select', { class: 'select', style: { width: 'auto' }, 'data-fid': 'earn-ratio', onchange: (e) => patchConfig({ settings: { earnRatio: Number(e.target.value) } }) },
+            [2, 3, 4, 6].map((n) => h('option', { value: n, selected: (s.earnRatio || 3) === n }, t('earn.ratioN', { n }))))),
+        coolDownRow()),
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.pin'))),
         h('p', { class: 'muted', style: { marginTop: 0 } }, t('set.pinSub')),
         h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => pinFlow(false) }, icon('key'), s.hasPin ? t('set.pinChange') : t('set.pinSet')),
@@ -1544,6 +1646,19 @@ function accountCard() {
       h('span', { class: 'spacer' }),
       h('button', { class: 'btn sm', onclick: () => act(() => api.cloudReset({ email: f.email }), t('acc.resetSent')) }, t('acc.forgot'))),
     f.note ? h('div', { class: 'coach-note', style: { marginTop: '12px' } }, icon('check'), h('span', null, f.note)) : null);
+}
+
+function coolDownRow() {
+  const cd = S.coolDown || { hours: 0, state: 'off' };
+  const cur = (S.settings && S.settings.coolDownH) || 0;
+  const label = (n) => (n === 0 ? t('cool.off') : t(n === 1 ? 'cool.h' : 'cool.hs', { n }));
+  return h('div', { class: 'set-row cool-row' },
+    h('div', { class: 'label' }, t('cool.title'), h('small', null, cd.state === 'off' ? t('cool.sub') : coolDownText(cd))),
+    h('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' } },
+      cd.state === 'idle' ? h('button', { class: 'btn sm', onclick: async () => { const r = await api.coolDown(true); if (r.state) applyState(r.state); } }, t('cool.start')) : null,
+      cd.state === 'waiting' || cd.state === 'open' ? h('button', { class: 'btn sm', onclick: async () => { const r = await api.coolDown(false); if (r.state) applyState(r.state); } }, t('cool.cancel')) : null,
+      h('select', { class: 'select', style: { width: 'auto' }, 'data-fid': 'cool-h', onchange: (e) => patchConfig({ settings: { coolDownH: Number(e.target.value) } }).then(() => renderAll()) },
+        [0, 1, 24, 72].map((n) => h('option', { value: n, selected: cur === n }, label(n))))));
 }
 
 function aiCard() {

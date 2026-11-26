@@ -5,7 +5,7 @@
 // validates every line, so the worst a rogue process could do with that file
 // is block extra sites — it can never redirect a domain somewhere else.
 const BRAND = require('../shared/brand');
-const { POLICY_ALWAYS_ALLOW } = require('./hosts');
+const { POLICY_ALWAYS_ALLOW, safeSearchLines } = require('./hosts');
 
 const DOMAIN_RE_POSIX = '^[a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)+$';
 
@@ -21,6 +21,7 @@ const MAC = {
 function macHelperSh() {
   return `#!/bin/sh
 # ${BRAND.name} helper - mirrors the user's blocklist into /etc/hosts.
+# halyra-helper-version: ${HELPER_VERSION.mac}
 # Runs as root via launchd. It only writes "0.0.0.0 <domain>" and ":: <domain>"
 # lines for strictly validated domain names, inside its own marked section.
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
@@ -29,21 +30,30 @@ HOSTS="\${HALYRA_HOSTS:-${MAC.hosts}}"
 BEGIN='${BRAND.hostsMarkerBegin}'
 END='${BRAND.hostsMarkerEnd}'
 TMP=$(mktemp "\${TMPDIR:-/tmp}/${BRAND.short}.XXXXXX") || exit 1
-trap 'rm -f "$TMP"' EXIT
+trap 'rm -f "$TMP" "$TMP.d"' EXIT
 [ -f "$HOSTS" ] || : > "$HOSTS"
 awk -v b="$BEGIN" -v e="$END" '$0==b{s=1;next} $0==e{s=0;next} !s{print}' "$HOSTS" > "$TMP" || exit 1
 DOMAINS=""
+SAFE=""
 if [ -f "$RULES" ] && [ ! -L "$RULES" ]; then
   EXP=$(sed -n 's/^# expires=\\([0-9][0-9]*\\)$/\\1/p' "$RULES" | head -n 1)
   NOW=$(date +%s)
   if [ -z "$EXP" ] || [ "$NOW" -lt "$EXP" ]; then
     DOMAINS=$(head -n 20000 "$RULES" | grep -E '${DOMAIN_RE_POSIX}' | sort -u)
+    if grep -qx '# safesearch' "$RULES"; then SAFE=1; fi
   fi
 fi
-if [ -n "$DOMAINS" ]; then
+if [ -n "$DOMAINS" ] || [ -n "$SAFE" ]; then
   {
     echo "$BEGIN"
     for d in $DOMAINS; do printf '0.0.0.0 %s\\n:: %s\\n' "$d" "$d"; done
+    if [ -n "$SAFE" ]; then
+      # Fixed SafeSearch addresses (Google, YouTube, Bing); a blocked host stays blocked.
+      printf '%s\\n' "$DOMAINS" > "$TMP.d"
+      awk 'NR==FNR{b[$1]=1;next} !($2 in b)' "$TMP.d" - <<'SAFEEOF'
+${safeSearchLines().join('\n')}
+SAFEEOF
+    fi
     echo "$END"
   } >> "$TMP"
 fi
@@ -130,7 +140,7 @@ const WIN = {
 };
 
 // Bumped whenever a helper script changes, so the app can ask for a one-time update.
-const HELPER_VERSION = { mac: 1, win: 6 };
+const HELPER_VERSION = { mac: 2, win: 8 };
 
 function winHelperPs1() {
   return `# ${BRAND.name} helper - runs as SYSTEM, mirrors blocklist.txt into the hosts file
@@ -149,12 +159,13 @@ $Re = '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
 $PathRe = '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[a-z0-9._~%/+=,-]*$'
 $PolicyRoots = @('SOFTWARE\\Policies\\Google\\Chrome', 'SOFTWARE\\Policies\\Microsoft\\Edge', 'SOFTWARE\\Policies\\BraveSoftware\\Brave', 'SOFTWARE\\Policies\\Chromium')
 $Placeholder = 'halyra-focus-ended.invalid'
+$SafeLines = @(${safeSearchLines().map((l) => `'${l}'`).join(', ')})
 $script:Cleared = @{}
 $AlwaysAllow = @(${POLICY_ALWAYS_ALLOW.map((x) => `'${x}'`).join(', ')})
 $Utf8 = New-Object System.Text.UTF8Encoding($false)
 
 function Read-Rules {
-  $r = @{ Domains = @(); Paths = @(); Allow = @() }
+  $r = @{ Domains = @(); Paths = @(); Allow = @(); Safe = $false }
   if (-not (Test-Path -LiteralPath $Rules -PathType Leaf)) { return $r }
   $item = Get-Item -LiteralPath $Rules
   if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $r }
@@ -167,10 +178,11 @@ function Read-Rules {
   $r.Domains = @($lines | ForEach-Object { $_.Trim() } | Where-Object { $_ -cmatch $Re } | Sort-Object -Unique)
   $r.Paths = @($lines | Where-Object { $_ -cmatch '^# path ' } | ForEach-Object { $_.Substring(7).Trim() } | Where-Object { $_ -cmatch $PathRe } | Sort-Object -Unique)
   $r.Allow = @($lines | Where-Object { $_ -cmatch '^# allow ' } | ForEach-Object { $_.Substring(8).Trim() } | Where-Object { $_ -cmatch $Re } | Sort-Object -Unique)
+  $r.Safe = [bool]($lines | Where-Object { $_ -ceq '# safesearch' } | Select-Object -First 1)
   return $r
 }
 
-function Sync-Hosts($domains) {
+function Sync-Hosts($domains, $safe) {
   $old = ''
   if (Test-Path -LiteralPath $HostsFile) { $old = [IO.File]::ReadAllText($HostsFile) }
   $kept = New-Object System.Collections.Generic.List[string]
@@ -181,9 +193,10 @@ function Sync-Hosts($domains) {
     if (-not $skip) { $kept.Add($l) }
   }
   while ($kept.Count -gt 0 -and $kept[$kept.Count - 1] -eq '') { $kept.RemoveAt($kept.Count - 1) }
-  if ($domains.Count -gt 0) {
+  if ($domains.Count -gt 0 -or $safe) {
     $kept.Add($Begin)
     foreach ($d in $domains) { $kept.Add("0.0.0.0 $d"); $kept.Add(":: $d") }
+    if ($safe) { foreach ($l in $SafeLines) { $h = $l.Split(' ')[1]; if ($domains -notcontains $h) { $kept.Add($l) } } }
     $kept.Add($End)
   }
   $new = ($kept -join "\`r\`n") + "\`r\`n"
@@ -240,6 +253,40 @@ function Set-ListPolicy([string]$path, [string[]]$want, $owned) {
   return ,$mine
 }
 
+# SafeSearch as browser policy too (works even if a browser uses its own DNS).
+# Only values we set are ever changed; an ended one becomes 0 for a few minutes
+# (browsers keep deleted policies until restart), then it is removed.
+function Set-DwordPolicy([string]$root, [string]$name, [int]$val, [bool]$on, $owned, $now) {
+  $hklm = [Microsoft.Win32.Registry]::LocalMachine
+  $id = "$root|$name"
+  $k = $hklm.OpenSubKey($root, $true)
+  $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+  if ($on) {
+    if (-not $k) { $k = $hklm.CreateSubKey($root) }
+    $cur = $k.GetValue($name, $null)
+    if ($cur -eq $null -or $owned.ContainsKey($id)) {
+      if ($cur -ne $val) { $k.SetValue($name, $val, [Microsoft.Win32.RegistryValueKind]::DWord); $script:PolicyChanged = $true }
+      $now.Add($id)
+    }
+  } elseif ($k -and $owned.ContainsKey($id)) {
+    $cur = $k.GetValue($name, $null)
+    if ($cur -ne $null -and $script:Once) {
+      $k.DeleteValue($name, $false)
+      $script:PolicyChanged = $true
+    } elseif ($cur -ne $null -and $cur -ne 0) {
+      $k.SetValue($name, 0, [Microsoft.Win32.RegistryValueKind]::DWord)
+      $script:Cleared[$id] = $ts
+      $script:PolicyChanged = $true
+      $now.Add($id)
+    } elseif ($cur -ne $null) {
+      $since = 0
+      if ($script:Cleared.ContainsKey($id)) { $since = $script:Cleared[$id] }
+      if (($ts - $since) -lt 300) { $now.Add($id) } else { $k.DeleteValue($name, $false); $script:PolicyChanged = $true }
+    }
+  }
+  if ($k) { $k.Close() }
+}
+
 function Sync-Policy($r) {
   $script:PolicyChanged = $false
   $block = New-Object System.Collections.Generic.List[string]
@@ -265,6 +312,9 @@ function Sync-Policy($r) {
   foreach ($root in $PolicyRoots) {
     foreach ($v in (Set-ListPolicy "$root\\URLBlocklist" $block.ToArray() $owned)) { $now.Add("$root\\URLBlocklist|$v") }
     foreach ($v in (Set-ListPolicy "$root\\URLAllowlist" $allow.ToArray() $owned)) { $now.Add("$root\\URLAllowlist|$v") }
+    Set-DwordPolicy $root 'ForceGoogleSafeSearch' 1 ([bool]$r.Safe) $owned $now
+    Set-DwordPolicy $root 'ForceYouTubeRestrict' 2 ([bool]$r.Safe) $owned $now
+    if ($root -like '*Edge') { Set-DwordPolicy $root 'ForceBingSafeSearch' 2 ([bool]$r.Safe) $owned $now }
     # Keep the (empty) browser key itself: Chrome/Edge only notice live policy
     # changes under a key that already existed when they started.
     $rk = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey($root)
@@ -298,11 +348,12 @@ function Invoke-PolicyRefresh {
 
 function Sync-All {
   $r = Read-Rules
-  Sync-Hosts $r.Domains
+  Sync-Hosts $r.Domains $r.Safe
   Sync-Policy $r
 }
 
-if ($args -contains '-Once') { Sync-All; exit 0 }
+$script:Once = $args -contains '-Once'
+if ($script:Once) { Sync-All; exit 0 }
 
 $last = $null
 $tick = 0

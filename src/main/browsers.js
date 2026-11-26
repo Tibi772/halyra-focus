@@ -42,9 +42,13 @@ const JXA_SWEEP = `
 ${rules.hostOf.toString()}
 ${rules.inSet.toString()}
 ${rules.urlBlocked.toString()}
+const WORD = /[^\\p{L}\\p{N}]+/gu;
+${rules.words.toString()}
+${rules.keywordHit.toString()}
 function run(argv) {
   const cfg = JSON.parse(argv[0]);
   const r = { hosts: new Set(cfg.hosts), paths: cfg.paths, allow: cfg.allow };
+  const kw = cfg.keywords || [];
   const out = { hits: [], denied: [], tabs: 0, running: [] };
   let front = '';
   if (cfg.frontOnly) {
@@ -65,13 +69,17 @@ function run(argv) {
       for (let wi = 0; wi < n && wi < 60; wi++) {
         let urls = all ? all[wi] : null;
         if (!urls) { try { urls = app.windows[wi].tabs.url(); } catch (e) { continue; } }
+        let titles = [];
+        if (kw.length) { try { titles = app.windows[wi].tabs.title(); } catch (e) { try { titles = app.windows[wi].tabs.name(); } catch (e2) { titles = []; } } }
         out.tabs += urls.length;
         for (let ti = 0; ti < urls.length; ti++) {
           const u = urls[ti];
           if (!u || u.indexOf(cfg.blockUrl) === 0) continue;
-          const hit = urlBlocked(u, r);
+          let hit = urlBlocked(u, r);
+          let k = null;
+          if (!hit && kw.length && /^https?:/i.test(u)) { k = keywordHit(u + ' ' + (titles[ti] || ''), kw); if (k) hit = hostOf(u) ? hostOf(u).host : k; }
           if (!hit) continue;
-          const to = cfg.blockUrl + '?site=' + encodeURIComponent(hit) + '&u=' + encodeURIComponent(u.slice(0, 1500));
+          const to = cfg.blockUrl + '?site=' + encodeURIComponent(hit) + (k ? '&k=' + encodeURIComponent(k) : '') + '&u=' + encodeURIComponent(u.slice(0, 1500));
           try { app.windows[wi].tabs[ti].url = to; out.hits.push([b, hit]); } catch (e) { out.hits.push([b, hit, String(e.errorNumber || 'x')]); }
         }
         if (cfg.frontOnly) break;
@@ -108,7 +116,9 @@ public static class HalyraFg {
 }
 "@
 $browsers = @('chrome', 'msedge', 'brave', 'chromium')
+$all = @('chrome', 'msedge', 'brave', 'chromium', 'firefox', 'opera', 'vivaldi', 'arc', 'librewolf', 'waterfox', 'zen')
 $stems = @()
+$keys = @()
 $done = @{}
 $in = [Console]::In
 $next = $in.ReadLineAsync()
@@ -116,11 +126,14 @@ while ($true) {
   if ($next.IsCompleted) {
     $line = $next.Result
     if ($null -eq $line) { exit 0 }
-    $stems = @($line.Split(',') | Where-Object { $_.Length -ge 4 })
+    $parts = $line.Split('|')
+    $stems = @($parts[0].Split(',') | Where-Object { $_.Length -ge 4 })
+    $keys = @()
+    if ($parts.Length -gt 1) { $keys = @($parts[1].Split(',') | Where-Object { $_.Length -ge 3 }) }
     $done = @{}
     $next = $in.ReadLineAsync()
   }
-  if ($stems.Count -gt 0) {
+  if ($stems.Count -gt 0 -or $keys.Count -gt 0) {
     $h = [HalyraFg]::GetForegroundWindow()
     $sb = New-Object System.Text.StringBuilder 512
     [void][HalyraFg]::GetWindowText($h, $sb, 512)
@@ -128,7 +141,21 @@ while ($true) {
     [uint32]$procId = 0
     [void][HalyraFg]::GetWindowThreadProcessId($h, [ref]$procId)
     $p = Get-Process -Id $procId
-    if ($p -and ($browsers -contains $p.ProcessName.ToLower()) -and $title -and -not $done.ContainsKey($title)) {
+    $pn = ''
+    if ($p) { $pn = $p.ProcessName.ToLower() }
+    if ($title -and ($all -contains $pn) -and $keys.Count -gt 0) {
+      $words = ' ' + (($title.ToLower() -replace '[^\\p{L}\\p{N}]+', ' ').Trim()) + ' '
+      foreach ($k in $keys) {
+        if ($words.Contains(' ' + $k + ' ')) {
+          [System.Windows.Forms.SendKeys]::SendWait('^w')
+          [Console]::Out.WriteLine('close ' + $k)
+          [Console]::Out.Flush()
+          Start-Sleep -Milliseconds 600
+          break
+        }
+      }
+    }
+    if ($p -and ($browsers -contains $pn) -and $title -and -not $done.ContainsKey($title)) {
       $low = $title.ToLower()
       foreach ($s in $stems) {
         if ($low -match ('(^|[^a-z0-9])' + [regex]::Escape($s) + '([^a-z0-9]|$)')) {
@@ -146,11 +173,11 @@ while ($true) {
 `;
 
 class WinWatcher {
-  constructor(log) { this.proc = null; this.last = null; this.log = log || (() => {}); this.reloads = 0; }
+  constructor(log) { this.proc = null; this.last = null; this.log = log || (() => {}); this.reloads = 0; this.closes = 0; this.onClose = null; }
 
-  set(stems) {
-    const line = stems.join(',');
-    if (!stems.length) { this.stop(); return; }
+  set(stems, keys = []) {
+    const line = `${stems.join(',')}|${keys.map((k) => k.replace(/[,|]/g, ' ')).join(',')}`;
+    if (!stems.length && !keys.length) { this.stop(); return; }
     if (!this.proc) this.start();
     if (this.proc && line !== this.last) {
       try { this.proc.stdin.write(`${line}\n`); this.last = line; } catch (_) { this.stop(); }
@@ -163,7 +190,12 @@ class WinWatcher {
       this.proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', enc], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     } catch (_) { this.proc = null; return; }
     this.last = null;
-    this.proc.stdout.on('data', (d) => { for (const l of String(d).split(/\r?\n/)) if (l.startsWith('reload')) { this.reloads += 1; this.log(l); } });
+    this.proc.stdout.on('data', (d) => {
+      for (const l of String(d).split(/\r?\n/)) {
+        if (l.startsWith('reload')) { this.reloads += 1; this.log(l); }
+        if (l.startsWith('close ')) { this.closes += 1; this.log(l); if (this.onClose) this.onClose(l.slice(6)); }
+      }
+    });
     this.proc.on('exit', () => { this.proc = null; this.last = null; });
     this.proc.stdin.on('error', () => {});
   }
@@ -224,8 +256,8 @@ class BrowserGuard {
    * Windows helper is installed (policy can be applied).
    */
   update(r, { blockUrl, policyOk = false, now = Date.now() } = {}) {
-    const active = Boolean(r && (r.sites.length || r.paths.length || (r.allow && r.allow.length)));
-    const sig = active ? JSON.stringify([r.sites, r.paths, r.allow]) : '';
+    const active = Boolean(r && (r.sites.length || r.paths.length || (r.allow && r.allow.length) || (r.keywords && r.keywords.length)));
+    const sig = active ? JSON.stringify([r.sites, r.paths, r.allow, r.keywords]) : '';
     const changed = sig !== this.sig;
     this.sig = sig;
     if (changed) { this.denied.clear(); this.waiting.clear(); }
@@ -236,7 +268,8 @@ class BrowserGuard {
       this.sweep(r, blockUrl, full, now);
     } else if (IS_WIN && this.watcher) {
       const stems = active && policyOk && !(r.allow && r.allow.length) ? titleStems(r.sites, []) : [];
-      this.watcher.set(stems);
+      // Keyword blocking closes the tab whose title shows the word (works without the helper too).
+      this.watcher.set(stems, active ? (r.keywords || []) : []);
     }
   }
 
@@ -244,7 +277,7 @@ class BrowserGuard {
     this.busy = true;
     if (full) this.lastFull = now;
     this.lastFront = now;
-    const base = { hosts: expandHosts(r.sites).slice(0, 5000), paths: r.paths, allow: r.allow && r.allow.length ? r.allow : null, blockUrl };
+    const base = { hosts: expandHosts(r.sites).slice(0, 5000), paths: r.paths, allow: r.allow && r.allow.length ? r.allow : null, keywords: r.keywords || [], blockUrl };
     try {
       if (full) {
         // One osascript per browser, so a browser whose permission dialog is still
@@ -287,6 +320,7 @@ class BrowserGuard {
       running: [...this.running],
       blockedTabs: this.blockedTabs,
       reloads: this.watcher ? this.watcher.reloads : 0,
+      closes: this.watcher ? this.watcher.closes : 0,
       lastHit: this.lastHit,
       lastError: this.lastError,
     };

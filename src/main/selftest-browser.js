@@ -119,4 +119,15 @@ function regList(key) {
   });
 }
 
-module.exports = { findBrowser, launch, pages, visit, screenshot, close, regList, attach };
+/** A DWORD value under a registry key, or null. */
+function regDword(key, name) {
+  return new Promise((resolve) => {
+    execFile('reg.exe', ['query', key, '/v', name], { windowsHide: true }, (err, stdout) => {
+      if (err) { resolve(null); return; }
+      const m = /REG_DWORD\s+0x([0-9a-f]+)/i.exec(String(stdout));
+      resolve(m ? parseInt(m[1], 16) : null);
+    });
+  });
+}
+
+module.exports = { findBrowser, launch, pages, visit, screenshot, close, regList, regDword, attach };

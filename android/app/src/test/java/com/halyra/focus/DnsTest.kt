@@ -69,6 +69,27 @@ class DnsTest {
         assertEquals(0, nx[7].toInt())
     }
 
+    @Test fun safeSearchAddresses() {
+        assertArrayEquals(addr(216, 239, 38, 120), Dns.safeAddress("www.google.com"))
+        assertArrayEquals(addr(216, 239, 38, 120), Dns.safeAddress("google.hu"))
+        assertArrayEquals(addr(216, 239, 38, 120), Dns.safeAddress("www.google.co.uk"))
+        assertArrayEquals(addr(216, 239, 38, 120), Dns.safeAddress("m.youtube.com"))
+        assertArrayEquals(addr(204, 79, 197, 220), Dns.safeAddress("www.bing.com"))
+        assertEquals(null, Dns.safeAddress("mail.google.com"))
+        assertEquals(null, Dns.safeAddress("googleusercontent.com"))
+        assertEquals(null, Dns.safeAddress("example.org"))
+        val p = query("www.google.com", Dns.TYPE_A)
+        val q = Dns.parse(p, p.size)!!
+        val ans = Dns.safeAnswer(q, Dns.safeAddress(q.name)!!)
+        assertEquals(1, ans[7].toInt())
+        assertArrayEquals(addr(216, 239, 38, 120), ans.copyOfRange(ans.size - 4, ans.size))
+        val p6 = query("www.google.com", Dns.TYPE_AAAA)
+        val q6 = Dns.parse(p6, p6.size)!!
+        val none = Dns.safeAnswer(q6, Dns.safeAddress(q6.name)!!)
+        assertEquals(0, none[7].toInt()) // NODATA → the browser uses the IPv4 answer
+        assertEquals(0, none[3].toInt() and 0x0F)
+    }
+
     @Test fun replyPacketIsValidIpv4() {
         val p = query("reddit.com", Dns.TYPE_A)
         val q = Dns.parse(p, p.size)!!

@@ -51,6 +51,26 @@ function applySection(text, hosts) {
   return stripSection(text) + buildSection(hosts);
 }
 
+// SafeSearch the way Google, Microsoft and YouTube document it for networks:
+// their search hosts answer from fixed "safe" addresses. Fixed table, written by
+// the helpers only when the blocklist file says "# safesearch".
+const GOOGLE_TLDS = ['com', 'hu', 'de', 'at', 'co.uk', 'fr', 'it', 'es', 'nl', 'pl', 'ro', 'sk', 'cz', 'ch', 'be', 'se', 'no', 'dk', 'fi', 'ie', 'pt', 'gr', 'hr', 'rs', 'si', 'ua', 'ca', 'com.au', 'co.in', 'com.br', 'com.mx', 'co.jp', 'ru', 'com.tr'];
+const SAFE_SEARCH = [
+  // forcesafesearch.google.com
+  ['216.239.38.120', GOOGLE_TLDS.flatMap((t) => [`www.google.${t}`, `google.${t}`])],
+  ['2001:4860:4802:32::78', GOOGLE_TLDS.flatMap((t) => [`www.google.${t}`, `google.${t}`])],
+  // restrict.youtube.com (strict Restricted Mode)
+  ['216.239.38.120', ['www.youtube.com', 'm.youtube.com', 'youtubei.googleapis.com', 'youtube.googleapis.com', 'www.youtube-nocookie.com']],
+  // strict.bing.com
+  ['204.79.197.220', ['www.bing.com', 'bing.com']],
+];
+/** "ip host" lines for SafeSearch. */
+function safeSearchLines() {
+  const out = [];
+  for (const [ip, hosts] of SAFE_SEARCH) for (const h of hosts) out.push(`${ip} ${h}`);
+  return out;
+}
+
 // Part-of-site rules the Windows helper may put into browser policy: host + a plain path.
 const POLICY_PATH_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+\/[a-z0-9._~%/+=,-]*$/;
 
@@ -62,24 +82,26 @@ const POLICY_PATH_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z
  * older helpers simply ignore those comment lines.
  */
 function blocklistFile(hosts, expiresAt, extra = {}) {
+  const safe = extra.safe === true;
   const valid = [...new Set(hosts)].filter((h) => DOMAIN_RE.test(h)).sort();
   const paths = [...new Set(extra.paths || [])].filter((p) => POLICY_PATH_RE.test(p)).sort();
   const allow = [...new Set(extra.allow || [])].filter((h) => DOMAIN_RE.test(h)).sort();
-  const any = valid.length || paths.length || allow.length;
+  const any = valid.length || paths.length || allow.length || safe;
   const exp = any && expiresAt ? `# expires=${Math.ceil(expiresAt / 1000)}\n` : '';
-  const lines = [...valid, ...paths.map((p) => `# path ${p}`), ...allow.map((h) => `# allow ${h}`)];
+  const lines = [...valid, ...paths.map((p) => `# path ${p}`), ...allow.map((h) => `# allow ${h}`), ...(safe ? ['# safesearch'] : [])];
   return `# ${BRAND.name} blocklist - written by the app, applied by the helper\n${exp}${lines.join('\n')}${lines.length ? '\n' : ''}`;
 }
 
 /** What the blocklist file asks for: { hosts, paths, allow, expiresAt } (mirrors the helpers' parsing). */
 function parseBlocklist(text) {
-  const out = { hosts: [], paths: [], allow: [], expiresAt: null };
+  const out = { hosts: [], paths: [], allow: [], expiresAt: null, safe: false };
   for (const raw of String(text).split(/\r?\n/)) {
     const l = raw.trim();
     let m;
     if ((m = /^# expires=(\d+)$/.exec(l))) out.expiresAt = Number(m[1]) * 1000;
     else if ((m = /^# path (\S+)$/.exec(l)) && POLICY_PATH_RE.test(m[1])) out.paths.push(m[1]);
     else if ((m = /^# allow (\S+)$/.exec(l)) && DOMAIN_RE.test(m[1])) out.allow.push(m[1]);
+    else if (l === '# safesearch') out.safe = true;
     else if (DOMAIN_RE.test(l)) out.hosts.push(l);
   }
   return out;
@@ -94,4 +116,4 @@ function policyFromBlocklist(b) {
 }
 const POLICY_ALWAYS_ALLOW = ['127.0.0.1', 'localhost', 'chrome://*', 'edge://*', 'brave://*'];
 
-module.exports = { DOMAIN_RE, POLICY_PATH_RE, POLICY_ALWAYS_ALLOW, stripSection, hasSection, sectionHosts, buildSection, applySection, blocklistFile, parseBlocklist, policyFromBlocklist };
+module.exports = { SAFE_SEARCH, safeSearchLines, DOMAIN_RE, POLICY_PATH_RE, POLICY_ALWAYS_ALLOW, stripSection, hasSection, sectionHosts, buildSection, applySection, blocklistFile, parseBlocklist, policyFromBlocklist };

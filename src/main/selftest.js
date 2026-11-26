@@ -256,6 +256,48 @@ module.exports = async function selftest(ctx) {
     await shot('10-stats-forest');
     await js("document.querySelectorAll('.nav-btn')[0].click(); true");
 
+    // ---------------------------------------------------------------- always-on shield: no focus, SafeSearch, keywords
+    const SHIELD_SITE = 'example.net';
+    const KW = 'halyraselftestword';
+    await ctx.setConfig({ lists: [...ctx.config().lists, { id: 'shield', name: 'Shield', emoji: '🛡️', sites: [SHIELD_SITE], paths: [], apps: [], keywords: [KW], always: true, safe: true }] });
+    log('Always-on list blocks with no focus running', !ctx.evaluate().blocking && ctx.evaluate().standing.any);
+    const hostsHas = (line) => fs.readFileSync(ctx.platform.hostsPath(), 'utf8').includes(line);
+    log('Always-on site written to the hosts file', await waitFor(() => hostsHas(`0.0.0.0 ${SHIELD_SITE}`), 30000));
+    log('SafeSearch mapping written to the hosts file', await waitFor(() => hostsHas('216.239.38.120 www.google.com') && hostsHas('204.79.197.220 www.bing.com'), 30000));
+    const safeG = await waitFor(async () => (await lookupAll('www.google.com')).includes('216.239.38.120'), 20000, 800);
+    log('www.google.com resolves to Google SafeSearch', safeG, (await lookupAll('www.google.com')).join(' '));
+    const safeY = await waitFor(async () => (await lookupAll('www.youtube.com')).includes('216.239.38.120'), 20000, 800);
+    log('www.youtube.com resolves to YouTube Restricted Mode', safeY, (await lookupAll('www.youtube.com')).join(' '));
+    log('Google SafeSearch answers on 443', await tryConnect('www.google.com', 443));
+    if (isWin) {
+      const edge = 'HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge';
+      const pol = await waitFor(async () => (await bt.regDword(edge, 'ForceGoogleSafeSearch')) === 1 && (await bt.regDword(edge, 'ForceBingSafeSearch')) === 2, 20000, 1000);
+      log('SafeSearch browser policy set for Edge / Chrome', pol, `google=${await bt.regDword(edge, 'ForceGoogleSafeSearch')} youtube=${await bt.regDword(edge, 'ForceYouTubeRestrict')} bing=${await bt.regDword(edge, 'ForceBingSafeSearch')}`);
+    }
+    log(`${SHIELD_SITE} is blocked by the always-on list`, await waitFor(async () => !(await tryConnect(SHIELD_SITE, 443)), 20000, 1000));
+    if (br && isMac) {
+      const gs = ctx.browserState() || {};
+      if ((gs.denied || []).length || (gs.waiting || []).length) {
+        console.log('[selftest] note  browser control not permitted — keyword tab check skipped');
+      } else {
+        await bt.visit(br, `https://example.com/?q=${KW}`, 2000);
+        const kwHit = await waitFor(async () => (await bt.pages(br)).some((t) => /\/blocked/.test(t.url) && t.url.includes(`k=${KW}`)), 30000, 1000);
+        log('A page with a blocked keyword is sent to the block page', kwHit, JSON.stringify((await bt.pages(br)).map((t) => t.url)));
+      }
+    }
+    await js("document.querySelectorAll('.nav-btn')[0].click(); true");
+    await sleep(400);
+    log('Always-on card shows in the focus view', await js("!!document.querySelector('.stand-card')"));
+    await shot('11-always-on');
+    await ctx.setConfig({ lists: ctx.config().lists.filter((l) => l.id !== 'shield') });
+    log('Removing the always-on list cleans the hosts file', await waitFor(() => !hostsHas(SHIELD_SITE) && !hostsHas('216.239.38.120'), 30000));
+    if (isWin) {
+      const edge = 'HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge';
+      log('SafeSearch browser policy is switched off again', await waitFor(async () => !(await bt.regDword(edge, 'ForceGoogleSafeSearch')), 20000, 1000));
+    }
+    const normalG = await waitFor(async () => (await lookupAll('www.google.com')).some((a) => a !== '216.239.38.120' && !a.startsWith('ERR') && a !== '2001:4860:4802:32::78'), 20000, 800);
+    log('www.google.com resolves normally again', normalG, (await lookupAll('www.google.com')).join(' '));
+
     // ---------------------------------------------------------------- remove helper
     const un = await ctx.platform.uninstallHelper('selftest', { nonInteractive: true });
     log('Helper uninstalls cleanly', un.ok && !ctx.platform.helperInstalled());

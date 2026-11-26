@@ -43,6 +43,20 @@ class PlanTest {
         assertFalse("com.google.android.youtube" in skipped.activeAt(now, mapOf("com.google.android.youtube" to 5000L)).packages)
     }
 
+    @Test fun standingWindowsBlockWithoutEndOrFocus() {
+        val forever = 8_640_000_000_000_000L
+        val sj = """{"v":1,"generatedAt":$now,"windows":[{"from":$now,"to":$forever,"mode":"flexible","packages":[],"domains":["pornhub.com"],"ids":["list:adult"],"names":["Felnőtt tartalom"],"safe":true,"standing":true}],"limits":[],"skips":{}}"""
+        val p = Plan.parse(sj)!!
+        val a = p.activeAt(now + 400L * 24 * 3600 * 1000, emptyMap())
+        assertTrue("pornhub.com" in a.domains)
+        assertTrue(a.safe)
+        assertTrue(a.any)
+        assertFalse(a.focus)
+        assertNull(a.endsAt)
+        assertNull(a.mode)
+        assertTrue(p.hasFuture(now))
+    }
+
     @Test fun rejectsGarbage() {
         assertNull(Plan.parse("not json"))
         assertNull(Plan.parse(""))

@@ -15,7 +15,7 @@ class Plan(
     val skips: Map<String, Long>,
     val block: JSONObject?,
 ) {
-    class Window(val from: Long, val to: Long, val mode: String, val packages: Set<String>, val domains: Set<String>, val names: List<String>)
+    class Window(val from: Long, val to: Long, val mode: String, val packages: Set<String>, val domains: Set<String>, val names: List<String>, val safe: Boolean = false, val standing: Boolean = false)
     class Limit(val id: String, val name: String, val limitSec: Long, val mode: String, val packages: Set<String>, val domains: Set<String>)
 
     class Active(
@@ -25,8 +25,10 @@ class Plan(
         val mode: String?,
         val limitPackages: Set<String>,
         val names: List<String>,
+        val safe: Boolean = false,
+        val focus: Boolean = true,
     ) {
-        val any get() = packages.isNotEmpty() || domains.isNotEmpty()
+        val any get() = packages.isNotEmpty() || domains.isNotEmpty() || safe
     }
 
     /** Package names that daily limits need usage numbers for. */
@@ -44,12 +46,23 @@ class Plan(
         val names = ArrayList<String>()
         var ends = 0L
         var mode: String? = null
+        var safe = false
+        var focus = false
         for (w in windows) {
             if (w.from <= now && now < w.to) {
                 pk.addAll(w.packages); dm.addAll(w.domains); names.addAll(w.names)
+                if (w.safe) safe = true
+                if (w.standing) continue // always-on lists: no end time, no mode
+                focus = true
                 ends = maxOf(ends, w.to)
                 mode = stricter(mode, w.mode)
             }
+        }
+        // A focus window is split where an always-on/earn list changes; follow the chain to the real end.
+        var moved = ends > 0
+        while (moved) {
+            moved = false
+            for (w in windows) if (!w.standing && w.from <= ends && w.to > ends) { ends = w.to; moved = true }
         }
         for (l in limits) {
             val skip = skips[l.id]
@@ -57,11 +70,12 @@ class Plan(
             val used = l.packages.sumOf { usageSec[it] ?: 0L }
             if (used >= l.limitSec) {
                 pk.addAll(l.packages); dm.addAll(l.domains); limPk.addAll(l.packages); names.add(l.name)
+                focus = true
                 ends = maxOf(ends, nextMidnight(now))
                 mode = stricter(mode, l.mode)
             }
         }
-        return Active(pk, dm, if (ends > 0) ends else null, mode, limPk, names)
+        return Active(pk, dm, if (ends > 0) ends else null, mode, limPk, names, safe, focus)
     }
 
     companion object {
@@ -89,7 +103,7 @@ class Plan(
                     Window(
                         w.optLong("from"), w.optLong("to"), w.optString("mode", "flexible"),
                         strings(w.optJSONArray("packages")).toSet(), strings(w.optJSONArray("domains")).map { it.lowercase() }.toSet(),
-                        strings(w.optJSONArray("names")),
+                        strings(w.optJSONArray("names")), w.optBoolean("safe", false), w.optBoolean("standing", false),
                     )
                 }
                 val ls = o.optJSONArray("limits") ?: JSONArray()

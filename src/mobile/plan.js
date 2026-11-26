@@ -9,6 +9,7 @@ const { expandHosts } = require('../core/domains');
 // Weekly schedules repeat, so the plan covers five weeks ahead: blocking keeps
 // working even if the app isn't opened for a long time.
 const HORIZON_MS = 35 * 24 * 3600 * 1000;
+const FOREVER = 8.64e15; // max JS date; fits a Kotlin Long
 // Opening these during a strict block could undo it (settings → revoke
 // permissions / uninstall). Mirrors the desktop "block tamper tools" option.
 const TAMPER = ['com.android.settings', 'com.google.android.packageinstaller', 'com.android.packageinstaller', 'com.android.vending'];
@@ -16,7 +17,7 @@ const TAMPER = ['com.android.settings', 'com.google.android.packageinstaller', '
 const packagesOf = (apps) => [...new Set(apps.flatMap((a) => a.android || []))].sort();
 
 function windowKey(w) {
-  return `${w.mode}|${w.packages.join(',')}|${w.domains.join(',')}|${w.ids.join(',')}`;
+  return `${w.mode}|${w.packages.join(',')}|${w.domains.join(',')}|${w.ids.join(',')}|${w.safe ? 1 : 0}|${w.standing ? 1 : 0}`;
 }
 
 /** Times at which the evaluation can change after t. */
@@ -28,6 +29,7 @@ function nextChange(config, ev, t) {
   }
   if (ev.next && ev.next.at) c.push(ev.next.at);
   for (const v of Object.values(config.skips || {})) if (typeof v === 'number') c.push(v);
+  for (const v of Object.values(config.passes || {})) if (typeof v === 'number') c.push(v);
   const future = c.filter((x) => x > t);
   return future.length ? Math.min(...future) : null;
 }
@@ -41,23 +43,39 @@ function buildPlan(config, nowMs, opts = {}) {
     // Limits are usage-based and handled natively, so they're left out here.
     const ev = engine.evaluate(config, t);
     const nx = nextChange(config, ev, t) || until;
-    if (ev.blocking) {
-      const packages = packagesOf(ev.apps);
-      if (ev.mode === 'strict' && strictTools) packages.push(...TAMPER.filter((p) => !packages.includes(p)));
+    const st = ev.standing || { any: false };
+    if (ev.blocking || st.any) {
+      // Focus blocks + standing ("always" / locked "earn") lists.
+      const enf = engine.enforced(ev);
+      const packages = packagesOf(enf.apps);
+      if (ev.blocking && ev.mode === 'strict' && strictTools) packages.push(...TAMPER.filter((p) => !packages.includes(p)));
       const w = {
         from: t,
         to: Math.min(nx, until),
-        mode: ev.mode,
+        mode: ev.blocking ? ev.mode : 'flexible',
         packages,
-        domains: expandHosts(ev.sites),
-        ids: ev.sources.filter((s) => s.blocking).map((s) => s.id).sort(),
-        names: ev.sources.filter((s) => s.blocking).map((s) => s.name || '').filter(Boolean),
+        domains: expandHosts(enf.sites),
+        ids: [...ev.sources.filter((s) => s.blocking).map((s) => s.id), ...(st.listIds || []).map((id) => `list:${id}`)].sort(),
+        names: [...ev.sources.filter((s) => s.blocking).map((s) => s.name || ''), ...(st.names || [])].filter(Boolean),
+        safe: enf.safe,
+        standing: !ev.blocking, // always-on / earn lists only: no end time, no mode on the block screen
       };
       const prev = windows[windows.length - 1];
       if (prev && prev.to === w.from && windowKey(prev) === windowKey(w)) prev.to = w.to;
       else windows.push(w);
     }
     t = nx;
+  }
+  // Always-on and earn lists keep working past the horizon even if the app isn't opened again.
+  const far = engine.standing(config, until);
+  if (far.any) {
+    const w = {
+      from: until, to: FOREVER, mode: 'flexible', packages: packagesOf(far.apps), domains: expandHosts(far.sites),
+      ids: (far.listIds || []).map((id) => `list:${id}`).sort(), names: (far.names || []).filter(Boolean), safe: far.safe, standing: true,
+    };
+    const prev = windows[windows.length - 1];
+    if (prev && prev.to === w.from && windowKey(prev) === windowKey(w)) prev.to = w.to;
+    else if (w.packages.length || w.domains.length || w.safe) windows.push(w);
   }
   const limits = (config.lists || []).filter((l) => l.limitMin > 0).map((l) => ({
     id: `limit:${l.id}`,
@@ -86,14 +104,22 @@ function activeAt(plan, nowMs, usageSecByPackage = {}) {
   const domains = new Set();
   let endsAt = 0;
   let mode = null;
+  let safe = false;
   const rank = engine.MODE_RANK;
   for (const w of plan.windows || []) {
     if (w.from <= nowMs && nowMs < w.to) {
       w.packages.forEach((p) => packages.add(p));
       w.domains.forEach((d) => domains.add(d));
+      if (w.safe) safe = true;
+      if (w.standing) continue;
       endsAt = Math.max(endsAt, w.to);
       if (!mode || rank[w.mode] > rank[mode]) mode = w.mode;
     }
+  }
+  // A focus window is split where an always-on/earn list changes; follow the chain to the real end.
+  for (let moved = endsAt > 0; moved;) {
+    moved = false;
+    for (const w of plan.windows || []) if (!w.standing && w.from <= endsAt && w.to > endsAt) { endsAt = w.to; moved = true; }
   }
   for (const l of plan.limits || []) {
     if ((plan.skips || {})[l.id] > nowMs) continue;
@@ -105,7 +131,7 @@ function activeAt(plan, nowMs, usageSecByPackage = {}) {
       if (!mode || rank[l.mode] > rank[mode]) mode = l.mode;
     }
   }
-  return { packages: [...packages], domains: [...domains], endsAt: endsAt || null, mode };
+  return { packages: [...packages], domains: [...domains], endsAt: endsAt || null, mode, safe };
 }
 
-module.exports = { buildPlan, activeAt, TAMPER, HORIZON_MS };
+module.exports = { buildPlan, activeAt, TAMPER, HORIZON_MS, FOREVER };

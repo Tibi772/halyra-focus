@@ -93,8 +93,12 @@ function evaluate(config, nowMs, { usage } = {}) {
   const allow = new Set();
   let allowOnly = false;
   const apps = new Map();
+  const keywords = new Set();
+  let safe = false;
   for (const list of config.lists || []) {
     if (!listIds.has(list.id)) continue;
+    for (const k of list.keywords || []) keywords.add(k);
+    if (list.safe) safe = true;
     if (list.allowOnly) {
       // "Only these sites": the list names what stays reachable in the browser
       // (its apps are still blocked). A list with no sites does nothing here.
@@ -130,9 +134,122 @@ function evaluate(config, nowMs, { usage } = {}) {
     paths: [...paths].sort(),
     allow: allowOnly ? [...allow].sort() : null,
     apps: [...apps.values()],
+    keywords: [...keywords].sort(),
+    safe,
     endsAt,
     next,
+    standing: standing(config, nowMs),
   };
+}
+
+/**
+ * Standing blocks, outside focus sessions: "always" lists, and "earn" lists that
+ * are not unlocked right now. They never make focus mode "on", never count as
+ * focus time and never lock other settings — they are just enforced.
+ */
+function standing(config, nowMs) {
+  const lists = [];
+  const passes = config.passes || {};
+  let nextPassEnd = null;
+  for (const l of config.lists || []) {
+    if (l.always) { lists.push(l); continue; }
+    if (!l.earn) continue;
+    const until = passes[l.id];
+    if (typeof until === 'number' && until > nowMs) {
+      if (!nextPassEnd || until < nextPassEnd) nextPassEnd = until;
+      continue;
+    }
+    lists.push(l);
+  }
+  const sites = new Set();
+  const paths = new Set();
+  const keywords = new Set();
+  const apps = new Map();
+  let safe = false;
+  for (const l of lists) {
+    for (const site of l.sites || []) { const n = normalizeSite(site); if (n) sites.add(n); }
+    for (const p of l.paths || []) paths.add(p);
+    for (const k of l.keywords || []) keywords.add(k);
+    if (l.safe) safe = true;
+    for (const app of l.apps || []) {
+      const k = appKey(app);
+      if (!k) continue;
+      const prev = apps.get(k);
+      if (prev) {
+        prev.mac = [...new Set([...(prev.mac || []), ...(app.mac || [])])];
+        prev.win = [...new Set([...(prev.win || []), ...(app.win || [])])];
+        prev.android = [...new Set([...(prev.android || []), ...(app.android || [])])];
+      } else apps.set(k, { name: app.name, mac: [...(app.mac || [])], win: [...(app.win || [])], android: [...(app.android || [])] });
+    }
+  }
+  return {
+    listIds: lists.map((l) => l.id),
+    names: lists.map((l) => l.name),
+    sites: [...sites].sort(),
+    paths: [...paths].sort(),
+    keywords: [...keywords].sort(),
+    apps: [...apps.values()],
+    safe,
+    nextPassEnd,
+    any: lists.length > 0,
+  };
+}
+
+/** Everything to enforce right now: focus blocks (if any) + standing blocks. */
+function enforced(ev) {
+  const st = ev.standing || { sites: [], paths: [], keywords: [], apps: [], safe: false, any: false, listIds: [] };
+  const on = ev.blocking;
+  const apps = new Map();
+  for (const a of [...(on ? ev.apps : []), ...st.apps]) {
+    const k = appKey(a);
+    const prev = apps.get(k);
+    if (prev) {
+      prev.mac = [...new Set([...(prev.mac || []), ...(a.mac || [])])];
+      prev.win = [...new Set([...(prev.win || []), ...(a.win || [])])];
+      prev.android = [...new Set([...(prev.android || []), ...(a.android || [])])];
+    } else apps.set(k, { ...a, mac: [...(a.mac || [])], win: [...(a.win || [])], android: [...(a.android || [])] });
+  }
+  const sites = [...new Set([...(on ? ev.sites : []), ...st.sites])].sort();
+  const paths = [...new Set([...(on ? ev.paths || [] : []), ...st.paths])].sort();
+  const keywords = [...new Set([...(on ? ev.keywords || [] : []), ...st.keywords])].sort();
+  const allow = on && ev.allow && ev.allow.length ? ev.allow : null;
+  return {
+    any: on || st.any,
+    sites, paths, keywords, allow,
+    apps: [...apps.values()],
+    safe: Boolean((on && ev.safe) || st.safe),
+    // The helper drops blocks by itself at this time; standing blocks have no end.
+    expiresAt: st.any ? null : (on ? ev.endsAt : null),
+  };
+}
+
+/** True when `candidate` would weaken a standing (always / earn) block. */
+function standingReduction(current, candidate, nowMs) {
+  const a = standing(current, nowMs);
+  if (!a.any) return false;
+  const b = standing(candidate, nowMs);
+  const has = (arr, x) => arr.includes(x);
+  if (a.sites.some((x) => !has(b.sites, x)) || a.paths.some((x) => !has(b.paths, x)) || a.keywords.some((x) => !has(b.keywords, x))) return true;
+  if (a.safe && !b.safe) return true;
+  const bApps = new Set(b.apps.map(appKey));
+  return a.apps.some((x) => !bApps.has(appKey(x)));
+}
+
+/** Weakening the always-on protection: a standing list shrinks, or the cool-down gets shorter. */
+function standingWeakening(current, candidate, nowMs) {
+  const a = (current.settings || {}).coolDownH || 0;
+  const b = (candidate.settings || {}).coolDownH || 0;
+  return b < a || standingReduction(current, candidate, nowMs);
+}
+
+const COOL_WINDOW_MS = 24 * 3600 * 1000;
+/** The cool-down state: idle, waiting until `at`, or open (changes allowed until `closes`). */
+function coolDown(config, nowMs) {
+  const h = (config.settings || {}).coolDownH || 0;
+  const at = typeof config.unlockAt === 'number' ? config.unlockAt : null;
+  if (!at || nowMs >= at + COOL_WINDOW_MS) return { hours: h, state: h ? 'idle' : 'off', at: null };
+  if (nowMs < at) return { hours: h, state: 'waiting', at };
+  return { hours: h, state: 'open', at, closes: at + COOL_WINDOW_MS };
 }
 
 /** True when `candidate` would block less than `current` right now. */
@@ -164,4 +281,4 @@ function isReduction(current, candidate, nowMs, opts = {}) {
   return false;
 }
 
-module.exports = { MODES, MODE_RANK, strictest, sessionState, evaluate, isReduction, appKey, nextMidnight };
+module.exports = { MODES, MODE_RANK, strictest, sessionState, evaluate, isReduction, appKey, nextMidnight, standing, enforced, standingReduction, standingWeakening, coolDown, COOL_WINDOW_MS };

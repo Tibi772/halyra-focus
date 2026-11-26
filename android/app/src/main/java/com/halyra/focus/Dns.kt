@@ -13,6 +13,26 @@ object Dns {
     /** Firefox turns its DoH off when this name doesn't resolve (official canary domain). */
     const val FIREFOX_CANARY = "use-application-dns.net"
 
+    /** forcesafesearch.google.com / restrict.youtube.com and strict.bing.com (same table as src/core/hosts.js). */
+    private val GOOGLE_SAFE = byteArrayOf(216.toByte(), 239.toByte(), 38, 120)
+    private val BING_SAFE = byteArrayOf(204.toByte(), 79, 197.toByte(), 220.toByte())
+    private val YOUTUBE_HOSTS = setOf("www.youtube.com", "m.youtube.com", "youtubei.googleapis.com", "youtube.googleapis.com", "www.youtube-nocookie.com")
+    private val GOOGLE_RE = Regex("^(www\\.)?google\\.(com|[a-z]{2}|co\\.[a-z]{2}|com\\.[a-z]{2})$")
+
+    /** The SafeSearch address for a search or YouTube host, or null if the name isn't one. */
+    fun safeAddress(name: String): ByteArray? {
+        val n = name.lowercase().trimEnd('.')
+        return when {
+            n in YOUTUBE_HOSTS -> GOOGLE_SAFE
+            n == "www.bing.com" || n == "bing.com" -> BING_SAFE
+            GOOGLE_RE.matches(n) -> GOOGLE_SAFE
+            else -> null
+        }
+    }
+
+    /** SafeSearch answer: the fixed IPv4 address for A, NODATA for anything else (so apps fall back to IPv4). */
+    fun safeAnswer(q: Query, ip: ByteArray): ByteArray = answer(q, if (q.type == TYPE_A) ip else null, nxdomain = false)
+
     class Query(
         val id: Int, val name: String, val type: Int, val questionEnd: Int, val dns: ByteArray,
         val srcIp: ByteArray, val dstIp: ByteArray, val srcPort: Int, val dstPort: Int,
@@ -65,9 +85,13 @@ object Dns {
     }
 
     /** Answer for a blocked name: 0.0.0.0 / :: for address queries, NODATA otherwise; NXDOMAIN if asked. */
-    fun blockedAnswer(q: Query, nxdomain: Boolean = false): ByteArray {
+    fun blockedAnswer(q: Query, nxdomain: Boolean = false): ByteArray = answer(
+        q, when { nxdomain -> null; q.type == TYPE_A -> ByteArray(4); q.type == TYPE_AAAA -> ByteArray(16); else -> null }, nxdomain,
+    )
+
+    private fun answer(q: Query, rdata: ByteArray?, nxdomain: Boolean): ByteArray {
         val question = q.dns.copyOfRange(12, q.questionEnd)
-        val addr = when { nxdomain -> 0; q.type == TYPE_A -> 4; q.type == TYPE_AAAA -> 16; else -> 0 }
+        val addr = rdata?.size ?: 0
         val answerLen = if (addr > 0) 12 + addr else 0
         val out = ByteArray(12 + question.size + answerLen)
         out[0] = (q.id ushr 8).toByte(); out[1] = q.id.toByte()
@@ -83,7 +107,7 @@ object Dns {
             out[p++] = 0; out[p++] = 1                                // class IN
             out[p++] = 0; out[p++] = 0; out[p++] = 0; out[p++] = 30  // TTL 30 s, so unblocking is quick
             out[p++] = 0; out[p++] = addr.toByte()
-            // rdata stays zero: 0.0.0.0 / ::
+            System.arraycopy(rdata!!, 0, out, p, addr)
         }
         return out
     }

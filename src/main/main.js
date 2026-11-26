@@ -176,6 +176,38 @@ async function syncNow() {
   }
 }
 
+// ------------------------------------------------------------------ earn-to-unlock
+
+/** Earned minutes not spent yet. */
+function walletBalance() {
+  const w = stats.wallet || { earned: 0, spent: 0 };
+  return Math.max(0, Math.floor((w.earned - w.spent) / 60));
+}
+
+/** Unlock an earn-list for `minutes` of earned time (or lock it again and get the rest back). */
+function spendEarned(listId, minutes) {
+  const l = config.lists.find((x) => x.id === listId && x.earn);
+  if (!l) return { ok: false, error: 'generic' };
+  const now = Date.now();
+  config.passes = config.passes || {};
+  stats.wallet = stats.wallet || { earned: 0, spent: 0 };
+  if (!(minutes > 0)) {
+    const until = config.passes[listId] || 0;
+    if (until > now) stats.wallet.spent = Math.max(0, stats.wallet.spent - (until - now) / 1000);
+    delete config.passes[listId];
+  } else {
+    const m = Math.min(120, Math.round(minutes));
+    if (walletBalance() < m) return { ok: false, error: 'balance' };
+    stats.wallet.spent += m * 60;
+    config.passes[listId] = Math.max(now, config.passes[listId] || 0) + m * 60000;
+  }
+  statsDirty = statsSyncDirty = true;
+  dirty = true;
+  saveConfig();
+  tick();
+  return { ok: true };
+}
+
 // ------------------------------------------------------------------ Halyra AI
 
 function aiKey() { return ai.decryptKey(config.settings.aiKeyEnc); }
@@ -208,6 +240,9 @@ function assistantCtx() {
     normalizeRule: (raw) => { const p = blockrules.normalizePathRule(raw); if (p) return { path: p }; const site = normalizeSite(raw); return site ? { site } : null; },
     knownApps: () => [...(installedAppsCache || []), ...PRESETS.flatMap((p) => p.apps || [])],
     helperInstalled: () => hostsState.installed,
+    cleanKeywords: (k) => cfgLib.cleanKeywords(k),
+    wallet: () => walletBalance(),
+    spendEarned: (id, m) => spendEarned(id, m),
     makeTheme: async (describe) => {
       const key = aiKey();
       if (key) { try { const spec = await ai.styleSpec(key, describe); if (spec && stylegen.fromHex(spec.accent) && stylegen.fromHex(spec.bg)) return stylegen.fromSpec({ ...spec, name: spec.name || describe }, { prompt: describe }); } catch (_) { /* fall back */ } }
@@ -322,7 +357,11 @@ function fullState() {
       blocking: ev.blocking, mode: ev.mode, sources: ev.sources, endsAt: ev.endsAt, next: ev.next,
       sitesCount: ev.sites.length, appsCount: ev.apps.length, listIds: ev.listIds,
       pathsCount: (ev.paths || []).length, allowOnly: Boolean(ev.allow && ev.allow.length),
+      standing: { listIds: ev.standing.listIds, names: ev.standing.names, safe: ev.standing.safe, any: ev.standing.any },
     },
+    passes: config.passes || {},
+    coolDown: engine.coolDown(config, Date.now()),
+    wallet: { balance: walletBalance(), earned: Math.round((stats.wallet || {}).earned || 0), spent: Math.round((stats.wallet || {}).spent || 0), ratio: config.settings.earnRatio || 3 },
     unlock: unlocker.status(),
     helper: { ...hostsState, supported: platform.IS_MAC || platform.IS_WIN, outdated: Boolean(platform.helperOutdated && hostsState.installed && platform.helperOutdated()) },
     browsers: guard ? guard.state() : null,
@@ -345,7 +384,7 @@ function push() {
 // ------------------------------------------------------------------ blocking loop
 
 function sitesFor(ev) {
-  return ev.blocking ? expandHosts(ev.sites) : [];
+  return expandHosts(engine.enforced(ev).sites);
 }
 
 function syncHosts(ev, force = false) {
@@ -353,29 +392,35 @@ function syncHosts(ev, force = false) {
   const hosts = sitesFor(ev);
   // The helper drops the blocks by itself at this time, so a website block can
   // never outlive its timer (even if the app is force-quit or deleted).
-  const expiresAt = ev.blocking ? ev.endsAt : null;
+  const enf = engine.enforced(ev);
+  const expiresAt = enf.expiresAt;
   const extra = webRules(ev);
-  const key = `${hosts.join(',')}|${extra.paths.join(',')}|${(extra.allow || []).join(',')}|${expiresAt}`;
+  const key = `${hosts.join(',')}|${extra.paths.join(',')}|${(extra.allow || []).join(',')}|${expiresAt}|${enf.safe}`;
   if (hostsState.installed && (force || key !== lastHostsKey)) {
-    if (platform.writeRules(hosts, expiresAt, { paths: extra.paths, allow: extra.allow || [] })) lastHostsKey = key;
+    if (platform.writeRules(hosts, expiresAt, { paths: extra.paths, allow: extra.allow || [], safe: enf.safe })) lastHostsKey = key;
   }
   hostsState.expected = hosts.length;
 }
 
 /** Rules for browser-level blocking: { sites, paths, allow } (empty when nothing is blocked). */
 function webRules(ev) {
-  if (!ev || !ev.blocking) return { sites: [], paths: [], allow: null };
-  return { sites: ev.sites, paths: ev.paths || [], allow: ev.allow && ev.allow.length ? ev.allow : null };
+  if (!ev) return { sites: [], paths: [], allow: null, keywords: [] };
+  const enf = engine.enforced(ev);
+  return { sites: enf.sites, paths: enf.paths, allow: enf.allow, keywords: enf.keywords };
 }
 
 /** Data for the local block page a blocked browser tab is sent to. */
 function blockPageData(q) {
   const ev = lastEval || evalNow();
   const u = /^https?:\/\//.test(q.u || '') ? q.u : `https://${String(q.site || '').replace(/^\/+/, '')}/`;
-  const hit = blockrules.urlBlocked(u, webRules(ev));
+  const rules = webRules(ev);
+  const hit = blockrules.urlBlocked(u, rules) || blockrules.keywordHit(u, rules.keywords) || (q.k && rules.keywords.includes(q.k) ? q.k : null);
   const limit = ev.sources.find((s) => s.type === 'limit');
+  const earnList = config.lists.find((l) => l.earn && (ev.standing.listIds || []).includes(l.id)
+    && blockrules.urlBlocked(u, { hosts: l.sites, paths: l.paths || [], allow: null }));
   return {
     blocked: Boolean(hit),
+    earn: earnList ? { list: earnList.name, id: earnList.id, balance: walletBalance() } : null,
     kind: limit && !ev.sources.some((s) => s.type !== 'limit') ? 'limit' : 'site',
     endsAt: ev.blocking ? ev.endsAt : null,
     mode: ev.blocking ? ev.mode : null,
@@ -394,7 +439,7 @@ function verifyHostsLater() {
 
 async function enforceApps(ev) {
   if (appCheckBusy) return;
-  let apps = ev.blocking ? ev.apps : [];
+  let apps = engine.enforced(ev).apps;
   if (ev.blocking && ev.mode === 'strict' && config.settings.strictBlocksTools) apps = [...apps, ...TAMPER_TOOLS];
   // "Only these sites": browsers we cannot filter tab by tab are closed while it is on.
   if (ev.blocking && ev.allow && ev.allow.length && platform.unfilterableBrowsers) apps = [...apps, ...platform.unfilterableBrowsers()];
@@ -484,6 +529,10 @@ function tick() {
   for (const [id, until] of Object.entries(config.skips || {})) {
     if (until <= now) { delete config.skips[id]; changed = true; }
   }
+  if (typeof config.unlockAt === 'number') {
+    if (now >= config.unlockAt + engine.COOL_WINDOW_MS) { config.unlockAt = null; changed = true; }
+    else if (now - dt * 1000 < config.unlockAt && now >= config.unlockAt) notify(t('cool.readyTitle'), t('cool.readyBody'));
+  }
   if (changed) saveConfig();
 
   const ev = evalNow(now);
@@ -492,7 +541,15 @@ function tick() {
   const blockingChanged = !lastEval || lastEval.blocking !== ev.blocking;
   lastEval = ev;
 
-  if (ev.blocking && dt > 0) { statsLib.addFocus(stats, now, dt); statsDirty = statsSyncDirty = true; }
+  if (ev.blocking && dt > 0) {
+    statsLib.addFocus(stats, now, dt);
+    statsDirty = statsSyncDirty = true;
+    // Focus earns minutes for "earn" lists (only real focus: a session's work phase or a schedule).
+    if (config.lists.some((l) => l.earn)) {
+      stats.wallet = stats.wallet || { earned: 0, spent: 0 };
+      stats.wallet.earned += Math.min(dt, 10) / (config.settings.earnRatio || 3);
+    }
+  }
   syncHosts(ev);
   if (guard) guard.update(webRules(ev), { blockUrl: blockPage && blockPage.url, policyOk: hostsState.installed && !(platform.helperOutdated && platform.helperOutdated()), now });
   if (blockingChanged) verifyHostsLater();
@@ -627,6 +684,12 @@ function applyConfigChange(partial, pin) {
   if (ev.sources.length && engine.isReduction(config, candidate, now, { usage: usageNow(now) })) {
     if (ev.mode !== 'flexible') return { ok: false, error: 'locked' };
     if (config.settings.pinHash && !cfgLib.verifyPin(config.settings, pin)) return { ok: false, error: 'pin' };
+  } else if (engine.standingWeakening(config, candidate, now)) {
+    // Always-on lists (like the adult content shield) and earn lists are PIN-protected,
+    // and with a cool-down they can only be weakened in the 24 h after the wait is over.
+    if (config.settings.pinHash && !cfgLib.verifyPin(config.settings, pin)) return { ok: false, error: 'pin' };
+    const cd = engine.coolDown(config, now);
+    if (cd.hours > 0 && cd.state !== 'open') return { ok: false, error: 'cooldown', coolDown: cd };
   }
   const prevLogin = config.settings.launchAtLogin;
   const prevTheme = config.settings.theme;
@@ -796,7 +859,7 @@ function updateTray(ev, force) {
   if (!tray || !ev) return;
   const now = Date.now();
   const session = ev.sources.find((s) => s.type === 'session');
-  let label = t('tray.idle');
+  let label = ev.standing && ev.standing.any ? t('tray.shield') : t('tray.idle');
   let title = '';
   if (session && session.phase === 'break') {
     label = t('tray.break', { t: fmtLeft(session.phaseEndsAt - now) });
@@ -1004,6 +1067,22 @@ function ipc() {
     return { ok: true, state: fullState() };
   });
   handle('ai:removeKey', () => { config.settings.aiKeyEnc = null; saveConfig(); return { ok: true, state: fullState() }; });
+  handle('earn:spend', ({ listId, minutes }) => spendEarned(String(listId || ''), Number(minutes) || 0));
+  handle('cooldown:set', ({ start }) => {
+    const now = Date.now();
+    const cd = engine.coolDown(config, now);
+    if (start) {
+      if (!cd.hours || cd.state === 'waiting' || cd.state === 'open') return { ok: true, state: fullState() };
+      config.unlockAt = now + cd.hours * 3600 * 1000;
+    } else {
+      config.unlockAt = null;
+    }
+    config.unlockChangedAt = now;
+    saveConfig();
+    tick();
+    return { ok: true, state: fullState() };
+  });
+
   // ---------------------------------------------------------------- Halyra AI chat
   handle('ai:chatGet', () => ({ log: chatHistory(), mode: aiMode() }));
   handle('ai:chatReset', () => { chatLog = []; saveChat(); return { log: [], mode: aiMode() }; });
@@ -1130,7 +1209,7 @@ function boot() {
     try { if (app.getLoginItemSettings().wasOpenedAtLogin) startHidden = true; } catch (_) { /* ignore */ }
   }
   if (platform.startBlockServer) {
-    blockPage = platform.startBlockServer({ root: path.join(__dirname, '..', 'renderer'), data: (q) => blockPageData(q) });
+    blockPage = platform.startBlockServer({ root: path.join(__dirname, '..', 'renderer'), data: (q) => blockPageData(q), actions: { spend: (id, m) => spendEarned(String(id || ''), m) } });
   }
   if (platform.createBrowserGuard) {
     guard = platform.createBrowserGuard({ log: (m) => console.log(m) });
@@ -1170,6 +1249,7 @@ function runSelftest() {
     forceClearSession: () => { config.session = null; unlocker.cancel(); saveConfig(); tick(); },
     rendererLog: () => rendererLog.slice(),
     browserState: () => (guard ? guard.state() : null),
+    evaluate: () => evalNow(),
     blockCount: (name) => Object.values(stats.days).reduce((n, d) => n + (d.blocks[name] || 0), 0),
   };
   const watchdog = setTimeout(() => { console.error('[selftest] timed out'); app.exit(2); }, 10 * 60000);

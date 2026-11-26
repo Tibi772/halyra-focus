@@ -67,7 +67,9 @@ function state(lang, mutate) {
     lists: c.lists, schedules: c.schedules, settings: { ...settings, hasPin: false, hasAiKey: false }, session: c.session,
     customThemes: c.customThemes.map((x) => ({ ...x, vars: stylegen.cssVars(x) })), aiModel: 'claude-haiku-5-5',
     insights: coach.insights(rawStats(), c, NOW, lang),
-    eval: { blocking: ev.blocking, mode: ev.mode, sources: ev.sources, endsAt: ev.endsAt, next: ev.next, sitesCount: ev.sites.length, appsCount: ev.apps.length, listIds: ev.listIds },
+    eval: { blocking: ev.blocking, mode: ev.mode, sources: ev.sources, endsAt: ev.endsAt, next: ev.next, sitesCount: ev.sites.length, appsCount: ev.apps.length, listIds: ev.listIds, standing: ev.standing },
+    passes: c.passes || {}, coolDown: engine.coolDown(c, NOW),
+    wallet: { balance: c._wallet || 0, earned: 0, spent: 0, ratio: c.settings.earnRatio || 3 },
     unlock: null, helper: { installed: true, verified: true, expected: 10, supported: true }, stats: fakeStats(),
     cloud: c._cloud || { enabled: true, signedIn: false, email: null, lastSync: 0, error: null },
     usage: c._usage || {},
@@ -109,6 +111,15 @@ for (const lang of ['en', 'hu']) {
     c.lists[0].limitMin = 30;
     c._usage = { [c.lists[0].id]: 30 * 60 + 5 };
     c._cloud = { enabled: true, signedIn: true, email: 'anna@halyra.app', lastSync: NOW - 40000, error: null };
+  });
+  scenarios[`shield-${lang}`] = state(lang, (c) => {
+    c.schedules[0].enabled = false;
+    c.lists.push(cfg.presetToList(PRESETS.find((p) => p.id === 'adult'), lang));
+    const games = c.lists.find((l) => l.presetId === 'games');
+    if (games) games.earn = true;
+    c._wallet = 23;
+    c.settings.coolDownH = 24;
+    c.unlockAt = NOW + 19 * 3600000;
   });
   scenarios[`nohelper-${lang}`] = { ...scenarios[`idle-${lang}`], helper: { installed: false, verified: false, supported: true }, settings: { ...scenarios[`idle-${lang}`].settings, onboarded: false } };
 }
@@ -155,6 +166,7 @@ __mods.coach = ${wrap('coach.js')};
     generateStyle: async ({ prompt, seed }) => { const th = __mods.stylegen.generate(prompt, seed || 0); return { ok: true, source: 'offline', theme: { ...th, vars: __mods.stylegen.cssVars(th) } }; },
     previewStyle: async ({ theme }) => { const th = __mods.stylegen.sanitizeTheme(theme); return th ? { ok: true, theme: { ...th, vars: __mods.stylegen.cssVars(th) } } : { ok: false }; },
     saveStyle: async ({ theme }) => { const th = __mods.stylegen.sanitizeTheme(theme); S.customThemes = [{ ...th, vars: __mods.stylegen.cssVars(th) }, ...S.customThemes.filter((x) => x.id !== th.id)]; S.settings.theme = 'custom:' + th.id; S.rev++; return { ok: true, state: JSON.parse(JSON.stringify(S)) }; },
+    spendEarned: async () => ({ ok: true }), coolDown: ok,
     deleteStyle: ok, setAiKey: ok, removeAiKey: ok, applyInsight: ok,
     cloudSignIn: async ({ email }) => { S.cloud = { enabled: true, signedIn: true, email, lastSync: S.now, error: null }; S.rev++; return { ok: true, state: JSON.parse(JSON.stringify(S)) }; },
     cloudSignUp: async () => ({ ok: true, needsConfirm: true, state: S }), cloudReset: ok, cloudSyncNow: ok,

@@ -92,7 +92,7 @@ class FocusService : Service() {
         }
         val a = p.activeAt(now, usage)
 
-        if (a.domains.isNotEmpty()) DnsVpnService.update(this, a.domains) else DnsVpnService.stop(this)
+        if (a.domains.isNotEmpty() || a.safe) DnsVpnService.update(this, a.domains, a.safe) else DnsVpnService.stop(this)
 
         if (a.packages.isNotEmpty() && Usage.hasAccess(this)) {
             val cur = fg.current(now)
@@ -103,11 +103,12 @@ class FocusService : Service() {
         // Focus time while the app's own UI is closed (the UI counts it itself when open).
         val dt = if (lastTickAt > 0) minOf(10_000L, now - lastTickAt) else 0L
         lastTickAt = now
-        val windowActive = p.windows.any { it.from <= now && now < it.to }
+        val windowActive = p.windows.any { !it.standing && it.from <= now && now < it.to }
         if (windowActive && !MainActivity.visible && dt > 0) NativeStats.addFocus(this, now, dt)
 
-        if (wasActive && !a.any) notifyEvent(texts()?.optString("ended").orEmpty().ifEmpty { "Halyra Focus" }, "")
-        wasActive = a.any
+        val focusing = a.any && a.focus
+        if (wasActive && !focusing) notifyEvent(texts()?.optString("ended").orEmpty().ifEmpty { "Halyra Focus" }, "")
+        wasActive = focusing
         updateNotification(a, now)
 
         return when {
@@ -165,7 +166,8 @@ class FocusService : Service() {
         val title: String
         val text: String
         if (a != null && a.any) {
-            title = tx?.optString("running").orEmpty().ifEmpty { "Focus is on" }
+            title = if (a.focus) tx?.optString("running").orEmpty().ifEmpty { "Focus is on" }
+                else tx?.optString("shield").orEmpty().ifEmpty { "Always-on blocks are active" }
             val until = a.endsAt?.let { tx?.optString("until").orEmpty().ifEmpty { "until {time}" }.replace("{time}", fmt(it)) } ?: ""
             text = listOf(a.names.distinct().joinToString(", "), until).filter { it.isNotEmpty() }.joinToString(" · ")
         } else {
@@ -185,7 +187,7 @@ class FocusService : Service() {
     }
 
     private fun updateNotification(a: Plan.Active, now: Long) {
-        val key = "${a.any}|${a.endsAt}|${a.names}|${texts()?.optString("running")}"
+        val key = "${a.any}|${a.focus}|${a.endsAt}|${a.names}|${texts()?.optString("running")}"
         if (key == lastNotifKey) return
         lastNotifKey = key
         getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification(a, now))

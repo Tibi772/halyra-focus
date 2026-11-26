@@ -1,7 +1,7 @@
 {
   "name": "halyra-focus",
   "productName": "Halyra Focus",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Free app & website blocker for Mac and Windows. Focus sessions, schedules, Pomodoro, daily limits, focus sounds, a smart focus coach, an AI style studio and retro themes. Optional account sync and a web app for your phone. No tracking — and you can always turn it off.",
   "main": "src/main/main.js",
   "author": "Halyra",

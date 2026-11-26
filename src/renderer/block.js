@@ -41,18 +41,28 @@
   if (web) {
     document.title = `${q.get('site') || ''} — Halyra Focus`;
     const back = q.get('u');
+    const goBack = () => { if (history.length > 1) history.back(); else window.close(); };
+    let homeAction = goBack;
     const load = () => fetch(`/state.json?${q}`, { cache: 'no-store' }).then((r) => r.json()).then((d) => {
       window.halyraBlock({ ...d, app: q.get('site') || '' });
+      if (d.earn && d.blocked !== false && d.token) {
+        const tx2 = (d.block && d.block.texts) || {};
+        const can = d.earn.balance >= 5;
+        $('home').textContent = can ? (tx2.earnSpend || 'Use {m} earned minutes').replace('{m}', String(Math.min(10, d.earn.balance))) : (tx2.earnNone || 'No earned minutes yet');
+        $('until').textContent = (tx2.earnHave || 'You have {m} earned minutes').replace('{m}', String(d.earn.balance));
+        homeAction = can ? () => fetch(`/spend?token=${d.token}&list=${encodeURIComponent(d.earn.id)}&m=${Math.min(10, d.earn.balance)}`, { cache: 'no-store' })
+          .then((r) => r.json()).then((x) => { if (x.ok) setTimeout(() => { location.href = back && /^https?:\/\//.test(back) ? back : 'about:blank'; }, 2500); }) : goBack;
+      }
       if (d.blocked === false) {
         $('eyebrow').textContent = tx.unblocked || 'This site is available again.';
         $('left').textContent = '';
         $('until').textContent = '';
-        if (back && /^https?:\/\//.test(back)) { $('home').textContent = tx.continue || 'Continue'; $('home').onclick = () => { location.href = back; }; }
+        if (back && /^https?:\/\//.test(back)) { $('home').textContent = tx.continue || 'Continue'; homeAction = () => { location.href = back; }; }
       }
     }).catch(() => {});
     load();
     setInterval(load, 10000);
-    $('home').addEventListener('click', () => { if (history.length > 1) history.back(); else window.close(); });
+    $('home').addEventListener('click', () => homeAction());
     $('open').addEventListener('click', () => { location.href = 'halyrafocus://open'; });
   } else {
     $('home').addEventListener('click', () => window.HalyraBlock && window.HalyraBlock.home());

@@ -22,6 +22,9 @@ function presetToList(preset, lang) {
     emoji: preset.emoji,
     sites: [...preset.sites],
     ...(preset.paths ? { paths: [...preset.paths] } : {}),
+    ...(preset.keywords ? { keywords: [...preset.keywords] } : {}),
+    ...(preset.safe ? { safe: true } : {}),
+    ...(preset.always ? { always: true } : {}),
     apps: preset.apps.map((a) => ({ name: a.name, mac: [...a.mac], win: [...a.win], ...(a.android ? { android: [...a.android] } : {}) })),
     presetRev: PRESET_REV,
   };
@@ -47,6 +50,9 @@ function defaults(lang = 'en') {
     ],
     session: null,
     skips: {},
+    passes: {},
+    unlockAt: null, // cool-down: weakening always-on lists is allowed for 24 h from this moment
+    unlockChangedAt: 0,
     customThemes: [],
     settings: {
       lang: 'auto',
@@ -57,6 +63,8 @@ function defaults(lang = 'en') {
       growOn: true,
       growItem: 'oak',
       growWither: true,
+      earnRatio: 3,
+      coolDownH: 0,
       launchAtLogin: true,
       showOverlay: true,
       notifications: true,
@@ -89,6 +97,17 @@ function cleanAppNames(arr, kind) {
     if (kind === 'win' && !/\.exe$/i.test(s)) continue;
     if (kind === 'android' && !/^[a-zA-Z][\w]*(\.[a-zA-Z_][\w]*)+$/.test(s)) continue;
     if (!out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
+const COOLDOWNS = [0, 1, 24, 72];
+
+function cleanKeywords(raw) {
+  const out = [];
+  for (const k of Array.isArray(raw) ? raw.slice(0, 200) : []) {
+    const w = String(k || '').toLowerCase().normalize('NFC').trim().replace(/\s+/g, ' ');
+    if (w.length >= 3 && w.length <= 40 && /^[\p{L}\p{N} .\-_]+$/u.test(w) && !out.includes(w)) out.push(w);
   }
   return out;
 }
@@ -132,6 +151,14 @@ function sanitizeLists(lists) {
       // Parts of sites ("youtube.com/shorts") and "only these sites" lists.
       paths: [...new Set((Array.isArray(l.paths) ? l.paths.slice(0, 300) : []).map(normalizePathRule).filter(Boolean))],
       allowOnly: l.allowOnly === true,
+      // Standing lists: "always" = blocked around the clock; "earn" = blocked until
+      // you spend minutes earned by focusing. Not both.
+      always: l.always === true && l.earn !== true,
+      earn: l.earn === true,
+      // Pages whose address or title contains one of these words are blocked (computers).
+      keywords: cleanKeywords(l.keywords),
+      // Force SafeSearch on Google, Bing and YouTube while this list is on.
+      safe: l.safe === true,
       ...(l.presetId ? { presetRev: int(l.presetRev, 0, 999, 0) } : {}),
     });
   }
@@ -190,6 +217,10 @@ function sanitizeSettings(input, base) {
     growOn: bool(i.growOn, b.growOn == null ? true : b.growOn),
     growItem: GROW.BY_ID[i.growItem] ? i.growItem : (GROW.BY_ID[b.growItem] ? b.growItem : 'oak'),
     growWither: bool(i.growWither, b.growWither == null ? true : b.growWither),
+    // Focus minutes per earned minute (3 → 30 min focus earns 10 min).
+    earnRatio: [2, 3, 4, 6].includes(Number(i.earnRatio)) ? Number(i.earnRatio) : ([2, 3, 4, 6].includes(Number(b.earnRatio)) ? Number(b.earnRatio) : 3),
+    // Hours you must wait before always-on protection can be weakened (0 = no wait).
+    coolDownH: COOLDOWNS.includes(Number(i.coolDownH)) ? Number(i.coolDownH) : (COOLDOWNS.includes(Number(b.coolDownH)) ? Number(b.coolDownH) : 0),
     launchAtLogin: bool(i.launchAtLogin, b.launchAtLogin),
     showOverlay: bool(i.showOverlay, b.showOverlay),
     notifications: bool(i.notifications, b.notifications),
@@ -255,6 +286,13 @@ function normalizeLoaded(raw, lang) {
   if (raw.skips && typeof raw.skips === 'object') {
     for (const [k, v] of Object.entries(raw.skips)) if (typeof v === 'number') merged.skips[k] = v;
   }
+  // Unlocked earn-lists: list id → until (ms).
+  merged.unlockAt = typeof raw.unlockAt === 'number' ? raw.unlockAt : null;
+  merged.unlockChangedAt = typeof raw.unlockChangedAt === 'number' ? raw.unlockChangedAt : 0;
+  merged.passes = {};
+  if (raw.passes && typeof raw.passes === 'object') {
+    for (const [k, v] of Object.entries(raw.passes)) if (typeof v === 'number' && merged.lists.some((l) => l.id === k)) merged.passes[k] = v;
+  }
   merged.version = VERSION;
   return merged;
 }
@@ -291,6 +329,7 @@ function verifyPin(settings, pin) {
 }
 
 module.exports = {
+  cleanKeywords, COOLDOWNS,
   THEMES, LANGS, VERSION, uid, defaults, presetToList, mergeEditable, normalizeLoaded, sanitizeCustomThemes,
   sanitizeLists, sanitizeSchedules, hashPin, verifyPin, upgradePresetLists,
 };

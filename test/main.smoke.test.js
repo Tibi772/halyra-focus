@@ -204,6 +204,32 @@ test('main process boots and IPC works end-to-end', async () => {
   assert.match(c3.log[c3.log.length - 1].text, /Halyra AI|AI-t/);
   assert.equal((await call('ai:chatReset')).log.length, 0);
 
+  // Always-on + earn lists: no focus needed, PIN + cool-down protect them, earned minutes open them.
+  const base = (await call('state:get')).lists;
+  const shield = { id: 'shield', name: 'Shield', emoji: '🛡️', sites: ['pornhub.com'], paths: [], apps: [], keywords: ['porn'], always: true, safe: true };
+  const fun = { id: 'fun', name: 'Fun', emoji: '🎮', sites: ['store.steampowered.com'], paths: [], apps: [], earn: true };
+  r = await call('config:set', { patch: { lists: [...base, shield, fun], settings: { coolDownH: 24 } } });
+  assert.equal(r.ok, true, JSON.stringify(r.error));
+  let st3 = r.state;
+  assert.ok(st3.eval.standing.listIds.includes('shield') && st3.eval.standing.listIds.includes('fun'));
+  assert.equal(st3.coolDown.state, 'idle');
+  assert.equal(st3.wallet.balance, 0);
+  assert.equal((await call('earn:spend', { listId: 'fun', minutes: 10 })).error, 'balance');
+  assert.equal((await call('earn:spend', { listId: 'fun', minutes: 0 })).ok, true);
+  assert.equal((await call('earn:spend', { listId: 'shield', minutes: 5 })).ok, false, 'always lists cannot be bought open');
+  const weaker = st3.lists.map((l) => (l.id === 'shield' ? { ...l, always: false } : l));
+  assert.equal((await call('config:set', { patch: { lists: weaker } })).error, 'pin');
+  r = await call('config:set', { patch: { lists: weaker }, pin: '4321' });
+  assert.equal(r.error, 'cooldown');
+  assert.equal(r.coolDown.hours, 24);
+  assert.equal((await call('config:set', { patch: { settings: { coolDownH: 0 } }, pin: '4321' })).error, 'cooldown', 'cannot shorten the wait to skip it');
+  r = await call('cooldown:set', { start: true });
+  assert.equal(r.state.coolDown.state, 'waiting');
+  assert.ok(r.state.coolDown.at > Date.now() + 23 * 3600 * 1000);
+  assert.equal((await call('cooldown:set', { start: false })).state.coolDown.state, 'idle');
+  const stricter = st3.lists.map((l) => (l.id === 'shield' ? { ...l, sites: [...l.sites, 'xvideos.com'] } : l));
+  assert.equal((await call('config:set', { patch: { lists: stricter } })).ok, true, 'making it stricter needs nothing');
+
   // state is pushed to the window
   assert.ok(sent.some(([ch]) => ch === 'state'));
   // will-quit handler is safe

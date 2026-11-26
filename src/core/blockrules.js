@@ -68,4 +68,25 @@ function chromiumPolicy({ sites = [], paths = [], allow = [] }) {
   return { block: [...new Set([...sites, ...paths])].sort(), allow: [] };
 }
 
-module.exports = { normalizePathRule, urlBlocked, chromiumPolicy, hostOf, inSet };
+const WORD = /[^\p{L}\p{N}]+/gu;
+
+/** Lowercase words of a page address (decoded) or title, joined by single spaces. */
+function words(text) {
+  let t = String(text || '');
+  try { t = decodeURIComponent(t); } catch (_) { /* keep as is */ }
+  return ` ${t.toLowerCase().normalize('NFC').replace(WORD, ' ').trim()} `;
+}
+
+/** The first keyword found as a whole word (or phrase) in `text`, or null. */
+function keywordHit(text, keywords) {
+  if (!keywords || !keywords.length) return null;
+  const w = words(text);
+  for (const k of keywords) {
+    const kk = ` ${String(k).toLowerCase().replace(WORD, ' ').trim()} `;
+    if (kk.trim() && w.includes(kk)) return k;
+  }
+  return null;
+}
+
+module.exports = {
+  words, keywordHit, normalizePathRule, urlBlocked, chromiumPolicy, hostOf, inSet };

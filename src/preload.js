@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('api', {
   normalizeSites: (sites) => ipcRenderer.invoke('sites:normalize', { sites }),
   normalizeRules: (items) => ipcRenderer.invoke('rules:normalize', { items }),
   chat: (text) => ipcRenderer.invoke('ai:chat', { text }),
+  spendEarned: (listId, minutes) => ipcRenderer.invoke('earn:spend', { listId, minutes }),
+  coolDown: (start) => ipcRenderer.invoke('cooldown:set', { start: Boolean(start) }),
   chatGet: () => ipcRenderer.invoke('ai:chatGet'),
   chatReset: () => ipcRenderer.invoke('ai:chatReset'),
   unlockRequest: call('unlock:request'),

@@ -128,6 +128,21 @@ test('mac helper.sh mirrors the blocklist and rejects junk', () => {
   assert.ok(fs.readFileSync(hostsFile, 'utf8').includes('0.0.0.0 a.com'), 'future expiry applied');
   assert.match(hosts.blocklistFile(['a.com'], 1700000000500), /# expires=1700000001\n/);
 
+  // SafeSearch: fixed addresses for search hosts; a blocked host stays blocked
+  fs.writeFileSync(rules, hosts.blocklistFile(['www.bing.com'], null, { safe: true }));
+  run();
+  const safe = fs.readFileSync(hostsFile, 'utf8');
+  assert.ok(safe.includes('216.239.38.120 www.google.com\n'), 'google forced to SafeSearch');
+  assert.ok(safe.includes('216.239.38.120 www.youtube.com\n'), 'youtube restricted');
+  assert.ok(safe.includes('0.0.0.0 www.bing.com\n') && !safe.includes('204.79.197.220 www.bing.com'), 'blocked beats safe');
+  assert.ok(safe.includes('204.79.197.220 bing.com\n'));
+  fs.writeFileSync(rules, hosts.blocklistFile([], null, { safe: true }));
+  run();
+  assert.ok(fs.readFileSync(hostsFile, 'utf8').includes('216.239.38.120 www.google.hu\n'), 'SafeSearch alone works');
+  fs.writeFileSync(rules, hosts.blocklistFile([]));
+  run();
+  assert.equal(fs.readFileSync(hostsFile, 'utf8'), original + '\n', 'SafeSearch removed again');
+
   // symlinked rules file is ignored
   fs.writeFileSync(path.join(dir, 'secret'), 'secret.example.com\n');
   fs.unlinkSync(rules);

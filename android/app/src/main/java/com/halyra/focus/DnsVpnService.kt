@@ -103,6 +103,12 @@ class DnsVpnService : VpnService() {
                 return
             }
         }
+        if (safe) {
+            if (q.name == Dns.FIREFOX_CANARY) { write(output, Dns.reply(q, Dns.blockedAnswer(q, nxdomain = true))); return }
+            if (Dns.matches(q.name, Dns.DOH_HOSTS)) { write(output, Dns.reply(q, Dns.blockedAnswer(q))); return }
+            val ip = Dns.safeAddress(q.name)
+            if (ip != null) { write(output, Dns.reply(q, Dns.safeAnswer(q, ip))); return }
+        }
         pool.execute {
             try {
                 val upstream = currentUpstream()
@@ -145,11 +151,13 @@ class DnsVpnService : VpnService() {
         const val ACTION_STOP = "com.halyra.focus.vpn.STOP"
 
         @Volatile var blocked: Set<String> = emptySet()
+        @Volatile var safe = false
         @Volatile var running = false
         @Volatile var hits = 0
 
-        fun update(ctx: Context, domains: Set<String>) {
+        fun update(ctx: Context, domains: Set<String>, safeSearch: Boolean = false) {
             blocked = domains
+            safe = safeSearch
             if (!running && prepared(ctx)) {
                 try { ctx.startService(Intent(ctx, DnsVpnService::class.java).setAction(ACTION_START)) } catch (_: Exception) { }
             }
@@ -157,6 +165,7 @@ class DnsVpnService : VpnService() {
 
         fun stop(ctx: Context) {
             blocked = emptySet()
+            safe = false
             if (running) {
                 try { ctx.startService(Intent(ctx, DnsVpnService::class.java).setAction(ACTION_STOP)) } catch (_: Exception) { }
             }

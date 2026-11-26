@@ -154,6 +154,45 @@ const PRESETS = [
     ],
     apps: [],
   },
+  {
+    // Always on: adult sites, pages with adult words in their address or title,
+    // and SafeSearch forced on Google, Bing and YouTube. Turning it off needs the PIN, if one is set.
+    id: 'adult',
+    emoji: '🛡️',
+    name: { en: 'Adult content shield', hu: 'Felnőtt tartalom pajzs' },
+    always: true,
+    safe: true,
+    sites: [
+      'pornhub.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'redtube.com', 'youporn.com', 'tube8.com', 'spankbang.com',
+      'eporner.com', 'beeg.com', 'tnaflix.com', 'porn.com', 'youjizz.com', 'motherless.com', 'chaturbate.com', 'stripchat.com',
+      'bongacams.com', 'livejasmin.com', 'cam4.com', 'camsoda.com', 'myfreecams.com', 'onlyfans.com', 'fansly.com', 'manyvids.com',
+      'clips4sale.com', 'brazzers.com', 'realitykings.com', 'bangbros.com', 'naughtyamerica.com', 'mofos.com', 'vixen.com', 'tushy.com',
+      'blacked.com', 'nhentai.net', 'rule34.xxx', 'e621.net', 'hanime.tv', 'efukt.com', 'porntrex.com', 'txxx.com', 'hclips.com',
+      'upornia.com', 'hotmovs.com', 'thumbzilla.com', '4tube.com', 'porntube.com', 'fuq.com', 'nudevista.com', 'imagefap.com',
+      'sex.com', 'literotica.com', 'erome.com', 'xhamsterlive.com', 'pornpics.com', 'hqporner.com', 'daftsex.com', 'xxxbunker.com',
+      'sunporno.com', 'drtuber.com', 'xvideos.red', 'xnxx.tv', 'pornhubpremium.com', 'faphouse.com', 'adultfriendfinder.com',
+    ],
+    keywords: ['porn', 'porno', 'xxx', 'nsfw', 'hentai', 'onlyfans', 'nudes', 'naked', 'camgirl', 'sex cam', 'rule34', 'milf', 'pornó', 'meztelen'],
+    apps: [],
+  },
+  {
+    id: 'gambling',
+    emoji: '🎰',
+    name: { en: 'Gambling & betting', hu: 'Szerencsejáték és fogadás' },
+    sites: [
+      'bet365.com', 'betfair.com', 'williamhill.com', 'pokerstars.com', '888.com', '888casino.com', '888poker.com', 'unibet.com', 'bwin.com',
+      'betway.com', 'betano.com', 'betsson.com', 'stake.com', 'roobet.com', 'rollbit.com', 'draftkings.com', 'fanduel.com', 'betmgm.com',
+      'ladbrokes.com', 'paddypower.com', 'skybet.com', 'coral.co.uk', 'pinnacle.com', '1xbet.com', '22bet.com', 'mostbet.com', 'bovada.lv',
+      'tippmix.hu', 'szerencsejatek.hu', 'vegas.hu', 'pokerstars.eu', 'ggpoker.com', 'partypoker.com', 'leovegas.com', 'mrgreen.com', 'casumo.com',
+    ],
+    keywords: ['casino', 'sportsbook', 'slot machine', 'kaszinó', 'sportfogadás'],
+    apps: [
+      A('bet365', ['com.bet365.android', 'com.bet365Wrapper.Bet365_Application']),
+      A('PokerStars', ['com.pyrsoftware.pokerstars.net', 'com.pokerstars.android'], ['PokerStars'], ['PokerStars.exe']),
+      A('GGPoker', ['com.nsus.ggpoker'], ['GGPoker'], ['GGnet.exe']),
+      A('Tippmix', ['hu.szerencsejatek.tippmix']),
+    ],
+  },
 ];
 
 // Extra hostnames that belong to a site but are not simple www./m. variants.

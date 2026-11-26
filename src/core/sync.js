@@ -65,6 +65,9 @@ function buildPayload(config, deviceId, changedAt, devices) {
     settings,
     session: config.session && config.session.endsAt > changedAt - 1 ? config.session : null,
     sessionChangedAt: config.sessionChangedAt || 0,
+    passes: config.passes || {},
+    unlockAt: typeof config.unlockAt === 'number' ? config.unlockAt : null,
+    unlockChangedAt: config.unlockChangedAt || 0,
     ...(devices ? { devices } : {}),
   };
 }
@@ -102,7 +105,28 @@ function applyRemote(config, remote, nowMs, { pinSet = false } = {}) {
     next = { ...next, session: config.session, sessionChangedAt: config.sessionChangedAt || 0 };
   }
 
-  const strip = (c) => JSON.stringify({ l: c.lists, s: c.schedules, t: c.customThemes, st: c.settings, se: c.session });
+  // Cool-down countdown: the newest start/cancel wins on every device.
+  if ((remote.unlockChangedAt || 0) > (config.unlockChangedAt || 0)) {
+    next = { ...next, unlockAt: typeof remote.unlockAt === 'number' ? remote.unlockAt : null, unlockChangedAt: remote.unlockChangedAt };
+  } else {
+    next = { ...next, unlockAt: typeof config.unlockAt === 'number' ? config.unlockAt : null, unlockChangedAt: config.unlockChangedAt || 0 };
+  }
+  // Always-on lists: with a cool-down (or a PIN, for changes made on the website)
+  // the protection can't be loosened from elsewhere — the stricter local version stays.
+  const cd = engine.coolDown(next.unlockAt === config.unlockAt ? config : { ...config, unlockAt: next.unlockAt }, nowMs);
+  const guarded = (cd.hours > 0 && cd.state !== 'open') || (pinSet && String(remote.device || '').startsWith('web-'));
+  if (!keptLocal && guarded && engine.standingReduction(config, next, nowMs)) {
+    next = { ...next, lists: config.lists, schedules: cfgLib.mergeEditable(config, { schedules: next.schedules }).schedules };
+    keptLocal = true;
+  }
+
+  // Unlocked earn-lists: the latest "open until" wins on every device.
+  const passes = { ...(config.passes || {}) };
+  for (const [k, v] of Object.entries((remote && remote.passes) || {})) {
+    if (typeof v === 'number' && v > nowMs && next.lists.some((l) => l.id === k) && !(passes[k] > v)) passes[k] = v;
+  }
+  next = { ...next, passes };
+  const strip = (c) => JSON.stringify({ l: c.lists, s: c.schedules, t: c.customThemes, st: c.settings, se: c.session, p: c.passes, u: c.unlockAt || null });
   return { config: next, changed: strip(next) !== strip(config), keptLocal };
 }
 

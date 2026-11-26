@@ -4,11 +4,14 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf' };
 const FILES = new Set(['block.html', 'block.css', 'block.js', 'styles.css']);
 
-function start({ root, data, ports = [47321, 47322, 47323, 47324, 47325] }) {
+function start({ root, data, actions = {}, ports = [47321, 47322, 47323, 47324, 47325] }) {
+  // Only our own page can read this (no CORS), so only it can ask for actions.
+  const token = crypto.randomBytes(16).toString('hex');
   const server = http.createServer((req, res) => {
     if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
     const u = new URL(req.url, 'http://127.0.0.1');
@@ -16,7 +19,15 @@ function start({ root, data, ports = [47321, 47322, 47323, 47324, 47325] }) {
     if (u.pathname === '/state.json') {
       let d = {};
       try { d = data(Object.fromEntries(u.searchParams)) || {}; } catch (_) { d = {}; }
-      send(200, 'application/json', JSON.stringify(d));
+      send(200, 'application/json', JSON.stringify({ ...d, token }));
+      return;
+    }
+    if (u.pathname === '/spend') {
+      const q = Object.fromEntries(u.searchParams);
+      if (q.token !== token || !actions.spend) { send(403, 'application/json', '{"ok":false}'); return; }
+      let r = { ok: false };
+      try { r = actions.spend(q.list, Number(q.m)) || { ok: false }; } catch (_) { r = { ok: false }; }
+      send(200, 'application/json', JSON.stringify(r));
       return;
     }
     let rel = u.pathname === '/blocked' || u.pathname === '/' ? 'block.html' : u.pathname.replace(/^\/+/, '');

@@ -34,7 +34,7 @@
       already: 'A block is already running.', pickList: 'Pick at least one list.',
       sites: '{n} sites', apps: '{n} apps', addSite: 'Add a site, e.g. youtube.com', add: 'Add', badSite: 'That doesn’t look like a website address.',
       limit: 'Daily limit', noLimit: 'No limit', perDay: '{m} min/day', limitHint: 'Counted on your computers: app time + time the site is the front browser tab.',
-      lockedList: 'In use by a locked block — you can add, not remove.', appsHere: 'Apps are added on the computer (they differ between Mac and Windows).',
+      lockedList: 'In use by a locked block — you can add, not remove.', alwaysList: 'Always-on protection — you can add sites here; loosening it only works in the app.', alwaysBadge: 'Always on', earnBadge: 'Earn to unlock', appsHere: 'Apps are added on the computer (they differ between Mac and Windows).',
       noSched: 'No schedules yet — create them in the app.', everyDay: 'Every day', days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
       signedInAs: 'Signed in as {e}', lastFrom: 'Last update from a computer: {t}', never: 'not yet', ago: '{n} min ago', justNow: 'just now', refresh: 'Refresh',
       install: 'Add to Home Screen', installHint: 'iPhone: Share → Add to Home Screen. Android: menu → Install app.', site: 'Website',
@@ -57,7 +57,7 @@
       already: 'Már fut egy tiltás.', pickList: 'Válassz legalább egy listát.',
       sites: '{n} oldal', apps: '{n} app', addSite: 'Weboldal, pl. youtube.com', add: 'Hozzáad', badSite: 'Ez nem tűnik weboldalcímnek.',
       limit: 'Napi keret', noLimit: 'Nincs keret', perDay: '{m} perc/nap', limitHint: 'A gépeiden mérjük: app-idő + amíg az oldal az elöl lévő böngészőlap.',
-      lockedList: 'Egy zárolt tiltás használja — hozzáadni lehet, törölni nem.', appsHere: 'Appot a gépen adhatsz hozzá (Macen és Windowson eltérnek).',
+      lockedList: 'Egy zárolt tiltás használja — hozzáadni lehet, törölni nem.', alwaysList: 'Mindig aktív védelem — itt hozzáadni lehet, lazítani csak az appban.', alwaysBadge: 'Mindig aktív', earnBadge: 'Ki kell érdemelni', appsHere: 'Appot a gépen adhatsz hozzá (Macen és Windowson eltérnek).',
       noSched: 'Még nincs időzítés — az appban hozhatsz létre.', everyDay: 'Minden nap', days: ['V', 'H', 'K', 'Sze', 'Cs', 'P', 'Szo'],
       signedInAs: 'Bejelentkezve: {e}', lastFrom: 'Utolsó frissítés géptől: {t}', never: 'még nem', ago: '{n} perce', justNow: 'épp most', refresh: 'Frissítés',
       install: 'Kezdőképernyőre', installHint: 'iPhone: Megosztás → Főképernyőhöz adás. Android: menü → Alkalmazás telepítése.', site: 'Weboldal',
@@ -271,7 +271,7 @@
         h('div', { class: 'label', style: 'margin-top:0' }, t('dur')),
         h('div', { class: 'row' }, [25, 50, 90, 120, 180].map((m) => h('button', { class: `chip${form.minutes === m ? ' on' : ''}`, onclick: () => { form.minutes = m; render(); } }, m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60}` : ''}`))),
         h('div', { class: 'label' }, t('what')),
-        h('div', { class: 'row' }, lists.map((l) => h('button', { class: `chip${form.listIds.includes(l.id) ? ' on' : ''}`, onclick: () => { form.listIds = form.listIds.includes(l.id) ? form.listIds.filter((x) => x !== l.id) : [...form.listIds, l.id]; render(); } }, `${l.emoji || ''} ${l.name}`, h('span', { class: 'n' }, (l.sites || []).length + (l.apps || []).length)))),
+        h('div', { class: 'row' }, lists.filter((l) => !l.always).map((l) => h('button', { class: `chip${form.listIds.includes(l.id) ? ' on' : ''}`, onclick: () => { form.listIds = form.listIds.includes(l.id) ? form.listIds.filter((x) => x !== l.id) : [...form.listIds, l.id]; render(); } }, `${l.emoji || ''} ${l.name}`, h('span', { class: 'n' }, (l.sites || []).length + (l.apps || []).length)))),
         h('div', { class: 'label' }, t('how')),
         h('div', { class: 'modes' }, ['flexible', 'patient', 'strict'].map((m) => h('button', { class: `mode${form.mode === m ? ' on' : ''}`, onclick: () => { form.mode = m; form.modeTouched = true; render(); } }, h('b', null, t(m)), h('span', null, t(`${m}D`))))),
         h('div', { style: 'margin-top:16px' }, h('button', { class: 'btn primary wide', disabled: busy || !form.listIds.length, onclick: start }, t('start'))),
@@ -285,17 +285,18 @@
     return [
       h('h1', null, t('tLists')),
       ...(d.lists || []).map((l) => {
-        const lockedList = s && s.mode !== 'flexible' && s.listIds.includes(l.id);
+        const standingList = Boolean(l.always || l.earn);
+        const lockedList = standingList || (s && s.mode !== 'flexible' && s.listIds.includes(l.id));
         const open = openList === l.id;
         const editSites = (fn, msg) => act(() => change((x) => { const ll = (x.lists || []).find((y) => y.id === l.id); if (!ll) return false; return fn(ll); }), msg);
         let draft = '';
         return h('div', { class: 'list' },
           h('button', { class: 'list-h', onclick: () => { openList = open ? null : l.id; render(); } },
             h('span', { class: 'e' }, l.emoji || '•'), h('b', null, l.name),
-            h('span', { class: 'muted small' }, `${t('sites', { n: (l.sites || []).length })} · ${t('apps', { n: (l.apps || []).length })}`)),
+            h('span', { class: 'muted small' }, `${standingList ? `${t(l.always ? 'alwaysBadge' : 'earnBadge')} · ` : ''}${t('sites', { n: (l.sites || []).length })} · ${t('apps', { n: (l.apps || []).length })}`)),
           l.limitMin > 0 ? h('div', { class: 'muted small', style: 'margin-top:6px' }, `⏳ ${t('limit')}: ${t('perDay', { m: l.limitMin })}`) : null,
           open ? h('div', null,
-            lockedList ? h('div', { class: 'note', style: 'margin-top:10px' }, svg(IC.lock), ' ', t('lockedList')) : null,
+            lockedList ? h('div', { class: 'note', style: 'margin-top:10px' }, svg(IC.lock), ' ', t(standingList ? 'alwaysList' : 'lockedList')) : null,
             h('div', { class: 'tags' }, (l.sites || []).map((site) => h('span', { class: 'tag' }, site,
               lockedList ? null : h('button', { 'aria-label': `remove ${site}`, onclick: () => editSites((ll) => { ll.sites = ll.sites.filter((x) => x !== site); return true; }, t('saved')) }, '×')))),
             h('div', { class: 'row', style: 'margin-top:12px;flex-wrap:nowrap' },

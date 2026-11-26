@@ -39,6 +39,12 @@ const TOOLS = [
   }, required: ['name', 'days', 'start', 'end', 'lists'] } },
   { name: 'set_schedule_enabled', description: 'Turn a schedule on or off.', input_schema: { type: 'object', properties: { schedule: { type: 'string' }, enabled: { type: 'boolean' } }, required: ['schedule', 'enabled'] } },
   { name: 'set_daily_limit', description: 'Give a list a daily time budget (minutes per day, 0 = no limit). After the budget is used up, the list is blocked until midnight.', input_schema: { type: 'object', properties: { list: { type: 'string' }, minutes: { type: 'integer', minimum: 0, maximum: 600 } }, required: ['list', 'minutes'] } },
+  { name: 'set_list_protection', description: 'How a list is enforced. "always" = blocked around the clock, even without focus (good for adult content, gambling). "earn" = blocked until the user spends minutes earned by focusing. "normal" = only during focus/schedules/limits. safe_search forces Google/Bing SafeSearch and YouTube Restricted Mode while the list is on. Weakening an always-on list needs the PIN and any cool-down, so the user may have to do it in the app.', input_schema: { type: 'object', properties: {
+    list: { type: 'string' }, kind: { type: 'string', enum: ['always', 'earn', 'normal'] }, safe_search: { type: 'boolean' } }, required: ['list'] } },
+  { name: 'block_keywords', description: 'Block pages whose address, search or tab title contains these words or phrases (e.g. "casino", "porn"). Whole words only, 3-40 characters. Desktop only.', input_schema: { type: 'object', properties: {
+    keywords: { type: 'array', items: { type: 'string' } }, list: { type: 'string' } }, required: ['keywords'] } },
+  { name: 'spend_earned_minutes', description: 'Open an "earn" list for some of the minutes the user earned by focusing (minutes 0 = lock it again and refund the rest).', input_schema: { type: 'object', properties: {
+    list: { type: 'string' }, minutes: { type: 'integer', minimum: 0, maximum: 120 } }, required: ['list', 'minutes'] } },
   { name: 'set_grow', description: 'Choose what grows or gets built during focus sessions (or "none").', input_schema: { type: 'object', properties: { item: { type: 'string', enum: [...GROW.CATALOG.map((c) => c.id), 'none'] } }, required: ['item'] } },
   { name: 'set_theme', description: 'Change the app\'s look: a built-in theme (midnight, daylight, crt, onebit, vapor) or a new custom style from a short description.', input_schema: { type: 'object', properties: { theme: { type: 'string', enum: ['midnight', 'daylight', 'crt', 'onebit', 'vapor'] }, describe: { type: 'string' } } } },
   { name: 'get_stats', description: 'Focus statistics: last 7 days, streak, most blocked apps/sites, the forest.', input_schema: { type: 'object', properties: {} } },
@@ -73,7 +79,9 @@ function status(ctx) {
     now: new Date(ctx.now()).toString(),
     blocking: ev.blocking ? { mode: ev.mode, until: fmtTime(ev.endsAt), because: ev.sources.map((s) => `${s.type}${s.name ? `: ${s.name}` : ''}`), sites: ev.sites.length, apps: ev.apps.length } : null,
     session: config.session && config.session.endsAt > ctx.now() ? { until: fmtTime(config.session.endsAt), mode: config.session.mode, goal: config.session.goal || '' } : null,
-    lists: config.lists.map((l) => ({ id: l.id, name: l.name, sites: l.sites.slice(0, 40), parts: (l.paths || []).slice(0, 20), apps: (l.apps || []).map((a) => a.name).slice(0, 40), dailyLimitMin: l.limitMin || 0, onlyTheseSites: Boolean(l.allowOnly) })),
+    lists: config.lists.map((l) => ({ id: l.id, name: l.name, sites: l.sites.slice(0, 40), parts: (l.paths || []).slice(0, 20), apps: (l.apps || []).map((a) => a.name).slice(0, 40), keywords: (l.keywords || []).slice(0, 20), dailyLimitMin: l.limitMin || 0, onlyTheseSites: Boolean(l.allowOnly), kind: l.always ? 'always' : l.earn ? 'earn' : 'normal', safeSearch: Boolean(l.safe), openUntil: (config.passes || {})[l.id] > ctx.now() ? fmtTime(config.passes[l.id]) : undefined })),
+    earnedMinutes: ctx.wallet ? ctx.wallet() : undefined,
+    coolDownHours: config.settings.coolDownH || 0,
     schedules: config.schedules.map((s) => ({ name: s.name, days: s.days, start: s.start, end: s.end, mode: s.mode, enabled: s.enabled, lists: s.listIds.map((id) => (config.lists.find((l) => l.id === id) || {}).name).filter(Boolean) })),
     usualLists: config.settings.defaultListIds.map((id) => (config.lists.find((l) => l.id === id) || {}).name).filter(Boolean),
     today: { focusMinutes: st.todayMinutes, blocks: st.todayBlocks, streakDays: st.streak, totalFocusHours: st.totalHours },
@@ -217,6 +225,31 @@ async function runTool(ctx, name, input = {}) {
       const r = ctx.applyConfigChange({ lists: config.lists.map((x) => (x.id === l.id ? { ...x, limitMin: minutes } : x)) });
       return r.ok ? { ok: true, list: l.name, minutesPerDay: minutes } : fail(r.error);
     }
+    case 'set_list_protection': {
+      const l = findList(config, input.list);
+      if (!l) return fail('Unknown list.');
+      const kind = ['always', 'earn', 'normal'].includes(input.kind) ? input.kind : (l.always ? 'always' : l.earn ? 'earn' : 'normal');
+      const patch = { always: kind === 'always', earn: kind === 'earn', ...(typeof input.safe_search === 'boolean' ? { safe: input.safe_search } : {}) };
+      const r = ctx.applyConfigChange({ lists: config.lists.map((x) => (x.id === l.id ? { ...x, ...patch } : x)) });
+      if (!r.ok) return fail(r.error === 'pin' ? 'A PIN protects always-on lists: the user must change this in the app.' : r.error === 'cooldown' ? `Cool-down: the user must start the ${config.settings.coolDownH} h countdown in the app first.` : r.error);
+      return { ok: true, list: l.name, kind, safeSearch: typeof input.safe_search === 'boolean' ? input.safe_search : Boolean(l.safe) };
+    }
+    case 'block_keywords': {
+      const words = ctx.cleanKeywords ? ctx.cleanKeywords(input.keywords || []) : [];
+      if (!words.length) return fail('No valid keywords (3-40 letters or digits).');
+      const { lists, list, created } = ensureList(config, input.list, lang);
+      const r = ctx.applyConfigChange({ lists: lists.map((l) => (l.id === list.id ? { ...l, keywords: [...new Set([...(l.keywords || []), ...words])] } : l)) });
+      return r.ok ? { ok: true, list: list.name, createdList: created, added: words } : fail(r.error);
+    }
+    case 'spend_earned_minutes': {
+      const l = findList(config, input.list);
+      if (!l || !l.earn) return fail('That is not an "earn" list.');
+      if (!ctx.spendEarned) return fail('Not available here.');
+      const r = ctx.spendEarned(l.id, Math.max(0, Math.min(120, Math.round(Number(input.minutes) || 0))));
+      if (!r.ok) return fail(r.error === 'balance' ? `Not enough earned minutes (has ${ctx.wallet ? ctx.wallet() : 0}).` : r.error);
+      const until = (ctx.config().passes || {})[l.id];
+      return { ok: true, list: l.name, openUntil: until ? fmtTime(until) : null, earnedMinutesLeft: ctx.wallet ? ctx.wallet() : undefined };
+    }
     case 'set_grow': {
       if (input.item === 'none') { ctx.applyConfigChange({ settings: { growOn: false } }); return { ok: true }; }
       const item = GROW.BY_ID[input.item];
@@ -248,7 +281,8 @@ function systemPrompt(ctx) {
   return [
     'You are Halyra AI, the assistant inside Halyra Focus — an app and website blocker for Mac, Windows and Android.',
     'You are very knowledgeable: answer any question well (studying, coding, writing, science, history, health basics, life advice, planning). Use web search for anything current or that you are not sure about, and mention sources briefly.',
-    'You can also operate the app with your tools: start/extend focus, block sites or parts of sites, build lists and schedules, set daily limits, change the look and what grows during focus. When the user asks for something the tools can do, do it (call get_status first if you need names), then confirm briefly what changed.',
+    'You can also operate the app with your tools: start/extend focus, block sites or parts of sites, block keywords, build lists and schedules, set daily limits, make a list always-on (blocked around the clock, optionally with SafeSearch) or earn-to-unlock (opened with minutes earned by focusing), spend earned minutes, change the look and what grows during focus. When the user asks for something the tools can do, do it (call get_status first if you need names), then confirm briefly what changed.',
+    'For porn or gambling problems, be kind and never shaming: suggest an always-on list with SafeSearch, keyword blocking, a PIN given to someone they trust and a 24 h cool-down, so a weak moment can pass.',
     'Be warm, direct and decisive — like a smart friend who wants them to succeed. Keep answers short unless asked for detail. Use simple Markdown (bold, lists, links) only when it helps.',
     'Never help to get around a running patient/strict block, a PIN, or the user\'s own rules (e.g. suggest other browsers, VPNs, deleting the app). If they want to stop early, remind them why they started and point to the Stop button in the app.',
     'If the user seems to be in crisis or talks about harming themselves, respond with care and suggest local emergency services or a crisis line.',
