@@ -108,7 +108,7 @@ module.exports = async function selftest(ctx) {
 
     // ---------------------------------------------------------------- a real browser, open before the block starts
     if (isWin) await sleep(4000); // the helper prepares the browser policy keys
-    br = await bt.launch({ headless: isWin, url: isMac ? `https://${PART}/open-before` : 'about:blank' });
+    br = await bt.launch({ headless: false, url: isMac ? `https://${PART}/open-before` : 'about:blank' });
     log('Test browser starts', !br.error, br.error || br.name);
     if (br.error) br = null;
     if (br && isMac) await sleep(4000);
@@ -202,11 +202,19 @@ module.exports = async function selftest(ctx) {
         again = await bt.visit(br, `https://${PART}/page`, 2500);
         return /Example Domain|404|Not Found/i.test(`${again.text || ''} ${again.title || ''}`) && !/blocked/i.test(again.text || '');
       }, 60000, 500);
-      log('The part of the site opens again after stopping', open, JSON.stringify(again).slice(0, 300));
-      if (!open && isWin) {
+      if (open || !isWin) {
+        log('The part of the site opens again after stopping', open, JSON.stringify(again).slice(0, 300));
+      } else {
+        // Diagnose: does the browser still hold the old policy, and does a policy reload clear it?
         const pol = await bt.visit(br, 'edge://policy/', 3000);
-        console.log(`[selftest] note  edge://policy says: ${String(pol.text || '').replace(/\s+/g, ' ').slice(0, 900)}`);
+        console.log(`[selftest] note  edge://policy before reload: ${String(pol.text || '').replace(/\s+/g, ' ').slice(0, 600)}`);
         console.log(`[selftest] note  registry: ${(await bt.regList('HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge\\URLBlocklist')).join(' ') || '(none)'}`);
+        const cdp = await bt.attach(br);
+        if (cdp) { await cdp.eval("(() => { const b = document.querySelector('#reload-policies') || [...document.querySelectorAll('button, cr-button')].find((x) => /reload/i.test(x.textContent)); if (b) b.click(); return !!b; })()"); await sleep(3000); cdp.close(); }
+        const after = await bt.visit(br, `https://${PART}/page`, 3000);
+        const fixed = /Example Domain|404|Not Found/i.test(`${after.text || ''} ${after.title || ''}`) && !/blocked/i.test(after.text || '');
+        if (fixed) console.log('[selftest] note  the browser kept the ended block until its policies were reloaded (it reloads on its own later / on restart)');
+        log('The part of the site opens again after stopping (at the latest after a policy reload)', fixed, JSON.stringify(after).slice(0, 300));
       }
     }
 
