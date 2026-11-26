@@ -1,0 +1,163 @@
+# Tests what users actually get, after every release and website deploy (and daily):
+#  - the LIVE website: every page, link, image, phone layout, SEO tags, download buttons
+#  - the web app against a mock account server
+#  - the PUBLIC installers: download → install → self-test → uninstall, on real
+#    macOS (Apple Silicon, plus Intel via Rosetta) and Windows machines.
+name: Verify live release & website
+
+on:
+  workflow_run:
+    workflows: ['Build, test & release', 'Website']
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/verify.yml', 'tools/verify-site.js', 'tools/test-webapp.js']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify
+  cancel-in-progress: true
+
+jobs:
+  website:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund playwright@1
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+          echo "NODE_PATH=$RUNNER_TEMP/pw/node_modules" >> "$GITHUB_ENV"
+      - name: Wait for a fresh Pages deploy
+        if: github.event_name == 'workflow_run' || github.event_name == 'push'
+        run: sleep 75
+      - name: Check the live website
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DOMAIN=$(node -p "require('./website-src/site.config.json').domain || ''")
+          if [ -n "$DOMAIN" ]; then BASE="https://$DOMAIN/"; else BASE="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/"; fi
+          echo "Checking $BASE"
+          node tools/verify-site.js "$BASE" "$RUNNER_TEMP/site-check"
+      - name: Web app test (mock account server)
+        if: always()
+        run: |
+          node website-src/build.js "$RUNNER_TEMP/site"
+          node tools/test-webapp.js "$RUNNER_TEMP/site" "$RUNNER_TEMP/webapp-test"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verify-website
+          path: |
+            ${{ runner.temp }}/site-check/
+            ${{ runner.temp }}/webapp-test/
+
+  install-mac:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.name == 'Build, test & release'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download the public installer (as a user would)
+        run: |
+          curl -fSL -o HalyraFocus-mac.dmg "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/HalyraFocus-mac.dmg"
+          curl -fSL -o HalyraFocus-mac.zip "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/HalyraFocus-mac.zip"
+          ls -la
+      - name: Install from the DMG
+        run: |
+          hdiutil attach HalyraFocus-mac.dmg -nobrowse -mountpoint /tmp/hf
+          ls -la /tmp/hf
+          if [ -L /tmp/hf/Applications ]; then echo "PASS  DMG has the drag-to-Applications shortcut"; else echo "FAIL  no Applications shortcut in DMG"; exit 1; fi
+          cp -R "/tmp/hf/Halyra Focus.app" /Applications/
+          hdiutil detach /tmp/hf
+          APP="/Applications/Halyra Focus.app"
+          echo "Version: $(defaults read "$APP/Contents/Info.plist" CFBundleShortVersionString)"
+          ARCHS=$(lipo -archs "$APP/Contents/MacOS/Halyra Focus"); echo "Architectures: $ARCHS"
+          if echo "$ARCHS" | grep -q arm64 && echo "$ARCHS" | grep -q x86_64; then echo "PASS  Universal app (Apple Silicon + Intel)"; else echo "FAIL  not universal"; exit 1; fi
+          if codesign --verify --deep --strict "$APP"; then echo "PASS  Code signature intact (ad-hoc)"; else echo "FAIL  broken code signature (app would not open)"; exit 1; fi
+          spctl -a -vv "$APP" 2>&1 || echo "NOTE  Not notarized by Apple: first launch needs 'Open Anyway' (expected without a paid Apple developer account)"
+          MIN=$(defaults read "$APP/Contents/Info.plist" LSMinimumSystemVersion); echo "Minimum macOS: $MIN"
+      - name: ZIP download contains the same app
+        run: |
+          mkdir z && ditto -x -k HalyraFocus-mac.zip z
+          if [ -d "z/Halyra Focus.app" ]; then echo "PASS  ZIP contains Halyra Focus.app"; else echo "FAIL  ZIP is missing the app"; ls z; exit 1; fi
+      - name: Self-test the installed app (Apple Silicon)
+        run: |
+          export HALYRA_SELFTEST_OUT="$RUNNER_TEMP/selftest-arm64"
+          "/Applications/Halyra Focus.app/Contents/MacOS/Halyra Focus" --selftest
+      - name: Self-test the installed app (Intel, via Rosetta)
+        continue-on-error: true
+        run: |
+          softwareupdate --install-rosetta --agree-to-license >/dev/null 2>&1 || true
+          rm -rf "$HOME/Library/Application Support/Halyra Focus"
+          export HALYRA_SELFTEST_OUT="$RUNNER_TEMP/selftest-x86_64"
+          arch -x86_64 "/Applications/Halyra Focus.app/Contents/MacOS/Halyra Focus" --selftest
+      - name: Uninstall leaves nothing behind
+        if: always()
+        run: |
+          rm -rf "/Applications/Halyra Focus.app"
+          if [ -f /Library/LaunchDaemons/com.halyra.focus.helper.plist ]; then echo "FAIL  helper left installed"; exit 1; else echo "PASS  No helper left installed"; fi
+          if grep -q "HalyraFocus" /etc/hosts; then echo "FAIL  hosts file not clean"; exit 1; else echo "PASS  Hosts file clean"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verify-mac
+          path: ${{ runner.temp }}/selftest-*/
+
+  install-windows:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.name == 'Build, test & release'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Download the public installer (as a user would)
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/$env:GITHUB_REPOSITORY/releases/latest/download/HalyraFocus-Setup.exe" -OutFile HalyraFocus-Setup.exe
+          Get-Item HalyraFocus-Setup.exe | Select-Object Name, Length
+      - name: Install silently
+        run: |
+          $p = Start-Process .\HalyraFocus-Setup.exe -ArgumentList '/S' -Wait -PassThru
+          "Installer exit code: $($p.ExitCode)"
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Programs", "$env:ProgramFiles" -Recurse -Filter 'Halyra Focus.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) { throw 'FAIL  Installed app not found' }
+          "PASS  Installed: $($exe.FullName)  version $($exe.VersionInfo.ProductVersion)"
+          "EXE=$($exe.FullName)" | Out-File -Append $env:GITHUB_ENV
+          $lnk = Get-ChildItem "$env:APPDATA\Microsoft\Windows\Start Menu\Programs" -Recurse -Filter 'Halyra Focus*.lnk' -ErrorAction SilentlyContinue
+          if ($lnk) { "PASS  Start menu shortcut: $($lnk[0].FullName)" } else { throw 'FAIL  No Start menu shortcut' }
+      - name: Self-test the installed app
+        run: |
+          $env:HALYRA_SELFTEST_OUT = Join-Path $env:RUNNER_TEMP 'selftest'
+          $log = Join-Path $env:RUNNER_TEMP 'selftest-log.txt'
+          $p = Start-Process -FilePath $env:EXE -ArgumentList '--selftest' -Wait -PassThru -RedirectStandardOutput $log
+          Get-Content $log | Select-String -Pattern '^\[selftest\]'
+          if ($p.ExitCode -ne 0) { throw "Self-test failed ($($p.ExitCode))" }
+      - name: Uninstall silently and check cleanup
+        run: |
+          $dir = Split-Path $env:EXE
+          $un = Get-ChildItem $dir -Filter 'Uninstall*.exe' | Select-Object -First 1
+          if (-not $un) { throw 'FAIL  Uninstaller not found' }
+          Start-Process $un.FullName -ArgumentList '/S' -Wait
+          for ($i = 0; $i -lt 30 -and (Test-Path $env:EXE); $i++) { Start-Sleep 2 }
+          if (Test-Path $env:EXE) { throw 'FAIL  App still present after uninstall' } else { 'PASS  App removed' }
+          $lnk = Get-ChildItem "$env:APPDATA\Microsoft\Windows\Start Menu\Programs" -Recurse -Filter 'Halyra Focus*.lnk' -ErrorAction SilentlyContinue
+          if ($lnk) { throw 'FAIL  Start menu shortcut left behind' } else { 'PASS  Shortcuts removed' }
+          $hosts = Get-Content "$env:WINDIR\System32\drivers\etc\hosts" -Raw
+          if ($hosts -match 'HalyraFocus') { throw 'FAIL  Hosts file still has Halyra entries' } else { 'PASS  Hosts file clean' }
+          if (Get-ScheduledTask -TaskName 'HalyraFocus*' -ErrorAction SilentlyContinue) { throw 'FAIL  Helper task left behind' } else { 'PASS  No helper task left' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verify-windows
+          path: ${{ runner.temp }}/selftest/

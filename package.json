@@ -1,12 +1,12 @@
 {
   "name": "halyra-focus",
   "productName": "Halyra Focus",
-  "version": "1.2.0",
-  "description": "Free app & website blocker for Mac and Windows. Focus sessions, schedules, Pomodoro, a smart focus coach, an AI style studio and retro themes. No account, no tracking — and you can always turn it off.",
+  "version": "1.2.1",
+  "description": "Free app & website blocker for Mac and Windows. Focus sessions, schedules, Pomodoro, daily limits, focus sounds, a smart focus coach, an AI style studio and retro themes. Optional account sync and a web app for your phone. No tracking — and you can always turn it off.",
   "main": "src/main/main.js",
   "author": "Halyra",
   "license": "MIT",
-  "homepage": "https://halyrafocus.com",
+  "homepage": "https://tibi772.github.io/halyra-focus/",
   "private": true,
   "scripts": {
     "start": "electron .",
@@ -44,7 +44,7 @@
       "artifactName": "HalyraFocus-mac.${ext}",
       "minimumSystemVersion": "12.0",
       "extendInfo": {
-        "NSAppleEventsUsageDescription": "Halyra Focus asks once for admin permission to turn on website blocking in every browser."
+        "NSAppleEventsUsageDescription": "Halyra Focus uses this to turn on website blocking (one admin prompt) and, for daily limits, to see which website is open in your browser. Nothing leaves your computer."
       }
     },
     "dmg": {

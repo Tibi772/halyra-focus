@@ -51,17 +51,15 @@ jobs:
         if: runner.os == 'Windows'
         run: npm run dist:win
 
+      # A failing self-test stops the release: a broken installer never reaches users.
       - name: End-to-end self-test (macOS)
         if: runner.os == 'macOS'
-        continue-on-error: true
         timeout-minutes: 10
         run: |
           export HALYRA_SELFTEST_OUT="$RUNNER_TEMP/selftest"
           "dist/mac-universal/Halyra Focus.app/Contents/MacOS/Halyra Focus" --selftest
-          cat "$HALYRA_SELFTEST_OUT/results.json"
       - name: End-to-end self-test (Windows)
         if: runner.os == 'Windows'
-        continue-on-error: true
         timeout-minutes: 10
         shell: pwsh
         run: |

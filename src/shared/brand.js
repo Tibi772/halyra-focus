@@ -7,7 +7,7 @@ const BRAND = {
   short: 'HalyraFocus',
   appId: 'com.halyra.focus',
   helperLabel: 'com.halyra.focus.helper',
-  website: 'https://halyrafocus.com',
+  website: 'https://tibi772.github.io/halyra-focus/', // change when a custom domain is set (website-src/site.config.json)
   hostsMarkerBegin: '# >>> HalyraFocus BEGIN (managed, do not edit)',
   hostsMarkerEnd: '# <<< HalyraFocus END',
 };
