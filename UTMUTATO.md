@@ -122,7 +122,17 @@ Ha később eltüntetnéd: Apple Developer Program (kb. 99 USD/év) + Windows k�
 - **Fiók és szinkron (opcionális):** e-mailes belépés, a listák, időzítések, stílusok és a futó fókusz minden gépen ugyanaz. Zárolt tiltást másik eszközről sem lehet leállítani.
 - **Webapp telefonra:** a weboldal `/app/` oldalán, ugyanazzal a fiókkal — innen is indítható a fókusz az összes gépen.
 - Nyugodt tiltóképernyő rövid, motiváló mondatokkal.
+- **Mindig aktív pajzs (1.5-től):** bármelyik listát „Mindig” típusúra állíthatod — fókusz nélkül, éjjel-nappal tilt. Kész lista: *Felnőtt tartalom pajzs* (60+ oldal, pornós kulcsszavak, kötelező SafeSearch) és *Szerencsejáték*.
+- **Kulcsszavas tiltás:** ha egy fül címében vagy a címsorban szerepel egy tiltott szó (pl. „kaszinó”), bezárja (Macen és Windowson).
+- **Kötelező SafeSearch:** Google, Bing és YouTube biztonságos módban, minden böngészőben (hosts + Windowson böngésző-szabály, Androidon a DNS-szűrő).
+- **Türelmi idő:** 1/24/72 óra várakozás, mielőtt egy mindig aktív listán lazítani lehetne (Beállítások → Kikapcsolás). Minden eszközön együtt működik, a webappról sem lehet kikerülni.
+- **Ki kell érdemelni:** a „ki kell érdemelni” listák (pl. játékok) zárva vannak; a fókusz perceket ad, amiket 5/10/15 percre el lehet költeni rájuk — az appban vagy a tiltóoldalon.
+- **Halyra AI (⌘K / Ctrl K):** bármire válaszol (webes kereséssel), és beállítja a tiltásokat, listákat, időzítéseket, pajzsot, kereteket.
 - Magyar és angol nyelv.
+
+**Frissítés után:** a weboldal-tiltó segédprogram új verziót kapott (SafeSearch miatt). Az app szól, ha frissíteni kell — ilyenkor Beállítások → Weboldal-tiltás → *Frissítés* (egyszer kér jelszót).
+
+**A weboldal titkai:** a főoldalon 9 rejtett meglepetés van (pl. ↑ ↑ ↓ ↓ ← → ← → B A, vagy írd be bárhol, hogy „fokusz”). Tipp a böngésző konzoljában: `halyra.secret()`.
 
 ## 7/b. Telefon: Android és iPhone
 
