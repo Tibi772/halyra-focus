@@ -595,7 +595,7 @@ body[data-theme='crt'] .grow-art, body[data-theme='onebit'] .grow-art, body[data
 @keyframes gw-fade { from { opacity: 0; filter: saturate(2); } }
 
 .card.garden { padding-bottom: 14px; overflow: hidden; }
-.garden-land { position: relative; height: 185px; margin: 4px -20px 0; border-radius: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%); }
+.garden-land { position: relative; height: 168px; margin: 4px -20px 0; border-radius: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%); }
 .garden-land svg { width: 100%; height: 100%; display: block; }
 .garden-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 14px; color: var(--muted); padding: 0 24px; text-align: left; }
 .garden-kpis { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; margin-top: 12px; }
@@ -651,3 +651,4 @@ body.mac .chat-head { padding-top: 34px; }
 .chat-in { resize: none; min-height: 42px; max-height: 140px; line-height: 1.4; padding-top: 11px; }
 .chat-foot .btn { height: 42px; width: 46px; padding: 0; justify-content: center; }
 @keyframes fade-in { from { opacity: 0; } }
+.ring-wrap.growing .ring-label { max-width: 210px; letter-spacing: .06em; font-size: 11px; text-align: center; line-height: 1.3; }

@@ -678,7 +678,7 @@ function renderRing() {
     h('div', { class: 'ring-center' },
       gr ? art : null,
       h('div', { class: 'ring-time', 'data-live': 'ring-time' }, m.time),
-      h('div', { class: 'ring-label' }, gr && !gr.idle ? `${m.label} · ${Math.floor(gr.p * 100)}%` : m.label),
+      h('div', { class: 'ring-label' }, gr && !gr.idle ? `${growName(gr.id)} · ${Math.floor(gr.p * 100)}%` : m.label),
       m.sub && !gr ? h('div', { class: 'ring-sub' }, m.sub) : null),
   );
   return wrap;
