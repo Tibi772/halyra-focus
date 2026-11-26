@@ -23,21 +23,26 @@ create policy "own usage" on public.halyra_ai_usage for select using (auth.uid()
 drop policy if exists "own plan" on public.halyra_plans;
 create policy "own plan" on public.halyra_plans for select using (auth.uid() = user_id);
 
--- Counts one message; refuses when today's allowance is used up.
+-- Counts one message; refuses when the allowance is used up.
+-- Pro: free_limit is ignored, pro_limit per day. Free: free_limit per calendar month.
 create or replace function public.halyra_ai_bump(uid uuid, free_limit integer, pro_limit integer)
 returns json language plpgsql security definer set search_path = public as $$
 declare
+  is_pro boolean;
   lim integer;
+  bucket date;
   n integer;
 begin
-  select case when exists (select 1 from halyra_plans p where p.user_id = uid and p.until > now()) then pro_limit else free_limit end into lim;
-  insert into halyra_ai_usage (user_id, day, count) values (uid, (now() at time zone 'utc')::date, 1)
+  is_pro := exists (select 1 from halyra_plans p where p.user_id = uid and p.until > now());
+  lim := case when is_pro then pro_limit else free_limit end;
+  bucket := case when is_pro then (now() at time zone 'utc')::date else date_trunc('month', now() at time zone 'utc')::date end;
+  insert into halyra_ai_usage (user_id, day, count) values (uid, bucket, 1)
   on conflict (user_id, day) do update set count = halyra_ai_usage.count + 1
   returning count into n;
   if n > lim then
-    update halyra_ai_usage set count = count - 1 where user_id = uid and day = (now() at time zone 'utc')::date;
-    return json_build_object('ok', false, 'limit', lim);
+    update halyra_ai_usage set count = count - 1 where user_id = uid and day = bucket;
+    return json_build_object('ok', false, 'limit', lim, 'pro', is_pro);
   end if;
-  return json_build_object('ok', true, 'used', n, 'limit', lim);
+  return json_build_object('ok', true, 'used', n, 'limit', lim, 'pro', is_pro);
 end $$;
 revoke all on function public.halyra_ai_bump(uuid, integer, integer) from public, anon, authenticated;

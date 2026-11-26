@@ -4,7 +4,7 @@
 // request to Anthropic with the project's key. The key never reaches the app.
 //
 // Deploy:  supabase functions deploy halyra-ai --project-ref <ref>
-// Secrets: supabase secrets set ANTHROPIC_API_KEY=sk-ant-... [FREE_DAILY=5] [PRO_DAILY=150]
+// Secrets: supabase secrets set ANTHROPIC_API_KEY=sk-ant-... [FREE_MONTHLY=10] [PRO_DAILY=50]
 // Needs the SQL in docs/supabase-ai.sql (usage counter + plans).
 
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
@@ -33,16 +33,16 @@ Deno.serve(async (req) => {
   if (!userRes.ok) return json(401, { error: 'sign in again' });
   const user = await userRes.json();
 
-  // 2. daily allowance (atomic counter in the database)
-  const free = Number(Deno.env.get('FREE_DAILY') || 5);
-  const pro = Number(Deno.env.get('PRO_DAILY') || 150);
+  // 2. allowance (atomic counter in the database): free = per month, pro = per day
+  const free = Number(Deno.env.get('FREE_MONTHLY') || 10);
+  const pro = Number(Deno.env.get('PRO_DAILY') || 50);
   const bump = await fetch(`${SUPABASE_URL}/rest/v1/rpc/halyra_ai_bump`, {
     method: 'POST',
     headers: { apikey: SERVICE, authorization: `Bearer ${SERVICE}`, 'content-type': 'application/json' },
     body: JSON.stringify({ uid: user.id, free_limit: free, pro_limit: pro }),
   });
   const allowed = bump.ok ? await bump.json() : null;
-  if (!allowed || allowed.ok !== true) return json(429, { code: 'quota', error: 'daily limit reached', limit: allowed && allowed.limit });
+  if (!allowed || allowed.ok !== true) return json(429, { code: allowed && allowed.pro ? 'quota' : 'quotaFree', error: 'limit reached', limit: allowed && allowed.limit });
 
   // 3. forward a cleaned-up request
   let body: any;

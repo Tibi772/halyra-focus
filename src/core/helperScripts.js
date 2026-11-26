@@ -130,7 +130,7 @@ const WIN = {
 };
 
 // Bumped whenever a helper script changes, so the app can ask for a one-time update.
-const HELPER_VERSION = { mac: 1, win: 4 };
+const HELPER_VERSION = { mac: 1, win: 5 };
 
 function winHelperPs1() {
   return `# ${BRAND.name} helper - runs as SYSTEM, mirrors blocklist.txt into the hosts file
@@ -148,6 +148,8 @@ $End = '${BRAND.hostsMarkerEnd}'
 $Re = '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
 $PathRe = '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[a-z0-9._~%/+=,-]*$'
 $PolicyRoots = @('SOFTWARE\\Policies\\Google\\Chrome', 'SOFTWARE\\Policies\\Microsoft\\Edge', 'SOFTWARE\\Policies\\BraveSoftware\\Brave', 'SOFTWARE\\Policies\\Chromium')
+$Placeholder = 'halyra-focus-ended.invalid'
+$script:Cleared = @{}
 $AlwaysAllow = @(${POLICY_ALWAYS_ALLOW.map((x) => `'${x}'`).join(', ')})
 $Utf8 = New-Object System.Text.UTF8Encoding($false)
 
@@ -206,6 +208,21 @@ function Set-ListPolicy([string]$path, [string[]]$want, $owned) {
   foreach ($v in $cur) { if (-not $owned.ContainsKey("$path|$v") -and -not $final.Contains($v)) { $final.Add($v) } }
   $mine = New-Object System.Collections.Generic.List[string]
   foreach ($v in $want) { if ($v -and -not $final.Contains($v)) { $final.Add($v); $mine.Add($v) } }
+  # Chrome/Edge apply changed values right away but keep a deleted list until
+  # they restart. So an ended block first becomes a harmless placeholder entry,
+  # which is removed a few minutes later.
+  if ($want.Count -eq 0) {
+    $hadOurs = $false
+    foreach ($v in $cur) { if ($owned.ContainsKey("$path|$v") -and $v -ne $Placeholder) { $hadOurs = $true } }
+    $hasPlaceholder = $cur.Contains($Placeholder) -and $owned.ContainsKey("$path|$Placeholder")
+    $since = 0
+    if ($script:Cleared.ContainsKey($path)) { $since = $script:Cleared[$path] }
+    if ($hadOurs -or ($hasPlaceholder -and ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - $since) -lt 300)) {
+      if ($hadOurs) { $script:Cleared[$path] = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() }
+      if (-not $final.Contains($Placeholder)) { $final.Add($Placeholder) }
+      $mine.Add($Placeholder)
+    }
+  }
   if (($final -join "\`n") -cne ($cur -join "\`n")) {
     $script:PolicyChanged = $true
     if ($k) { foreach ($n in @($k.GetValueNames())) { if ($n -match '^\\d+$') { $k.DeleteValue($n) } } }

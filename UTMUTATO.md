@@ -61,12 +61,12 @@ Az app és a weboldal fiók nélkül is teljesen működik. Ha azt szeretnéd, h
 A Halyra AI (✦ gomb az appban, Ctrl/⌘ K) bármire válaszol, keres a weben, és **ki is tudja adni a parancsokat** („tiltsd le a Redditet 18 óráig szigorúan”, „csinálj hétköznapi tanulási időbeosztást”). Három módban fut:
 
 1. **Saját kulccsal** — a felhasználó a Beállítások → Halyra AI kártyán beírja a saját Anthropic API-kulcsát. Ez már most működik.
-2. **A te szervereden át (belépett felhasználóknak)** — nem kell nekik kulcs, te fizeted az API-t, és naponta X üzenetet kapnak ingyen (Pro-ban többet). Bekapcsolás:
+2. **A te szervereden át (belépett felhasználóknak)** — nem kell nekik kulcs, te fizeted az API-t, és havonta 10 üzenetet kapnak ingyen (Pro-ban napi 50-et). Bekapcsolás:
    1. Előbb legyen kész a 3/b (Supabase).
    2. Supabase → **SQL Editor** → futtasd le a `docs/supabase-ai.sql` tartalmát.
    3. [console.anthropic.com](https://console.anthropic.com) → API keys → új kulcs. (Billing alatt állíts be havi költséglimitet!)
    4. GitHubon: **Settings → Secrets and variables → Actions → New repository secret**, három darab: `SUPABASE_ACCESS_TOKEN` (supabase.com → Account → Access Tokens), `SUPABASE_PROJECT_REF` (a `https://XXXX.supabase.co` címben az XXXX), `ANTHROPIC_API_KEY`.
-   5. **Actions → Halyra AI server → Run workflow.** Ez feltölti a `supabase/functions/halyra-ai` szervert. Napi keret: alapból 5 üzenet ingyen, 150 Pro-ban (`FREE_DAILY`, `PRO_DAILY` titkokkal állítható).
+   5. **Actions → Halyra AI server → Run workflow.** Ez feltölti a `supabase/functions/halyra-ai` szervert. Keret: alapból havi 10 üzenet ingyen, napi 50 Pro-ban (`FREE_MONTHLY`, `PRO_DAILY` titkokkal állítható). Az árazási javaslat a Claude-ban készült dokumentumban van.
    6. Pro felhasználó kézzel: SQL Editorban `insert into halyra_plans (user_id, until) values ('<user id>', now() + interval '1 month');` (fizetéshez lásd az árazási javaslatot).
 3. **Offline** — se kulcs, se szerver: az alap parancsokat így is érti (fókusz indítása, oldalak tiltása, statisztika), csak kérdésekre nem válaszol.
 

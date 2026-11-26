@@ -108,7 +108,7 @@ async function callMessages(transport, body, timeoutMs = 60000) {
       const err = new Error(String(msg));
       err.status = res.status;
       err.code = res.status === 401 || res.status === 403 ? (transport.kind === 'proxy' ? 'aiAuth' : 'invalidKey')
-        : res.status === 429 ? (data && data.code === 'quota' ? 'quota' : 'rateLimit')
+        : res.status === 429 ? (data && (data.code === 'quota' || data.code === 'quotaFree') ? data.code : 'rateLimit')
           : res.status === 404 && transport.kind === 'proxy' ? 'noProxy' : 'apiError';
       throw err;
     }

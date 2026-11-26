@@ -234,8 +234,10 @@ async function askAssistant(text, history) {
       const r = await ai.chat(transport, { system: assistant.systemPrompt(ctx), messages, tools: assistant.TOOLS, webSearch: assistant.WEB_SEARCH, run: (name, input) => assistant.runTool(ctx, name, input) });
       return { text: r.text, sources: r.sources, actions: r.actions.filter((a) => !/^get_/.test(a.name)).map((a) => ({ name: a.name, ok: a.result && a.result.ok !== false })), via: mode };
     } catch (e) {
-      // The account server isn't set up yet: still help with the offline commands.
-      if (mode !== 'cloud' || !['noProxy', 'network', 'timeout'].includes(e.code)) throw e;
+      // The account server isn't set up yet, or the AI allowance is used up:
+      // still do the basic commands offline (other questions show the error).
+      if (mode !== 'cloud' || !['noProxy', 'network', 'timeout', 'quota', 'quotaFree'].includes(e.code)) throw e;
+      if (/^quota/.test(e.code) && !assistant.offline(text, lang()).handled) throw e;
     }
   }
   const o = assistant.offline(text, lang());
