@@ -130,7 +130,7 @@ const WIN = {
 };
 
 // Bumped whenever a helper script changes, so the app can ask for a one-time update.
-const HELPER_VERSION = { mac: 1, win: 3 };
+const HELPER_VERSION = { mac: 1, win: 4 };
 
 function winHelperPs1() {
   return `# ${BRAND.name} helper - runs as SYSTEM, mirrors blocklist.txt into the hosts file
@@ -255,13 +255,25 @@ function Sync-Policy($r) {
   }
   [IO.File]::WriteAllLines($Owned, [string[]]$now.ToArray())
   if ($script:PolicyChanged) {
-    # Browsers re-arm their registry watch after each change; a second, later
-    # change makes sure they also see the final state (e.g. a removal).
-    Start-Sleep -Seconds 2
-    foreach ($root in $PolicyRoots) {
-      $rk = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey($root)
-      if ($rk) { $rk.SetValue('HalyraFocusSync', 1, [Microsoft.Win32.RegistryValueKind]::DWord); $rk.DeleteValue('HalyraFocusSync', $false); $rk.Close() }
+    # Tell running browsers to re-read policy now (they listen for the Group
+    # Policy refresh signal), so new blocks apply and ended ones disappear.
+    Start-Sleep -Milliseconds 800
+    Invoke-PolicyRefresh
+  }
+}
+
+$script:GpReady = $false
+function Invoke-PolicyRefresh {
+  try {
+    if (-not $script:GpReady) {
+      Add-Type -Namespace HalyraFocus -Name Gp -MemberDefinition '[DllImport("userenv.dll", SetLastError = true)] public static extern bool RefreshPolicyEx(bool bMachine, uint dwOptions);'
+      $script:GpReady = $true
     }
+    [void][HalyraFocus.Gp]::RefreshPolicyEx($true, 1)
+  } catch { }
+  foreach ($root in $PolicyRoots) {
+    $rk = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey($root)
+    if ($rk) { $rk.SetValue('HalyraFocusSync', 1, [Microsoft.Win32.RegistryValueKind]::DWord); $rk.DeleteValue('HalyraFocusSync', $false); $rk.Close() }
   }
 }
 

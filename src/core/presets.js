@@ -140,6 +140,20 @@ const PRESETS = [
       A('Deezer', ['deezer.android.app']),
     ],
   },
+  {
+    // Keeps the useful parts (search, subscriptions, messages) and blocks the endless feeds.
+    id: 'feeds',
+    emoji: '🌀',
+    name: { en: 'Endless feeds only', hu: 'Csak a végtelen hírfolyamok' },
+    sites: [],
+    paths: [
+      'youtube.com/shorts', 'youtube.com/feed/trending', 'youtube.com/feed/explore', 'm.youtube.com/shorts',
+      'instagram.com/reels', 'instagram.com/reel', 'instagram.com/explore', 'facebook.com/reel', 'facebook.com/reels', 'facebook.com/watch',
+      'x.com/explore', 'x.com/i/trends', 'twitter.com/explore', 'reddit.com/r/all', 'reddit.com/r/popular', 'tiktok.com/foryou', 'tiktok.com/explore',
+      'linkedin.com/feed', 'threads.net/for_you',
+    ],
+    apps: [],
+  },
 ];
 
 // Extra hostnames that belong to a site but are not simple www./m. variants.

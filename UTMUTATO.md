@@ -66,7 +66,7 @@ A Halyra AI (✦ gomb az appban, Ctrl/⌘ K) bármire válaszol, keres a weben, 
    2. Supabase → **SQL Editor** → futtasd le a `docs/supabase-ai.sql` tartalmát.
    3. [console.anthropic.com](https://console.anthropic.com) → API keys → új kulcs. (Billing alatt állíts be havi költséglimitet!)
    4. GitHubon: **Settings → Secrets and variables → Actions → New repository secret**, három darab: `SUPABASE_ACCESS_TOKEN` (supabase.com → Account → Access Tokens), `SUPABASE_PROJECT_REF` (a `https://XXXX.supabase.co` címben az XXXX), `ANTHROPIC_API_KEY`.
-   5. **Actions → Halyra AI server → Run workflow.** Ez feltölti a `supabase/functions/halyra-ai` szervert. Napi keret: alapból 30 üzenet ingyen, 400 Pro-ban (`FREE_DAILY`, `PRO_DAILY` titkokkal állítható).
+   5. **Actions → Halyra AI server → Run workflow.** Ez feltölti a `supabase/functions/halyra-ai` szervert. Napi keret: alapból 5 üzenet ingyen, 150 Pro-ban (`FREE_DAILY`, `PRO_DAILY` titkokkal állítható).
    6. Pro felhasználó kézzel: SQL Editorban `insert into halyra_plans (user_id, until) values ('<user id>', now() + interval '1 month');` (fizetéshez lásd az árazási javaslatot).
 3. **Offline** — se kulcs, se szerver: az alap parancsokat így is érti (fókusz indítása, oldalak tiltása, statisztika), csak kérdésekre nem válaszol.
 

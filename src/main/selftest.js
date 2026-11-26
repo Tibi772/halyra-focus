@@ -203,6 +203,11 @@ module.exports = async function selftest(ctx) {
         return /Example Domain|404|Not Found/i.test(`${again.text || ''} ${again.title || ''}`) && !/blocked/i.test(again.text || '');
       }, 60000, 500);
       log('The part of the site opens again after stopping', open, JSON.stringify(again).slice(0, 300));
+      if (!open && isWin) {
+        const pol = await bt.visit(br, 'edge://policy/', 3000);
+        console.log(`[selftest] note  edge://policy says: ${String(pol.text || '').replace(/\s+/g, ' ').slice(0, 900)}`);
+        console.log(`[selftest] note  registry: ${(await bt.regList('HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge\\URLBlocklist')).join(' ') || '(none)'}`);
+      }
     }
 
     // ---------------------------------------------------------------- locked mode

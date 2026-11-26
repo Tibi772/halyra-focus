@@ -72,6 +72,27 @@ function gardenSummary(stats, ms) {
   };
 }
 
+/** Last full week (Mon–Sun before the week of `ms`): { key, minutes, sessions, grown, bestDay }. */
+function lastWeek(stats, ms) {
+  const d = new Date(ms);
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7), 12);
+  const key = dayKey(monday.getTime());
+  let minutes = 0;
+  let sessions = 0;
+  let best = null;
+  for (let i = 1; i <= 7; i += 1) {
+    const day = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - i, 12);
+    const v = stats.days[dayKey(day.getTime())];
+    const m = v ? Math.round(v.focusSec / 60) : 0;
+    minutes += m;
+    sessions += v ? v.sessions || 0 : 0;
+    if (m && (!best || m > best.minutes)) best = { weekday: day.getDay(), minutes: m };
+  }
+  const from = monday.getTime() - 7 * 86400000;
+  const grown = (stats.garden || []).filter((g) => g.ok && g.t >= from && g.t < monday.getTime() - 12 * 3600000).length;
+  return { key, minutes, sessions, grown, bestDay: best };
+}
+
 function prune(stats, ms, keepDays = 400) {
   const cutoff = dayKey(ms - keepDays * 86400000);
   for (const k of Object.keys(stats.days)) if (k < cutoff) delete stats.days[k];
@@ -126,4 +147,4 @@ function summarize(stats, ms, streakMinMinutes = 25) {
 }
 
 module.exports = {
-  addGrown, gardenSummary, dayKey, emptyStats, addFocus, addBlock, addUsage, usageToday, addSession, prune, summarize };
+  addGrown, gardenSummary, lastWeek, dayKey, emptyStats, addFocus, addBlock, addUsage, usageToday, addSession, prune, summarize };

@@ -71,3 +71,30 @@ test('stats + forest of all devices merge for the totals', () => {
   assert.equal(sum.garden.grown, 2);
   assert.equal(Object.keys(sync.otherDevices(row, 'dev-b', now)).length, 0, 'own entry is not "other"');
 });
+
+test('weekly summary covers the previous Monday–Sunday', () => {
+  const st = statsLib.emptyStats();
+  const wed = new Date(2026, 10, 25, 15).getTime(); // Wednesday
+  const lastTue = new Date(2026, 10, 17, 10).getTime(); // Tuesday
+  for (let i = 0; i < 6 * 90; i += 1) statsLib.addFocus(st, lastTue, 10);
+  statsLib.addSession(st, lastTue);
+  statsLib.addGrown(st, { id: 9, t: lastTue + 3600000, i: 'oak', m: 90, ok: true });
+  for (let i = 0; i < 6 * 30; i += 1) statsLib.addFocus(st, wed, 10); // this week: not counted
+  const w = statsLib.lastWeek(st, wed);
+  assert.equal(w.key, '2026-11-23');
+  assert.equal(w.minutes, 90);
+  assert.equal(w.sessions, 1);
+  assert.equal(w.grown, 1);
+  assert.equal(w.bestDay.weekday, 2);
+});
+
+test('the feeds preset is part-of-site rules only', () => {
+  const { PRESETS } = require('../src/core/presets');
+  const feeds = PRESETS.find((p) => p.id === 'feeds');
+  const rules = require('../src/core/blockrules');
+  assert.ok(feeds.paths.every((p) => rules.normalizePathRule(p) === p), 'all normalized');
+  const list = cfgLib.presetToList(feeds, 'en');
+  assert.deepEqual(list.paths, feeds.paths);
+  assert.equal(rules.urlBlocked('https://www.youtube.com/shorts/abc', { hosts: [], paths: list.paths }), 'youtube.com/shorts');
+  assert.equal(rules.urlBlocked('https://www.youtube.com/watch?v=x', { hosts: [], paths: list.paths }), null);
+});

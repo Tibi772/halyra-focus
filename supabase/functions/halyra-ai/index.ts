@@ -4,7 +4,7 @@
 // request to Anthropic with the project's key. The key never reaches the app.
 //
 // Deploy:  supabase functions deploy halyra-ai --project-ref <ref>
-// Secrets: supabase secrets set ANTHROPIC_API_KEY=sk-ant-... [FREE_DAILY=30] [PRO_DAILY=400]
+// Secrets: supabase secrets set ANTHROPIC_API_KEY=sk-ant-... [FREE_DAILY=5] [PRO_DAILY=150]
 // Needs the SQL in docs/supabase-ai.sql (usage counter + plans).
 
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
@@ -34,8 +34,8 @@ Deno.serve(async (req) => {
   const user = await userRes.json();
 
   // 2. daily allowance (atomic counter in the database)
-  const free = Number(Deno.env.get('FREE_DAILY') || 30);
-  const pro = Number(Deno.env.get('PRO_DAILY') || 400);
+  const free = Number(Deno.env.get('FREE_DAILY') || 5);
+  const pro = Number(Deno.env.get('PRO_DAILY') || 150);
   const bump = await fetch(`${SUPABASE_URL}/rest/v1/rpc/halyra_ai_bump`, {
     method: 'POST',
     headers: { apikey: SERVICE, authorization: `Bearer ${SERVICE}`, 'content-type': 'application/json' },
@@ -53,7 +53,9 @@ Deno.serve(async (req) => {
   const clean = {
     model: MODELS.has(body.model) ? body.model : 'claude-sonnet-5-5',
     max_tokens: Math.min(2000, Number(body.max_tokens) || 1200),
-    system: typeof body.system === 'string' ? body.system.slice(0, 8000) : undefined,
+    system: typeof body.system === 'string' ? body.system.slice(0, 8000)
+      : Array.isArray(body.system) ? body.system.filter((b: any) => b && b.type === 'text').slice(0, 4).map((b: any) => ({ type: 'text', text: String(b.text).slice(0, 8000), ...(b.cache_control ? { cache_control: { type: 'ephemeral' } } : {}) }))
+        : undefined,
     messages: Array.isArray(body.messages) ? body.messages.slice(-40) : [],
     tools,
   };

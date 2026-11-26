@@ -840,7 +840,7 @@ function modeCards(current, onPick) {
 
 function listChips(selected, onToggle) {
   return h('div', { class: 'row' }, S.lists.map((l) => h('button', { class: `chip${selected.includes(l.id) ? ' on' : ''}`, onclick: () => onToggle(l.id) },
-    h('span', { class: 'emoji' }, l.emoji), l.name, h('small', null, String(l.sites.length + appsHere(l).length)))));
+    h('span', { class: 'emoji' }, l.emoji), l.name, h('small', null, String(l.sites.length + (l.paths || []).length + appsHere(l).length)))));
 }
 
 async function startFocus(force) {
@@ -1103,12 +1103,13 @@ const EMOJIS = ['📱', '🎬', '🎮', '💬', '📰', '🛍️', '🎧', '⛔'
 
 function renderLists() {
   const used = new Set(S.lists.map((l) => l.presetId).filter(Boolean));
-  const avail = ui.presets.filter((p) => !used.has(p.id));
+  // Phones block whole sites only, so part-of-site presets are left out there.
+  const avail = ui.presets.filter((p) => !used.has(p.id) && !(isMobile() && !p.sites.length && !p.apps.length));
   const grid = h('div', { class: 'list-grid' },
     S.lists.map((l) => h('button', { class: 'card list-card', onclick: () => openListEditor(l.id) },
       h('div', { class: 'lc-emoji' }, l.emoji),
       h('div', { class: 'lc-name' }, l.name),
-      h('div', { class: 'lc-meta' }, t('lists.count', { sites: l.sites.length, apps: appsHere(l).length })),
+      h('div', { class: 'lc-meta' }, t('lists.count', { sites: l.sites.length + (l.paths || []).length, apps: appsHere(l).length })),
       l.limitMin > 0 ? h('div', { class: 'lim-bar' }, h('span', { style: { width: `${Math.min(100, ((S.usage[l.id] || 0) / 60 / l.limitMin) * 100)}%` } }),
         h('em', null, t('lim.today', { used: Math.floor((S.usage[l.id] || 0) / 60), max: l.limitMin }))) : null,
       h('div', { class: 'lc-icons' }, [...l.sites.slice(0, 3), ...appsHere(l).slice(0, 2).map((a) => a.name)].map((x) => h('span', { class: 'mini-tag' }, x))))),
@@ -1132,7 +1133,7 @@ async function newList() {
 
 async function addPreset(p) {
   const id = newId();
-  await patchConfig({ lists: [...S.lists, { id, presetId: p.id, name: p.name[S.lang] || p.name.en, emoji: p.emoji, sites: [...p.sites], apps: p.apps.map((a) => ({ ...a })) }] });
+  await patchConfig({ lists: [...S.lists, { id, presetId: p.id, name: p.name[S.lang] || p.name.en, emoji: p.emoji, sites: [...p.sites], paths: [...(p.paths || [])], apps: p.apps.map((a) => ({ ...a })) }] });
 }
 
 function saveList(updated) {

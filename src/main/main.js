@@ -497,6 +497,7 @@ function tick() {
   if (tickCount % 2 === 0 || blockingChanged) enforceApps(ev);
   if (tickCount % (platform.IS_WIN ? 6 : 2) === 1) trackUsage(ev, now);
   if (tickCount % 30 === 0) syncNow();
+  if (tickCount % 60 === 5) weeklyReport(now);
   if (tickCount % 30 === 0) { statsLib.prune(stats, now); saveStats(); }
   if (tickCount % 10 === 0 && hostsState.installed && !hostsState.verified) {
     hostsState.verified = platform.verifyHosts(sitesFor(ev)).ok;
@@ -504,6 +505,19 @@ function tick() {
 
   updateTray(ev, blockingChanged || changed);
   push();
+}
+
+/** Once a week: a short summary of the last week (first time the app runs that week). */
+function weeklyReport(now) {
+  const w = statsLib.lastWeek(stats, now);
+  if (stats.lastWeekly === w.key) return;
+  const first = !stats.lastWeekly;
+  stats.lastWeekly = w.key;
+  statsDirty = true;
+  if (first || w.minutes < 10) return;
+  const h = Math.round(w.minutes / 6) / 10;
+  const best = w.bestDay ? t('days.long')[w.bestDay.weekday] : '';
+  notify(t('note.weekly', { h: String(h).replace('.', lang() === 'hu' ? ',' : '.') }), t('note.weeklyBody', { n: w.sessions, g: w.grown, best }));
 }
 
 // ------------------------------------------------------------------ actions

@@ -21,6 +21,7 @@ function presetToList(preset, lang) {
     name: preset.name[lang] || preset.name.en,
     emoji: preset.emoji,
     sites: [...preset.sites],
+    ...(preset.paths ? { paths: [...preset.paths] } : {}),
     apps: preset.apps.map((a) => ({ name: a.name, mac: [...a.mac], win: [...a.win], ...(a.android ? { android: [...a.android] } : {}) })),
     presetRev: PRESET_REV,
   };

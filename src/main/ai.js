@@ -136,7 +136,15 @@ async function chat(transport, { system, messages, tools, webSearch, run, maxSte
   for (let step = 0; step < maxSteps; step += 1) {
     let data;
     try {
-      data = await callMessages(transport, { model: CHAT_MODEL, max_tokens: 1600, system, tools: search ? [...tools, webSearch] : tools, messages: msgs });
+      // The system prompt + tool list are the same on every call: cache them (≈90% cheaper input).
+      const cachedTools = tools.map((tl, i) => (i === tools.length - 1 ? { ...tl, cache_control: { type: 'ephemeral' } } : tl));
+      data = await callMessages(transport, {
+        model: CHAT_MODEL,
+        max_tokens: 1600,
+        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+        tools: search ? [webSearch, ...cachedTools] : cachedTools,
+        messages: msgs,
+      });
     } catch (e) {
       // Some API keys/organizations have web search turned off: carry on without it.
       if (search && e.code === 'apiError' && /web.?search|server.?tool|not enabled|tool/i.test(e.message)) { search = false; step -= 1; continue; }
