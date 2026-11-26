@@ -60,6 +60,8 @@ const ICON = {
   hourglass: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h14M5 2h14M17 22v-4.2a2 2 0 0 0-.6-1.4L12 12l-4.4 4.4a2 2 0 0 0-.6 1.4V22M7 2v4.2a2 2 0 0 0 .6 1.4L12 12l4.4-4.4a2 2 0 0 0 .6-1.4V2"/></svg>',
   lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
   timer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+  cat: '<svg viewBox="0 0 16 12" aria-hidden="true" shape-rendering="crispEdges"><path fill="#c9b8a6" d="M2 3h1v1h1v1h4V4h1V3h1v3h1v1h2v1h1v2h-1v1H2v-1H1V6h1z"/><path fill="#8a7563" d="M3 8h1v1H3zM10 8h2v1h-2zM13 7h1v1h-1z"/><path class="eye" fill="#2a2030" d="M3 6h1v1H3zM6 6h1v1H6z"/><path fill="#ff9ab0" d="M4 7h2v1H4z"/></svg>',
   logo: '<svg viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lgx" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffc85e"/><stop offset="1" stop-color="#ff6a2f"/></linearGradient></defs><circle cx="16" cy="16" r="11" fill="none" stroke="url(#lgx)" stroke-width="4" stroke-dasharray="52 80" stroke-linecap="round" transform="rotate(-45 16 16)"/><circle cx="16" cy="16" r="4.2" fill="url(#lgx)"/></svg>',
 };
 
@@ -116,7 +118,7 @@ function nav(page, t, solid) {
   <div class="wrap nav-in">
     <a class="logo" href="${home}" aria-label="Halyra Focus">${ICON.logo}<span>Halyra Focus<small>${page.lang === 'hu' ? 'App- és oldalblokkoló' : 'App & site blocker'}</small></span></a>
     <nav class="nav-links" aria-label="Main">
-      <a href="${sec('features')}">${t.nav.features}</a><a href="${sec('modes')}">${t.nav.modes}</a><a href="${sec('themes')}">${t.nav.themes}</a><a href="${sec('faq')}">${t.nav.faq}</a>
+      <a href="${sec('features')}">${t.nav.features}</a><a href="${sec('shield')}">${t.nav.shield}</a><a href="${sec('modes')}">${t.nav.modes}</a><a href="${sec('themes')}">${t.nav.themes}</a><a href="${sec('faq')}">${t.nav.faq}</a>
     </nav>
     <div class="nav-right">
       <div class="lang" role="group" aria-label="${t.footer.language}">
@@ -140,9 +142,10 @@ function footer(page, t) {
       <a class="logo" href="${home}">${ICON.logo}<span>Halyra Focus</span></a>
       <p style="margin:14px 0 0">${t.footer.tagline}</p>
       <p style="margin:10px 0 0;color:var(--faint)">v${VERSION} · MIT</p>
+      ${t.eggs && page.id === 'home' ? `<button class="cat" type="button" aria-label="${esc(t.eggs.catLabel)}" title="${esc(t.eggs.catLabel)}">${ICON.cat}<span class="zzz" aria-hidden="true">z</span></button>` : ''}
     </div>
     <nav aria-label="Footer">
-      <div><b>${t.footer.product}</b><a href="${sec('features')}">${t.nav.features}</a><a href="${sec('themes')}">${t.nav.themes}</a><a href="${sec('faq')}">${t.nav.faq}</a><a href="${sec('download')}">${t.nav.download}</a></div>
+      <div><b>${t.footer.product}</b><a href="${sec('features')}">${t.nav.features}</a><a href="${sec('shield')}">${t.nav.shield}</a><a href="${sec('themes')}">${t.nav.themes}</a><a href="${sec('faq')}">${t.nav.faq}</a><a href="${sec('download')}">${t.nav.download}</a></div>
       <div><b>${t.footer.guides}</b><a href="${L('guide-mac')}">${esc(t.guides.mac.h1)}</a><a href="${L('guide-win')}">${esc(t.guides.win.h1)}</a></div>
       <div><b>${t.footer.legal}</b><a href="${L('privacy')}">${t.footer.privacy}</a><a href="${DL.source}" rel="noopener">${t.footer.source}</a></div>
       <div><b>${t.footer.language}</b><a href="${link(page.path, find(page.id, 'en').path)}" hreflang="en">English</a><a href="${link(page.path, find(page.id, 'hu').path)}" hreflang="hu">Magyar</a></div>
@@ -193,10 +196,12 @@ ${nav(page, t)}
         <p class="mobile-note ios-note"><span>${t.hero.mobile.replace('{{app}}', appLink(page))}</span></p><p class="mobile-note android-note"><span>${t.hero.androidNote}</span></p>
         <div class="cta">${dlButtons(t, true)}</div>
         <p class="hero-note">${t.hero.note}</p>
+        <p class="night" id="night" hidden></p>
       </div>
       <div class="stage" data-labels='${esc(JSON.stringify(t.hero.labels))}'>
         <canvas id="city" role="img" aria-label="${esc(t.hero.canvasLabel)}"></canvas>
         <div id="city-labels" aria-hidden="true"></div>
+        <div class="stage-hint" aria-hidden="true">${t.hero.hint}</div>
         <div class="city-overlay" id="city-overlay" aria-hidden="true"><div class="ic">${ICON.lock}</div><div><b>${t.hero.overlayT}</b><span>${t.hero.overlayS}</span></div></div>
         <div class="stage-ui">
           <button class="toggle" id="focus-toggle" aria-pressed="false">${t.hero.toggle} <span class="st-off">${t.hero.off}</span><span class="st-on">${t.hero.on}</span><span class="sw" aria-hidden="true"></span></button>
@@ -212,6 +217,19 @@ ${nav(page, t)}
   <div class="wrap">
     <div class="sec-head reveal"><div class="eyebrow">${t.asks.eyebrow}</div><h2>${t.asks.h2}</h2><p>${t.asks.p}</p></div>
     <div class="grid g2 asks">${t.asks.items.map(([q, a]) => `<div class="card reveal"><div class="ask-q">${q}</div><div class="ask-a">${ICON.check}<span>${a}</span></div></div>`).join('')}</div>
+  </div>
+</section>
+
+<section class="sec shield-sec" id="shield">
+  <div class="wrap">
+    <div class="shield-grid">
+      <div>
+        <div class="sec-head reveal"><div class="eyebrow">${ICON.shield}${t.shield.eyebrow}</div><h2>${t.shield.h2}</h2><p>${t.shield.p}</p></div>
+        <div class="grid g2 shield-items">${t.shield.items.map(([h, p]) => `<div class="card reveal"><h3>${h}</h3><p>${p}</p></div>`).join('')}</div>
+        <p class="shield-note reveal">${t.shield.note}</p>
+      </div>
+      <div class="reveal shield-shot">${shot(page, t.shield.img, `${t.shield.eyebrow} — Halyra Focus`)}</div>
+    </div>
   </div>
 </section>
 
@@ -291,7 +309,9 @@ ${nav(page, t)}
 </section>
 </main>
 ${footer(page, t)}
+<script type="application/json" id="egg-text">${JSON.stringify(t.eggs).replace(/</g, '\\u003c')}</script>
 <script src="${asset(page.path, 'site.js')}?v=${VERSION}" defer></script>
+<script src="${asset(page.path, 'world.js')}?v=${VERSION}" defer></script>
 </body>
 </html>
 `;
@@ -336,7 +356,7 @@ function notFoundPage() {
 <body>
 ${nav({ ...page, id: 'home' }, t, true)}
 <main id="main" class="article" style="text-align:center;min-height:70vh">
-  <div class="wrap"><div style="font-family:var(--pixel);color:var(--accent);font-size:22px">404</div><h1>${t.notFound.h1}</h1><p>${t.notFound.p}</p>
+  <div class="wrap"><div class="nf-lock">${ICON.lock}</div><div style="font-family:var(--pixel);color:var(--accent);font-size:22px">404 · blocked by Halyra Focus</div><h1>${t.notFound.h1}</h1><p>${t.notFound.p}</p><p class="nf-timer">Unblocks in <b>∞</b> minutes</p>
   <p><a class="btn pill" href="./">${t.notFound.back}</a> <a class="btn" href="hu/">Magyar főoldal</a></p></div>
 </main>
 </body>

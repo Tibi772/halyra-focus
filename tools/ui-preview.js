@@ -185,7 +185,8 @@ __mods.coach = ${wrap('coach.js')};
   setTimeout(() => {
     const v = q.get('view');
     if (v) { const b = [...document.querySelectorAll('.nav-btn')][['focus','lists','schedules','stats','settings'].indexOf(v)]; if (b) b.click(); }
-    if (q.get('open') === 'list') { const c = document.querySelector('.list-card'); if (c) c.click(); }
+    if (q.get('open') === 'list') { const cs = document.querySelectorAll('.list-card'); const i = Number(q.get('idx') || 0); const c = cs[i < 0 ? cs.length + i : i]; if (c) c.click(); }
+    if (q.get('scrollTo')) setTimeout(() => { const el = document.querySelector(q.get('scrollTo')); if (el) el.scrollIntoView({ block: 'center' }); }, 120);
     if (q.get('open') === 'schedule') { const c = document.querySelector('.sched-card .btn'); if (c) c.click(); }
     if (q.get('open') === 'studio') { const c = document.querySelector('.theme-card.new-style'); if (c) c.click(); setTimeout(() => { const chip = document.querySelectorAll('.studio .chip')[+(q.get('ex') || 0)]; if (chip) chip.click(); }, 200); }
     if (q.get('open') === 'smart') { const i = document.querySelector('[data-fid=goal]'); if (i) { i.value = q.get('goal') || 'Vizsgára tanulok'; i.dispatchEvent(new Event('input')); i.nextSibling.click(); } }

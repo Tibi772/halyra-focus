@@ -95,6 +95,12 @@ async function head(url) {
     if (url === BASE || url === `${BASE}hu/`) {
       check(`${short} links its other language (hreflang)`, info.hreflang.includes('en') && info.hreflang.includes('hu'), info.hreflang.join(','));
       check(`${short} shows the current version v${VERSION}`, info.version === `v${VERSION}`, info.version);
+      const scene = await page.evaluate(() => ({ labels: document.querySelectorAll('#city-labels .c-label').length, gl: Boolean(document.querySelector('.stage.is-3d')), eggs: Boolean(document.getElementById('egg-text')) }));
+      check(`${short} hero scene runs (${scene.gl ? '3D' : '2D fallback'})`, scene.labels >= 6 && scene.eggs, JSON.stringify(scene));
+      await page.click('#focus-toggle');
+      await page.waitForTimeout(2500);
+      const blocked = await page.evaluate(() => document.querySelectorAll('#city-labels .c-label.blocked').length);
+      check(`${short} focus mode locks the distraction buildings`, blocked >= 4, `${blocked} locked`);
       if (info.og) images.add(info.og);
       await page.screenshot({ path: path.join(OUT, `desktop-${short.replace(/\W+/g, '_') || 'home'}.png`) });
     }

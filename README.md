@@ -9,12 +9,14 @@ No account needed (optional email account syncs all devices). No tracking. MIT l
 | Platforms | macOS 12+ (Apple Silicon & Intel, universal build) · Windows 10/11 x64 |
 | Blocks | Desktop apps (closed on launch) · Websites in every browser (system hosts file) |
 | Modes | Flexible (stop anytime) · Patient (stop after a pause) · Locked (stop after timer, emergency exit) |
-| Extras | Schedules incl. overnight · Pomodoro · PIN lock · Tray/menu-bar timer · Stats · EN/HU UI |
+| Extras | Schedules incl. overnight · Pomodoro · PIN lock · Tray/menu-bar timer · Stats · Grow (trees & buildings) · EN/HU UI |
+| Shield | Always-on lists (no focus needed; adult content & gambling presets) · keyword blocking in URLs/searches/tab titles · forced SafeSearch (Google, Bing, YouTube Restricted Mode) via hosts + Windows browser policies + Android DNS · optional 1/24/72 h cool-down before an always-on list can be loosened (synced; the website can't loosen it) |
+| Earn | Earn-to-unlock lists: focus earns minutes (rate 1:2–1:6) that open them for 5–15 min, from the app or the block page |
 | Limits | Per-list daily allowance: counts app run-time + time a listed site is the front browser tab (macOS: Safari/Chromium via JXA; Windows: browser window titles) → blocked until midnight |
 | Sync | Optional Supabase account (`src/shared/cloud.json`, `docs/supabase.sql`): lists, schedules, styles, prefs and the running session sync across computers; locked blocks can't be weakened remotely |
 | Android | `android/` (Kotlin) + the desktop app's own logic and UI running in a WebView on shims (`src/mobile/`, packed by `tools/build-android-web.js`). A foreground service enforces a precomputed plan (`src/mobile/plan.js`): usage access + block screen for apps, a local DNS-only VPN for sites. CI tests it end to end on an emulator (`android/ci/`). |
 | Web app | `website-src/app/` → `/app/` on the site: PWA for phones/browsers, same account — start/extend blocks on all computers, edit sites & limits, toggle schedules |
-| AI | Style studio (text → full theme, contrast-checked) · Focus coach (goal → setup, firm nudges, stats insights). Offline by default; uses Claude with the user's own Anthropic API key. |
+| AI | Halyra AI assistant (⌘K / Ctrl K): answers anything with web search and operates the app with tools (focus, lists, schedules, limits, shields, earned minutes) · Style studio (text → full theme, contrast-checked) · Focus coach. Basic commands work offline; uses Claude with the user's own key or via the account. |
 
 ## How blocking works
 
@@ -25,7 +27,7 @@ No account needed (optional email account syncs all devices). No tracking. MIT l
 - macOS: a `launchd` daemon (`/Library/LaunchDaemons/com.halyra.focus.helper.plist`) runs `helper.sh` as root whenever `/Users/Shared/HalyraFocus/blocklist.txt` changes and every 60 s.
 - Windows: a SYSTEM scheduled task runs `C:\ProgramData\HalyraFocus\helper.ps1`, which polls `blocklist.txt` every 2 s.
 
-The app only ever writes a plain list of domains to that user-writable file. The helper validates every line against a strict domain regex and writes `0.0.0.0 <domain>` / `:: <domain>` lines inside its own marked section of the hosts file — so the worst a rogue process can do with the file is block extra sites; it can never redirect a domain. The file carries an `# expires=<unix time>` line: the helper drops the blocks by itself when it passes, so **a website block can never outlive its timer**, even if the app is force-quit or deleted. Uninstalling the helper (Settings → Website blocking → Remove helper) cleans the hosts file.
+The app only ever writes a plain list of domains to that user-writable file. The helper validates every line against a strict domain regex and writes `0.0.0.0 <domain>` / `:: <domain>` lines inside its own marked section of the hosts file — so the worst a rogue process can do with the file is block extra sites; it can never redirect a domain. (A `# safesearch` line only switches on a fixed, built-in table that points Google/YouTube/Bing at their own SafeSearch addresses.) Timed blocks carry an `# expires=<unix time>` line: the helper drops them by itself when it passes, so **a timed website block can never outlive its timer**, even if the app is force-quit or deleted. Always-on lists have no expiry by design. Uninstalling the helper (Settings → Website blocking → Remove helper) cleans the hosts file.
 
 ## Develop
 

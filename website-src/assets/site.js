@@ -35,7 +35,134 @@
   document.querySelectorAll('.reveal').forEach((el) => (io ? io.observe(el) : el.classList.add('in')));
   setTimeout(revealAll, 2500);
 
-  // ---------------------------------------------------------------- hero city
+  // ---------------------------------------------------------------- 3D-ish polish: tilt screenshots, card spotlight
+  const fine = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (fine && !still) {
+    document.querySelectorAll('.shot').forEach((el) => {
+      el.addEventListener('pointermove', (e) => {
+        const r = el.getBoundingClientRect();
+        el.style.setProperty('--ry', `${((e.clientX - r.left) / r.width - 0.5) * 7}deg`);
+        el.style.setProperty('--rx', `${-((e.clientY - r.top) / r.height - 0.5) * 6}deg`);
+        el.classList.add('tilt');
+      });
+      el.addEventListener('pointerleave', () => { el.classList.remove('tilt'); el.style.removeProperty('--rx'); el.style.removeProperty('--ry'); });
+    });
+    document.querySelectorAll('.card').forEach((el) => {
+      el.addEventListener('pointermove', (e) => {
+        const r = el.getBoundingClientRect();
+        el.style.setProperty('--mx', `${e.clientX - r.left}px`);
+        el.style.setProperty('--my', `${e.clientY - r.top}px`);
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------- hidden things (shh)
+  const EGG = (() => { try { return JSON.parse((document.getElementById('egg-text') || {}).textContent || 'null'); } catch (_) { return null; } })();
+  if (EGG) {
+    const IDS = Object.keys(EGG.names);
+    let got = [];
+    try { got = JSON.parse(localStorage.getItem('halyra-eggs') || '[]').filter((x) => IDS.includes(x)); } catch (_) { got = []; }
+    const toastEl = document.createElement('div');
+    toastEl.className = 'egg-toast';
+    toastEl.setAttribute('role', 'status');
+    toastEl.setAttribute('aria-live', 'polite');
+    document.body.appendChild(toastEl);
+    let toastTimer = 0;
+    const toast = (html, ms = 4600) => {
+      toastEl.innerHTML = html;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms);
+    };
+    const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const found = (id) => {
+      if (!IDS.includes(id)) return;
+      const fresh = !got.includes(id);
+      if (fresh) { got.push(id); try { localStorage.setItem('halyra-eggs', JSON.stringify(got)); } catch (_) { /* private mode */ } }
+      const head = fresh ? EGG.found.replace('{n}', got.length).replace('{t}', IDS.length) : EGG.again;
+      toast(`<span class="egg-ic">✦</span><span><b>${esc(head)}</b><br>${esc(EGG.names[id])}</span>`);
+      if (fresh && got.length === IDS.length) setTimeout(() => toast(`<span class="egg-ic">🏆</span><span><b>${esc(EGG.allT)}</b><br>${esc(EGG.all)}</span>`, 7000), 4800);
+    };
+    document.addEventListener('halyra:egg', (e) => found(e.detail && e.detail.id));
+    const root = document.documentElement;
+
+    // ↑ ↑ ↓ ↓ ← → ← → B A — retro CRT mode. Typing a secret word starts focus.
+    const KONAMI = ['arrowup', 'arrowup', 'arrowdown', 'arrowdown', 'arrowleft', 'arrowright', 'arrowleft', 'arrowright', 'b', 'a'];
+    let seq = [];
+    let typed = '';
+    document.addEventListener('keydown', (e) => {
+      const k = (e.key || '').toLowerCase();
+      seq = [...seq, k].slice(-KONAMI.length);
+      if (seq.join() === KONAMI.join()) { root.classList.toggle('crt'); root.classList.remove('onebit'); found('konami'); seq = []; }
+      if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+      if (k.length === 1) typed = (typed + k).slice(-12);
+      if (EGG.words.some((w) => typed.endsWith(w))) {
+        typed = '';
+        const hero = document.querySelector('.hero');
+        if (hero && scrollY > hero.offsetHeight * 0.6) scrollTo({ top: 0, behavior: still ? 'auto' : 'smooth' });
+        document.dispatchEvent(new CustomEvent('halyra:focus', { detail: { gold: true } }));
+        found('word');
+      }
+    });
+
+    // Click the logo 7 times: 1-bit mode.
+    let logoN = 0;
+    let logoAt = 0;
+    document.querySelectorAll('.nav .logo').forEach((a) => a.addEventListener('click', (e) => {
+      const here = new URL(a.href, location.href);
+      if (here.pathname.replace(/index\.html$/, '') !== location.pathname.replace(/index\.html$/, '')) return;
+      e.preventDefault();
+      const now = Date.now();
+      logoN = now - logoAt < 1500 ? logoN + 1 : 1;
+      logoAt = now;
+      if (logoN === 1) scrollTo({ top: 0, behavior: still ? 'auto' : 'smooth' });
+      if (logoN >= 7) { logoN = 0; root.classList.toggle('onebit'); root.classList.remove('crt'); found('logo'); }
+    }));
+
+    // The sleepy cat in the footer.
+    document.querySelectorAll('.cat').forEach((c) => c.addEventListener('click', () => {
+      const tip = EGG.cat[Math.floor(Math.random() * EGG.cat.length)];
+      c.classList.remove('awake');
+      void c.offsetWidth;
+      c.classList.add('awake');
+      c.dataset.say = tip;
+      found('cat');
+    }));
+
+    // Night owls get a gentle nudge.
+    const hr = new Date().getHours();
+    const nightEl = document.getElementById('night');
+    if (nightEl && hr < 5) {
+      const now = new Date();
+      nightEl.textContent = EGG.night.replace('{time}', `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`);
+      nightEl.hidden = false;
+      setTimeout(() => found('night'), 2500);
+    }
+
+    // Console visitors.
+    const art = [
+      '  _   _       _                 ',
+      ' | | | | __ _| |_   _ _ __ __ _ ',
+      " | |_| |/ _` | | | | | '__/ _` |",
+      ' |  _  | (_| | | |_| | | | (_| |',
+      ' |_| |_|\\__,_|_|\\__, |_|  \\__,_|',
+      '                |___/   focus   ',
+    ].join('\n');
+    try {
+      console.log(`%c${art}`, 'color:#ff9a3c;font-family:monospace;font-weight:bold');
+      console.log(`%c${EGG.console}`, 'color:#9aa3c7;font-size:12px');
+    } catch (_) { /* no console */ }
+    window.halyra = Object.freeze({
+      secret() { found('console'); return EGG.hints.join('\n'); },
+      ufo() { document.dispatchEvent(new CustomEvent('halyra:ufo')); return '🛸'; },
+      found() { return `${got.length}/${IDS.length}`; },
+    });
+  }
+
+  // ---------------------------------------------------------------- hero city (2D fallback when WebGL isn't available)
+  window.__city2d = city2d;
+  function city2d() {
   const cv = document.getElementById('city');
   if (!cv) return;
   const ctx = cv.getContext('2d');
@@ -329,4 +456,5 @@
   if ('ResizeObserver' in window) new ResizeObserver(resize).observe(stage);
   resize();
   requestAnimationFrame(frame);
+  }
 }());
