@@ -256,7 +256,7 @@ function verifyHostsLater() {
     const ev = lastEval || evalNow();
     hostsState.verified = platform.verifyHosts(sitesFor(ev)).ok;
     push();
-  }, 4000);
+  }, platform.IS_MOBILE ? 300 : 4000);
 }
 
 async function enforceApps(ev) {

@@ -23,6 +23,7 @@ const TODAY = new Date().toISOString().slice(0, 10);
 const DL = {
   mac: `https://github.com/${repo}/releases/latest/download/HalyraFocus-mac.dmg`,
   win: `https://github.com/${repo}/releases/latest/download/HalyraFocus-Setup.exe`,
+  android: `https://github.com/${repo}/releases/latest/download/HalyraFocus-Android.apk`,
   releases: `https://github.com/${repo}/releases/latest`,
   source: `https://github.com/${repo}`,
 };
@@ -153,7 +154,8 @@ function footer(page, t) {
 
 function dlButtons(t, glow) {
   return `<a class="btn ${glow ? 'glow' : 'pill'}" data-dl="mac" href="${DL.mac}">${ICON.dl}<span class="two">${t.hero.mac}<span class="sub">${t.hero.macSub}</span></span></a>
-<a class="btn" data-dl="win" href="${DL.win}">${ICON.dl}<span class="two">${t.hero.win}<span class="sub">${t.hero.winSub}</span></span></a>`;
+<a class="btn" data-dl="win" href="${DL.win}">${ICON.dl}<span class="two">${t.hero.win}<span class="sub">${t.hero.winSub}</span></span></a>
+<a class="btn" data-dl="android" href="${DL.android}">${ICON.dl}<span class="two">${t.hero.android}<span class="sub">${t.hero.androidSub}</span></span></a>`;
 }
 
 function shot(page, name, alt, eager) {
@@ -166,7 +168,7 @@ function homePage(page) {
   const t = T[page.lang];
   const softwareLd = {
     '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'Halyra Focus',
-    operatingSystem: 'macOS 12+, Windows 10, Windows 11', applicationCategory: 'UtilitiesApplication',
+    operatingSystem: 'macOS 12+, Windows 10, Windows 11, Android 8+', applicationCategory: 'UtilitiesApplication',
     description: t.meta.desc, softwareVersion: VERSION, downloadUrl: DL.releases, url: BASE + page.path,
     image: `${BASE}/assets/icon-512.png`, screenshot: `${BASE}/assets/shots/focus-${page.lang}.webp`, inLanguage: ['en', 'hu'],
     offers: { '@type': 'Offer', price: '0', priceCurrency: page.lang === 'hu' ? 'HUF' : 'USD' },
@@ -188,7 +190,7 @@ ${nav(page, t)}
         <div class="eyebrow"><span class="px">v${VERSION}</span> ${t.hero.eyebrow}</div>
         <h1>${t.hero.h1}</h1>
         <p class="lede">${t.hero.lede}</p>
-        <p class="mobile-note"><span>${t.hero.mobile.replace('{{app}}', appLink(page))}</span></p>
+        <p class="mobile-note ios-note"><span>${t.hero.mobile.replace('{{app}}', appLink(page))}</span></p><p class="mobile-note android-note"><span>${t.hero.androidNote}</span></p>
         <div class="cta">${dlButtons(t, true)}</div>
         <p class="hero-note">${t.hero.note}</p>
       </div>
@@ -275,13 +277,14 @@ ${nav(page, t)}
       <div style="width:84px;height:84px;margin:0 auto 26px"><img src="${asset(page.path, 'icon-512.png')}" alt="" width="84" height="84"></div>
       <h2 style="max-width:820px;margin:0 auto 16px">${t.final.h2}</h2>
       <p style="color:var(--muted);font-size:18px;margin:0 0 34px">${t.final.p}</p>
-      <p class="mobile-note"><span>${t.hero.mobile.replace('{{app}}', appLink(page))}</span></p>
+      <p class="mobile-note ios-note"><span>${t.hero.mobile.replace('{{app}}', appLink(page))}</span></p><p class="mobile-note android-note"><span>${t.hero.androidNote}</span></p>
       <div class="cta">${dlButtons(t, true)}</div>
       <p style="margin-top:18px"><a href="${DL.releases}" style="color:var(--muted);font-size:14px" rel="noopener">${t.final.all} →</a></p>
     </div>
     <div class="install-notes">
       <div class="card"><h3>${t.final.macT}</h3><ol>${t.final.mac.map((x) => `<li>${x}</li>`).join('')}</ol></div>
       <div class="card"><h3>${t.final.winT}</h3><ol>${t.final.win.map((x) => `<li>${x}</li>`).join('')}</ol></div>
+      <div class="card"><h3>${t.final.androidT}</h3><ol>${t.final.android.map((x) => `<li>${x}</li>`).join('')}</ol></div>
     </div>
     <p style="color:var(--faint);font-size:13px;margin-top:18px">${t.final.why}</p>
   </div>
@@ -381,7 +384,7 @@ write('site.webmanifest', JSON.stringify({
 // ---- web app (phone & browser companion), same account as the desktop app
 const CLOUD = (() => { try { return JSON.parse(fs.readFileSync(path.join(SRC, '..', 'src', 'shared', 'cloud.json'), 'utf8')); } catch (_) { return {}; } })();
 fs.cpSync(path.join(SRC, 'app'), path.join(OUT, 'app'), { recursive: true });
-write('app/config.js', `window.HALYRA_CFG = ${JSON.stringify({ url: CLOUD.url || '', anonKey: CLOUD.anonKey || '', dl: { mac: DL.mac, win: DL.win }, home: LINK_INDEX ? '../index.html' : '../', version: VERSION })};\n`);
+write('app/config.js', `window.HALYRA_CFG = ${JSON.stringify({ url: CLOUD.url || '', anonKey: CLOUD.anonKey || '', dl: { mac: DL.mac, win: DL.win, android: DL.android }, home: LINK_INDEX ? '../index.html' : '../', version: VERSION })};\n`);
 write('app/manifest.webmanifest', JSON.stringify({
   name: 'Halyra Focus', short_name: 'Halyra', description: 'Start focus blocks on all your computers from your phone.', start_url: './', scope: './', display: 'standalone',
   background_color: '#07090f', theme_color: '#07090f',

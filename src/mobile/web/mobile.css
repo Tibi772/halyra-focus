@@ -93,3 +93,7 @@ body[data-theme='crt'] .view-title, body[data-theme='onebit'] .view-title { font
 
 /* the onboarding sheet uses the full height */
 .ob-hero h2 { font-size: 22px; }
+
+.nav-label { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+body[data-theme='crt'] .nav-btn, body[data-theme='onebit'] .nav-btn { font-size: 9.5px; letter-spacing: 0; }
+.src-row b, .source b { white-space: nowrap; }

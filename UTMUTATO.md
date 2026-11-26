@@ -110,6 +110,16 @@ Ha később eltüntetnéd: Apple Developer Program (kb. 99 USD/év) + Windows k�
 - Nyugodt tiltóképernyő rövid, motiváló mondatokkal.
 - Magyar és angol nyelv.
 
+## 7/b. Telefon: Android és iPhone
+
+**Android:** a teljes app (`android/` mappa). Minden feltöltés után a GitHub legyártja a `HalyraFocus-Android.apk` fájlt, egy Android 14 emulátoron végigteszteli (valódi app- és weboldal-tiltás, zárolt mód, napi keret, háttérben futás), és csak akkor teszi ki letöltésre, ha minden zöld. A weboldal **Letöltés Androidra** gombja ezt tölti le.
+- Első indításkor 2 engedély kell az app-tiltáshoz (használati hozzáférés, megjelenítés más appok felett), 1 a weboldalakhoz (helyi VPN-szűrő — a forgalom nem megy sehova).
+- A tiltás akkor is működik, ha az app be van zárva, és újraindítás után is.
+- Az APK aláíró kulcsa az `android/signing/halyra-focus.jks`. Mielőtt sokan használják, érdemes saját, titkos kulcsra cserélni (GitHub Secrets: `HF_KEYSTORE…`), mert a nyilvános tárolóban lévő kulcsot bárki láthatja. Ha szólsz, Claude átállítja.
+- Google Play-re feltöltéshez Google fejlesztői fiók kell (egyszeri 25 $), és a Play külön ellenőrzi a VPN- és használati engedélyeket.
+
+**iPhone:** az Apple más appok tiltását csak a *Family Controls* engedéllyel rendelkező appoknak engedi. Ehhez kell: Apple Developer Program tagság (99 $/év, a te nevedre), az engedély igénylése az Apple-től, és App Store-ellenőrzés. Ha ezek megvannak, az iPhone-app elkészíthető. Addig iPhone-on a webapp (`/app/`) működik: onnan indítható a tiltás az összes gépen és androidos telefonon.
+
 ## 8. Átnevezés (ha nem „Halyra Focus” legyen a neve)
 
 Írd át ezekben: `package.json` (`productName`, `build.productName`), `src/shared/brand.js`, `src/shared/i18n.js` és `website-src/content.js` (szövegek). Utána új Release.

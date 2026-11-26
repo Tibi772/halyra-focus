@@ -112,14 +112,14 @@ async function head(url) {
   check(`All ${images.size} images (incl. social preview) are served`, badImg.length === 0, badImg.join(' ; '));
 
   // ---- download buttons → real installer files, served as downloads
-  const want = ['HalyraFocus-mac.dmg', 'HalyraFocus-Setup.exe'];
-  for (const name of want) {
+  const want = [['HalyraFocus-mac.dmg', 50], ['HalyraFocus-Setup.exe', 50], ['HalyraFocus-Android.apk', 0.2]];
+  for (const [name, minMb] of want) {
     const url = [...downloads].find((d) => d.endsWith(name));
     check(`Download button for ${name} exists`, Boolean(url));
     if (!url) continue;
     const r = await head(url);
-    const mb = Math.round(r.len / 1048576);
-    check(`${name} downloads directly (file, ${mb} MB)`, r.status === 200 && r.len > 50 * 1048576 && (/attachment/i.test(r.disp || '') || /octet-stream|x-apple-diskimage|x-msdownload|x-msdos/i.test(r.type || '')), `${r.status} ${r.type || ''} ${(r.disp || r.error || '').slice(0, 80)}`);
+    const mb = Math.round((r.len / 1048576) * 10) / 10;
+    check(`${name} downloads directly (file, ${mb} MB)`, r.status === 200 && r.len > minMb * 1048576 && (/attachment/i.test(r.disp || '') || /octet-stream|x-apple-diskimage|x-msdownload|x-msdos|android\.package-archive/i.test(r.type || '')), `${r.status} ${r.type || ''} ${(r.disp || r.error || '').slice(0, 80)}`);
   }
   try {
     const gh = (p) => fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/${p}`, { headers: { authorization: `Bearer ${process.env.GH_TOKEN || ''}` } }).then((r) => r.json());
@@ -146,13 +146,16 @@ async function head(url) {
     await page.waitForTimeout(600);
     const m = await page.evaluate(() => ({
       overflow: document.documentElement.scrollWidth - window.innerWidth,
-      note: (() => { const n = document.querySelector('.mobile-note'); return n ? getComputedStyle(n).display !== 'none' : false; })(),
+      note: [...document.querySelectorAll('.mobile-note')].some((n) => getComputedStyle(n).display !== 'none'),
+      androidFirst: (() => { const b = document.querySelector('.cta .btn[data-dl="android"]'); return b ? getComputedStyle(b).order === '-2' : false; })(),
       signin: (() => { const n = document.querySelector('.btn.signin'); return n ? getComputedStyle(n).display !== 'none' : false; })(),
-      appLink: (document.querySelector('.mobile-note a') || {}).href || '',
+      appLink: (document.querySelector('.ios-note a') || {}).href || '',
     }));
     const short = `${dev} ${url.replace(BASE, '/')}`;
     check(`${short}: no sideways scrolling`, m.overflow <= 1, `${m.overflow}px`);
-    check(`${short}: phone note + sign-in button visible, links to web app`, m.note && m.signin && /\/app\/?/.test(m.appLink), JSON.stringify(m));
+    check(`${short}: phone note + sign-in button visible`, m.note && m.signin, JSON.stringify(m));
+    if (/Pixel/.test(dev)) check(`${short}: Android download comes first`, m.androidFirst, JSON.stringify(m));
+    else check(`${short}: iPhone note links to the web app`, /\/app\/?/.test(m.appLink), JSON.stringify(m));
     check(`${short}: no script errors`, errors.length === 0, errors.join(' ; '));
     await page.screenshot({ path: path.join(OUT, `mobile-${dev.replace(/\W+/g, '')}-${url.replace(BASE, '').replace(/\W+/g, '_') || 'en'}.png`), fullPage: false });
     await ctx.close();
@@ -171,7 +174,7 @@ async function head(url) {
     check('Web app loads (200) without errors', res.status() === 200 && errors.length === 0, errors.join(' ; '));
     const configured = Boolean(w.cfg && w.cfg.url);
     check(configured ? 'Web app shows the sign-in form' : 'Web app explains accounts are coming (not configured yet)', configured ? /Belépés|Sign in/.test(w.text) : /hamarosan|coming/i.test(w.text));
-    check('Web app download buttons point to the installers', w.dl.some((d) => d.endsWith('.dmg')) && w.dl.some((d) => d.endsWith('.exe')), w.dl.join(' '));
+    check('Web app download buttons point to the installers', w.dl.some((d) => d.endsWith('.dmg')) && w.dl.some((d) => d.endsWith('.exe')) && w.dl.some((d) => d.endsWith('.apk')), w.dl.join(' '));
     const man = await (await fetch(`${BASE}app/manifest.webmanifest`)).json().catch(() => null);
     check('Web app can be installed to the home screen (manifest + icons)', man && man.icons && man.icons.length >= 2 && man.display === 'standalone');
     if (man) for (const ic of man.icons) { const r = await head(new URL(ic.src, `${BASE}app/`).href); check(`Web app icon ${ic.sizes}`, r.status === 200, r.status); }

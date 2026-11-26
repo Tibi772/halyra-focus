@@ -22,7 +22,7 @@
       email: 'Email', password: 'Password (min. 8 characters)', signIn: 'Sign in', signUp: 'Create account', forgot: 'Forgot password?', signOut: 'Sign out',
       confirm: 'Check your inbox and click the confirmation link, then sign in here.', resetSent: 'If the address has an account, a reset link is on its way.',
       notReady: 'Accounts are being set up — coming very soon. Until then, download the app; it works fully without an account.',
-      dlMac: 'Download for Mac', dlWin: 'Download for Windows', needApp: 'Blocking happens on your computers. Install the app there and sign in with the same account.',
+      dlMac: 'Download for Mac', dlWin: 'Download for Windows', dlAndroid: 'Download for Android', needApp: 'Blocking happens on your computers and Android phones. Install the app there and sign in with the same account.',
       noData: 'No computer has synced yet. Open Halyra Focus on your computer → Settings → Account & sync, and sign in with this account.',
       tFocus: 'Focus', tLists: 'Lists', tSched: 'Schedules', tAcc: 'Account',
       running: 'Focus is on', idle: 'Ready when you are', left: 'left', until: 'until {t}', onAll: 'Runs on all your signed-in computers.',
@@ -44,7 +44,7 @@
       email: 'E-mail', password: 'Jelszó (min. 8 karakter)', signIn: 'Belépés', signUp: 'Fiók létrehozása', forgot: 'Elfelejtett jelszó?', signOut: 'Kijelentkezés',
       confirm: 'Nézd meg a postafiókodat, kattints a megerősítő linkre, utána lépj be itt.', resetSent: 'Ha ehhez a címhez tartozik fiók, elküldtük a visszaállító linket.',
       notReady: 'A fiókrendszer beállítása folyamatban — hamarosan érkezik. Addig töltsd le az appot: fiók nélkül is teljesen működik.',
-      dlMac: 'Letöltés Macre', dlWin: 'Letöltés Windowsra', needApp: 'A tiltás a gépeiden történik. Telepítsd ott az appot, és lépj be ugyanezzel a fiókkal.',
+      dlMac: 'Letöltés Macre', dlWin: 'Letöltés Windowsra', dlAndroid: 'Letöltés Androidra', needApp: 'A tiltás a gépeiden és androidos telefonodon történik. Telepítsd ott az appot, és lépj be ugyanezzel a fiókkal.',
       noData: 'Még egyik géped sem szinkronizált. Nyisd meg a Halyra Focust a gépeden → Beállítások → Fiók és szinkron, és lépj be ezzel a fiókkal.',
       tFocus: 'Fókusz', tLists: 'Listák', tSched: 'Időzítés', tAcc: 'Fiók',
       running: 'Fókusz bekapcsolva', idle: 'Indulhatunk, ha készen állsz', left: 'van hátra', until: '{t}-ig', onAll: 'Minden bejelentkezett gépeden fut.',
@@ -192,9 +192,13 @@
   }
   function downloads() {
     return h('div', null,
+      /android/i.test(navigator.userAgent || '') && CFG.dl && CFG.dl.android
+        ? h('a', { class: 'btn primary wide', href: CFG.dl.android, download: '', style: 'margin-bottom:10px' }, t('dlAndroid')) : null,
       h('div', { class: 'dl' },
         h('a', { class: 'btn pill', href: CFG.dl && CFG.dl.mac, download: '' }, t('dlMac')),
         h('a', { class: 'btn', href: CFG.dl && CFG.dl.win, download: '' }, t('dlWin'))),
+      /android/i.test(navigator.userAgent || '') || !(CFG.dl && CFG.dl.android) ? null
+        : h('a', { class: 'btn wide', href: CFG.dl.android, download: '', style: 'margin-top:10px' }, t('dlAndroid')),
       h('p', { class: 'muted small' }, t('needApp')));
   }
   function loginView() {

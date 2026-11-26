@@ -4,8 +4,10 @@
 
   // ---------------------------------------------------------------- OS-aware download buttons
   const ua = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || '';
-  const mobile = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent || '') || (navigator.maxTouchPoints > 1 && /mac/i.test(ua));
-  const os = mobile ? 'mobile' : /mac/i.test(ua) ? 'mac' : /win/i.test(ua) ? 'win' : null;
+  const uaFull = navigator.userAgent || '';
+  const ios = /iphone|ipad|ipod/i.test(uaFull) || (navigator.maxTouchPoints > 1 && /mac/i.test(ua));
+  const android = /android/i.test(uaFull);
+  const os = android ? 'android' : ios ? 'ios' : /mobile/i.test(uaFull) ? 'ios' : /mac/i.test(ua) ? 'mac' : /win/i.test(ua) ? 'win' : null;
   if (os) {
     document.documentElement.dataset.os = os;
     document.querySelectorAll('[data-dl]').forEach((el) => { if (el.dataset.dl === os) el.classList.add('is-os'); });
