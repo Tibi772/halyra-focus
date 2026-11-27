@@ -8,7 +8,7 @@ const en = {
     desc: 'Free blocker for apps, websites, Shorts and Reels on Mac, Windows and Android. Works in every browser, keeps adult sites blocked with forced SafeSearch, lets you earn fun time by focusing, plus schedules and a built-in AI. No subscription.',
     ogAlt: 'Halyra Focus blocking social media, video and games during a focus session',
   },
-  nav: { levels: 'Levels', features: 'Features', shield: 'Shield', modes: 'Modes', themes: 'Themes', faq: 'FAQ', download: 'Download', signin: 'Sign in', skip: 'Skip to content' },
+  nav: { back: 'Back', levels: 'Levels', features: 'Features', shield: 'Shield', modes: 'Modes', themes: 'Themes', faq: 'FAQ', download: 'Download', signin: 'Sign in', skip: 'Skip to content' },
   hero: {
     eyebrow: 'Free for Mac, Windows & Android · No account needed',
     h1: 'Less scrolling. <em>More done.</em>',
@@ -218,7 +218,7 @@ const hu = {
     desc: 'Ingyenes blokkoló appokra, weboldalakra, Shortsra és Reelsre Macen, Windowson és Androidon. Minden böngészőben működik, a felnőtt oldalakat kötelező SafeSearch-csel együtt tiltja, a szórakozást fókusszal lehet kiérdemelni, és van időzítés meg beépített AI is. Előfizetés nélkül.',
     ogAlt: 'A Halyra Focus fókusz közben tiltja a közösségi médiát, a videókat és a játékokat',
   },
-  nav: { levels: 'Szintek', features: 'Funkciók', shield: 'Pajzs', modes: 'Módok', themes: 'Témák', faq: 'GYIK', download: 'Letöltés', signin: 'Belépés', skip: 'Ugrás a tartalomra' },
+  nav: { back: 'Vissza', levels: 'Szintek', features: 'Funkciók', shield: 'Pajzs', modes: 'Módok', themes: 'Témák', faq: 'GYIK', download: 'Letöltés', signin: 'Belépés', skip: 'Ugrás a tartalomra' },
   hero: {
     eyebrow: 'Ingyenes Macre, Windowsra és Androidra · Fiók nélkül is megy',
     h1: 'Kevesebb görgetés. <em>Több kész munka.</em>',

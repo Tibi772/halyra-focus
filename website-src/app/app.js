@@ -40,31 +40,8 @@
       install: 'Add to Home Screen', installHint: 'iPhone: Share → Add to Home Screen. Android: menu → Install app.', site: 'Website',
       err: { badLogin: 'Wrong email or password.', notConfirmed: 'Confirm your email first (check your inbox).', exists: 'This email already has an account — sign in.', weakPassword: 'Use at least 8 characters.', rateLimit: 'Too many attempts — wait a minute.', emailOff: 'We can’t send emails yet (password reset is coming soon). Signing up and signing in work.', network: 'No connection. Try again.', server: 'The server had a problem. Try again.', auth: 'Please sign in again.' },
     },
-    hu: {
-      sub: 'Web és telefon', welcome: 'A fókuszod, minden eszközön', intro: 'Lépj be a Halyra Focus fiókoddal: innen is elindíthatod a tiltást az összes gépeden, és szerkesztheted a listákat, kereteket, időzítéseket.',
-      email: 'E-mail', password: 'Jelszó (min. 8 karakter)', signIn: 'Belépés', signUp: 'Fiók létrehozása', forgot: 'Elfelejtett jelszó?', signOut: 'Kijelentkezés',
-      confirm: 'Nézd meg a postafiókodat, kattints a megerősítő linkre, utána lépj be itt.', resetSent: 'Ha ehhez a címhez tartozik fiók, elküldtük a visszaállító linket.',
-      notReady: 'A fiókrendszer beállítása folyamatban — hamarosan érkezik. Addig töltsd le az appot: fiók nélkül is teljesen működik.',
-      dlMac: 'Letöltés Macre', dlWin: 'Letöltés Windowsra', dlAndroid: 'Letöltés Androidra', needApp: 'A tiltás a gépeiden és androidos telefonodon történik. Telepítsd ott az appot, és lépj be ugyanezzel a fiókkal.',
-      noData: 'Még egyik géped sem szinkronizált. Nyisd meg a Halyra Focust a gépeden → Beállítások → Fiók és szinkron, és lépj be ezzel a fiókkal.',
-      tFocus: 'Fókusz', tLists: 'Listák', tSched: 'Időzítés', tAcc: 'Fiók', tStats: 'Statisztika',
-      stToday: 'Ma fókuszban', stWeek: 'Ezen a héten', stStreak: 'Napos sorozat', stTotal: 'Összes fókusz', stDevices: 'Az összes eszközöd együtt ({n})', stForest: 'Az erdőd és a városod', stGrown: 'felnőtt', stWithered: 'elszáradt', stEmpty: 'Fejezz be egy fókuszt az appban, és itt nő az első fád vagy épületed.', stGrow: 'Mi nőjön fókusz közben', stNone: 'Semmi', stLocked: '{h} óra', stNoStats: 'Még nincs statisztika — a gépeid szinkronizálása után jelenik meg (pár percenként).', min: 'perc', hrs: 'ó',
-      running: 'Fókusz bekapcsolva', idle: 'Indulhatunk, ha készen állsz', left: 'van hátra', until: '{t}-ig', onAll: 'Minden bejelentkezett gépeden fut.',
-      dur: 'Időtartam', what: 'Mit tiltson', how: 'Mennyire szigorú', start: 'Fókusz indítása mindenhol', extend: '+15 perc', stop: 'Leállítás',
-      lockedNote: 'Ez a tiltás zárolt — innen meghosszabbítható, de idő előtt nem állítható le.',
-      flexible: 'Laza', flexibleD: 'Bármikor leállítható.', patient: 'Türelmes', patientD: 'Leállítás előtt várni kell.', strict: 'Zárolt', strictD: 'Idő előtt nem áll le.',
-      started: 'Elindult — a gépeid ~30 mp-en belül átveszik.', extended: '15 perccel meghosszabbítva.', stopped: 'Leállítva.', saved: 'Mentve — szinkronizálás a gépeidre.',
-      already: 'Már fut egy tiltás.', pickList: 'Válassz legalább egy listát.',
-      sites: '{n} oldal', apps: '{n} app', addSite: 'Weboldal, pl. youtube.com', add: 'Hozzáad', badSite: 'Ez nem tűnik weboldalcímnek.',
-      limit: 'Napi keret', noLimit: 'Nincs keret', perDay: '{m} perc/nap', limitHint: 'A gépeiden mérjük: app-idő + amíg az oldal az elöl lévő böngészőlap.',
-      lockedList: 'Egy zárolt tiltás használja — hozzáadni lehet, törölni nem.', alwaysList: 'Mindig aktív védelem — itt hozzáadni lehet, lazítani csak az appban.', alwaysBadge: 'Mindig aktív', earnBadge: 'Ki kell érdemelni', appsHere: 'Appot a gépen adhatsz hozzá (Macen és Windowson eltérnek).',
-      noSched: 'Még nincs időzítés — az appban hozhatsz létre.', everyDay: 'Minden nap', days: ['V', 'H', 'K', 'Sze', 'Cs', 'P', 'Szo'],
-      signedInAs: 'Bejelentkezve: {e}', lastFrom: 'Utolsó frissítés géptől: {t}', never: 'még nem', ago: '{n} perce', justNow: 'épp most', refresh: 'Frissítés',
-      install: 'Kezdőképernyőre', installHint: 'iPhone: Megosztás → Főképernyőhöz adás. Android: menü → Alkalmazás telepítése.', site: 'Weboldal',
-      err: { badLogin: 'Hibás e-mail vagy jelszó.', notConfirmed: 'Előbb erősítsd meg az e-mail-címed (nézd meg a postafiókod).', exists: 'Ehhez a címhez már van fiók — lépj be.', weakPassword: 'Legalább 8 karakter legyen.', rateLimit: 'Túl sok próbálkozás — várj egy percet.', emailOff: 'E-mailt még nem tudunk küldeni (a jelszó-visszaállítás hamarosan jön). Regisztráció és belépés működik.', network: 'Nincs kapcsolat. Próbáld újra.', server: 'Szerverhiba. Próbáld újra.', auth: 'Kérlek, lépj be újra.' },
-    },
   };
-  let lang = store.get('lang') || (/^hu\b/i.test(navigator.language || '') ? 'hu' : 'en');
+  const lang = 'en'; // the web app is English only; the desktop and phone apps are translated
   const t = (k, v) => { let s = k.split('.').reduce((o, p) => (o ? o[p] : undefined), L[lang]); if (s === undefined) s = k; if (v) for (const [a, b] of Object.entries(v)) s = String(s).replace(`{${a}}`, b); return s; };
 
   // ---------------------------------------------------------------- Supabase
@@ -202,8 +179,7 @@
   function top() {
     return h('div', { class: 'top' },
       h('a', { class: 'logo', href: CFG.home || '../' }, h('span', { html: LOGO }).firstChild, h('span', null, 'Halyra Focus', h('small', null, t('sub')))),
-      h('span', { class: 'sp' }),
-      h('div', { class: 'lang' }, ['en', 'hu'].map((l) => h('button', { class: l === lang ? 'on' : '', onclick: () => { lang = l; store.set('lang', l); document.documentElement.lang = l; render(); } }, l.toUpperCase()))));
+      h('span', { class: 'sp' }));
   }
   function downloads() {
     return h('div', null,
@@ -365,7 +341,7 @@
     const s = d.settings || {};
     const cur = s.growOn === false ? null : (s.growItem || 'oak');
     const max = Math.max(30, ...st.week.map((x) => x.m));
-    const dec = (x) => String(x).replace('.', lang === 'hu' ? ',' : '.');
+    const dec = (x) => String(x);
     const fmt = (m) => (m >= 60 ? `${dec(Math.round(m / 6) / 10)} ${t('hrs')}` : `${m} ${t('min')}`);
     const pick = (id) => act(() => change((x) => { x.settings = x.settings || {}; if (id) { x.settings.growOn = true; x.settings.growItem = id; } else x.settings.growOn = false; return true; }), t('saved'));
     return [
@@ -375,7 +351,7 @@
         h('div', { class: 'card kpi' }, h('b', null, fmt(st.today)), h('span', null, t('stToday'))),
         h('div', { class: 'card kpi' }, h('b', null, fmt(st.weekMin)), h('span', null, t('stWeek'))),
         h('div', { class: 'card kpi' }, h('b', null, String(st.streak)), h('span', null, t('stStreak'))),
-        h('div', { class: 'card kpi' }, h('b', null, `${String(st.totalH).replace('.', lang === 'hu' ? ',' : '.')} ${t('hrs')}`), h('span', null, t('stTotal')))),
+        h('div', { class: 'card kpi' }, h('b', null, `${String(st.totalH)} ${t('hrs')}`), h('span', null, t('stTotal')))),
       h('div', { class: 'card' }, h('div', { class: 'bars' }, st.week.map((x, i) => h('div', { class: `bc${i === 6 ? ' today' : ''}` },
         h('small', null, x.m ? String(x.m) : ''), h('i', { style: `height:${Math.max(3, (x.m / max) * 110)}px` }), h('span', null, t('days')[x.wd]))))),
       G ? h('div', { class: 'card forest' },

@@ -47,7 +47,7 @@ async function head(url) {
   const root = locs.reduce((a, b) => (b.length < a.length ? b : a), locs[0] || BASE); // the home page
   const pages = locs.map((u) => BASE + u.slice(root.length)).filter((u, i, a) => a.indexOf(u) === i);
   check('sitemap.xml uses the live address', root === BASE || process.env.LOCAL_TEST, root);
-  check('sitemap.xml lists pages', pages.length >= 6, `${pages.length} pages`);
+  check('sitemap.xml lists pages', pages.length >= 4, `${pages.length} pages`);
   const robots = await (await fetch(`${BASE}robots.txt`)).text();
   check('robots.txt points to the sitemap', /Sitemap:\s*https?:\/\//i.test(robots));
 
@@ -92,8 +92,7 @@ async function head(url) {
     check(`${short} has no console errors or missing files`, errors.length === 0, errors.join(' ; '));
     check(`${short} all images load`, info.brokenImgs.length === 0, info.brokenImgs.join(' '));
     if (info.ld.length) check(`${short} structured data is valid JSON`, info.ld.every(Boolean));
-    if (url === BASE || url === `${BASE}hu/`) {
-      check(`${short} links its other language (hreflang)`, info.hreflang.includes('en') && info.hreflang.includes('hu'), info.hreflang.join(','));
+    if (url === BASE) {
       check(`${short} shows the current version v${VERSION}`, info.version === `v${VERSION}`, info.version);
       const scene = await page.evaluate(() => ({ labels: document.querySelectorAll('#city-labels .c-label').length, gl: Boolean(document.querySelector('.stage.is-3d')), eggs: Boolean(document.getElementById('egg-text')) }));
       check(`${short} hero scene runs (${scene.gl ? '3D' : '2D fallback'})`, scene.labels >= 6 && scene.eggs, JSON.stringify(scene));
@@ -175,7 +174,7 @@ async function head(url) {
   } catch (e) { check(`Latest release is v${VERSION}`, false, e.message); }
 
   // ---- phones
-  for (const [dev, url] of [['iPhone 13', BASE], ['iPhone 13', `${BASE}hu/`], ['Pixel 7', `${BASE}hu/`]]) {
+  for (const [dev, url] of [['iPhone 13', BASE], ['Pixel 7', BASE]]) {
     const ctx = await browser.newContext({ ...devices[dev] });
     const page = await ctx.newPage();
     const errors = [];

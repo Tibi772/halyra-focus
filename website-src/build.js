@@ -34,15 +34,20 @@ const DL = {
 };
 const T = { en, hu };
 
+// The website is English only. The app itself is translated (src/shared/i18n.js).
 const PAGES = [
   { id: 'home', lang: 'en', path: '/' },
-  { id: 'home', lang: 'hu', path: '/hu/' },
   { id: 'guide-mac', lang: 'en', path: '/guides/block-apps-on-mac/' },
-  { id: 'guide-mac', lang: 'hu', path: '/hu/utmutato/appok-tiltasa-macen/' },
   { id: 'guide-win', lang: 'en', path: '/guides/block-websites-on-windows/' },
-  { id: 'guide-win', lang: 'hu', path: '/hu/utmutato/weboldalak-tiltasa-windowson/' },
   { id: 'privacy', lang: 'en', path: '/privacy/' },
-  { id: 'privacy', lang: 'hu', path: '/hu/adatvedelem/' },
+];
+// Pages that used to exist in Hungarian: keep the addresses alive so old links
+// and anything already in a search index land on the English page instead of a 404.
+const REDIRECTS = [
+  { from: '/hu/', to: '/' },
+  { from: '/hu/utmutato/appok-tiltasa-macen/', to: '/guides/block-apps-on-mac/' },
+  { from: '/hu/utmutato/weboldalak-tiltasa-windowson/', to: '/guides/block-websites-on-windows/' },
+  { from: '/hu/adatvedelem/', to: '/privacy/' },
 ];
 const find = (id, lang) => PAGES.find((p) => p.id === id && p.lang === lang);
 
@@ -74,7 +79,6 @@ const ICON = {
 
 function head(page, t, { title, desc, type = 'website', jsonld = [] }) {
   const url = BASE + page.path;
-  const alt = PAGES.filter((p) => p.id === page.id);
   const og = `${BASE}/assets/og-${page.lang}.png`;
   return `<!doctype html>
 <html lang="${page.lang}">
@@ -84,8 +88,6 @@ function head(page, t, { title, desc, type = 'website', jsonld = [] }) {
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
 <link rel="canonical" href="${url}">
-${alt.map((p) => `<link rel="alternate" hreflang="${p.lang}" href="${BASE + p.path}">`).join('\n')}
-<link rel="alternate" hreflang="x-default" href="${BASE + (find(page.id, 'en') || page).path}">
 ${VERIFY.google ? `<meta name="google-site-verification" content="${esc(VERIFY.google)}">\n` : ''}${VERIFY.bing ? `<meta name="msvalidate.01" content="${esc(VERIFY.bing)}">\n` : ''}<meta name="theme-color" content="#07090f">
 <meta name="color-scheme" content="dark">
 <script>(function(){try{var s=localStorage.getItem('halyra-season'),d=new Date(),a=d.getMonth()===11||(d.getMonth()===0&&d.getDate()<=6);if(s==='on'||(s!=='off'&&a))document.documentElement.classList.add('xmas')}catch(e){}})()</script>
@@ -114,24 +116,18 @@ ${jsonld.map((j) => `<script type="application/ld+json">${JSON.stringify(j)}</sc
 }
 
 function nav(page, t, solid) {
-  const other = PAGES.find((p) => p.id === page.id && p.lang !== page.lang);
   const home = link(page.path, find('home', page.lang).path);
-  const enP = page.lang === 'en' ? page : other;
-  const huP = page.lang === 'hu' ? page : other;
   const sec = (id) => (page.id === 'home' ? `#${id}` : `${home}#${id}`);
+  const back = page.id === 'home' ? '' : `<a class="nav-back" href="${home}" aria-label="${esc(t.nav.back)}"><span aria-hidden="true">&#8249;</span> ${esc(t.nav.back)}</a>`;
   return `<a class="skip" href="#main">${t.nav.skip}</a>
 <header class="nav${solid ? ' solid' : ''}" id="nav">
   <div class="wrap nav-in">
-    <a class="logo" href="${home}" aria-label="Halyra Focus">${ICON.logo}<span>Halyra Focus<small>${page.lang === 'hu' ? 'App- és oldalblokkoló' : 'App & site blocker'}</small></span></a>
+    ${back}<a class="logo" href="${home}" aria-label="Halyra Focus">${ICON.logo}<span>Halyra Focus<small>App &amp; site blocker</small></span></a>
     <nav class="nav-links" aria-label="Main">
       <a href="${sec('story')}">${t.nav.levels}</a><a href="${sec('features')}">${t.nav.features}</a><a href="${sec('shield')}">${t.nav.shield}</a><a href="${sec('modes')}">${t.nav.modes}</a><a href="${sec('themes')}">${t.nav.themes}</a><a href="${sec('faq')}">${t.nav.faq}</a>
     </nav>
     <div class="nav-right">
       <button class="season-btn" type="button" id="season-btn" data-on="${esc(t.xmas.btnOff)}" data-off="${esc(t.xmas.btnOn)}" aria-label="${esc(t.xmas.btnOn)}" title="${esc(t.xmas.btnOn)}"><span class="s-on" aria-hidden="true">❄️</span><span class="s-off" aria-hidden="true">🎄</span></button>
-      <div class="lang" role="group" aria-label="${t.footer.language}">
-        <a href="${link(page.path, enP.path)}" hreflang="en" lang="en" class="${page.lang === 'en' ? 'on' : ''}">EN</a>
-        <a href="${link(page.path, huP.path)}" hreflang="hu" lang="hu" class="${page.lang === 'hu' ? 'on' : ''}">HU</a>
-      </div>
       <a class="btn sm ghost signin" href="${appLink(page)}">${t.nav.signin}</a>
       <a class="btn pill sm" href="${sec('download')}">${t.nav.download}</a>
     </div>
@@ -155,7 +151,6 @@ function footer(page, t) {
       <div><b>${t.footer.product}</b><a href="${sec('features')}">${t.nav.features}</a><a href="${sec('shield')}">${t.nav.shield}</a><a href="${sec('themes')}">${t.nav.themes}</a><a href="${sec('faq')}">${t.nav.faq}</a><a href="${sec('download')}">${t.nav.download}</a></div>
       <div><b>${t.footer.guides}</b><a href="${L('guide-mac')}">${esc(t.guides.mac.h1)}</a><a href="${L('guide-win')}">${esc(t.guides.win.h1)}</a></div>
       <div><b>${t.footer.legal}</b><a href="${L('privacy')}">${t.footer.privacy}</a><a href="${DL.source}" rel="noopener">${t.footer.source}</a></div>
-      <div><b>${t.footer.language}</b><a href="${link(page.path, find(page.id, 'en').path)}" hreflang="en">English</a><a href="${link(page.path, find(page.id, 'hu').path)}" hreflang="hu">Magyar</a></div>
     </nav>
   </div>
 </footer>
@@ -404,6 +399,7 @@ ${nav(page, t, true)}
     <div class="crumbs"><a href="${home}">Halyra Focus</a> / ${crumbs}</div>
     <h1>${data.h1}</h1>
     ${body}
+    <p class="art-back"><a class="btn pill" href="${home}"><span aria-hidden="true">&#8249;</span> ${esc(t.nav.back)}</a></p>
   </div>
 </main>
 ${footer(page, t)}
@@ -423,7 +419,7 @@ function notFoundPage() {
 ${nav({ ...page, id: 'home' }, t, true)}
 <main id="main" class="article" style="text-align:center;min-height:70vh">
   <div class="wrap"><div class="nf-lock">${ICON.lock}</div><div style="font-family:var(--pixel);color:var(--accent);font-size:22px">404 · blocked by Halyra Focus</div><h1>${t.notFound.h1}</h1><p>${t.notFound.p}</p><p class="nf-timer">Unblocks in <b>∞</b> minutes</p>
-  <p><a class="btn pill" href="./">${t.notFound.back}</a> <a class="btn" href="hu/">Magyar főoldal</a></p></div>
+  <p><a class="btn pill" href="./">${t.notFound.back}</a> </p></div>
 </main>
 <script src="assets/site.js?v=${VERSION}" defer></script>
 </body>
@@ -454,6 +450,18 @@ for (const page of PAGES) {
   write(path.join(page.path, 'index.html'), html);
 }
 write('404.html', notFoundPage());
+for (const r of REDIRECTS) {
+  const to = BASE + r.to;
+  write(path.join(r.from, 'index.html'), `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Halyra Focus</title><meta name="robots" content="noindex">
+<link rel="canonical" href="${to}">
+<meta http-equiv="refresh" content="0; url=${to}">
+<script>location.replace(${JSON.stringify(to)})</script></head>
+<body>This page moved to <a href="${to}">${to}</a>.</body>
+</html>
+`);
+}
 if (INDEXNOW) write(`${INDEXNOW}.txt`, INDEXNOW);
 write('robots.txt', `User-agent: *\nAllow: /\n\nSitemap: ${BASE}/sitemap.xml\n`);
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>

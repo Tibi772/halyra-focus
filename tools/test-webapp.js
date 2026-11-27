@@ -58,78 +58,78 @@ const listen = (s) => new Promise((r) => s.listen(0, '127.0.0.1', () => r(s.addr
   const web = staticServer(`http://127.0.0.1:${sbPort}`); const webPort = await listen(web);
   const off = staticServer(''); const offPort = await listen(off);
   const b = await chromium.launch(process.env.CHROME ? { executablePath: process.env.CHROME } : {});
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'hu-HU', isMobile: true, hasTouch: true });
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'en-US', isMobile: true, hasTouch: true });
   const p = await ctx.newPage();
   const errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('console', (m) => { if (m.type() === 'error' && !/status of 400/.test(m.text())) errs.push(m.text()); }); // 400 = the intentional wrong-password attempt
   const ok = (name, cond) => { if (!cond) failed += 1; console.log(cond ? 'PASS' : 'FAIL', name); };
   // not configured
   await p.goto(`http://127.0.0.1:${offPort}/app/`); await p.waitForTimeout(500);
   await p.screenshot({ path: OUT + '/0-notready.png' });
-  ok('not-configured notice', (await p.textContent('body')).includes('hamarosan'));
+  ok('not-configured notice', (await p.textContent('body')).toLowerCase().includes('coming'));
   // configured
   await p.goto(`http://127.0.0.1:${webPort}/app/`); await p.waitForTimeout(500);
   await p.screenshot({ path: OUT + '/1-login.png' });
   await p.fill('input[type=email]', 'anna@halyra.app'); await p.fill('input[type=password]', 'wrong-pass');
-  await p.click('text=Belépés'); await p.waitForTimeout(400);
-  ok('bad login message', (await p.textContent('#toast')).includes('Hibás'));
-  await p.fill('input[type=password]', 'correct-horse'); await p.click('text=Belépés'); await p.waitForTimeout(700);
+  await p.click('button:has-text("Sign in")'); await p.waitForTimeout(400);
+  ok('bad login message', (await p.textContent('#toast')).includes('Wrong email'));
+  await p.fill('input[type=password]', 'correct-horse'); await p.click('button:has-text("Sign in")'); await p.waitForTimeout(700);
   await p.screenshot({ path: OUT + '/2-focus.png' });
-  ok('focus view after login', (await p.textContent('body')).includes('Fókusz indítása mindenhol'));
-  await p.click('.mode >> text=Zárolt'); await p.click('text=Fókusz indítása mindenhol'); await p.waitForTimeout(700);
+  ok('focus view after login', (await p.textContent('body')).includes('Start focus everywhere'));
+  await p.click('.mode >> text=Locked'); await p.click('text=Start focus everywhere'); await p.waitForTimeout(700);
   const r1 = rows.get('u1');
   ok('session written to sync row', r1.data.session && r1.data.session.mode === 'strict' && r1.device.startsWith('web-'));
   // desktop picks it up
   const applied = sync.applyRemote(desktop, r1.data, Date.now());
   ok('desktop applies web-started session', applied.config.session && engine.evaluate(applied.config, Date.now()).blocking);
   await p.evaluate(() => { document.getElementById('toast').className = ''; }); await p.waitForTimeout(300); await p.screenshot({ path: OUT + '/3-running.png' });
-  ok('no stop button for locked', !(await p.$('text=Leállítás')));
-  await p.click('text=+15 perc'); await p.waitForTimeout(600);
+  ok('no stop button for locked', !(await p.$('button:has-text("Stop")')));
+  await p.click('text=+15 min'); await p.waitForTimeout(600);
   ok('extended +15', rows.get('u1').data.session.endsAt - r1.data.session.endsAt >= 0 && Math.round((rows.get('u1').data.session.endsAt - rows.get('u1').data.session.startedAt) / 60000) === 65);
   // lists
-  await p.click('.tabs >> text=Listák'); await p.waitForTimeout(300);
+  await p.click('.tabs >> text=Lists'); await p.waitForTimeout(300);
   const all = await p.$$('.list-h'); const LI = all.length - 1; const second = all[LI]; await second.click(); await p.waitForTimeout(300);
-  await p.fill('.list input', 'https://www.Example.org/path'); await p.click('.list >> text=Hozzáad'); await p.waitForTimeout(600);
+  await p.fill('.list input', 'https://www.Example.org/path'); await p.click('.list >> text=Add'); await p.waitForTimeout(600);
   const listId = rows.get('u1').data.lists[LI].id;
   ok('site added from web', rows.get('u1').data.lists[LI].sites.includes('example.org'));
   await p.screenshot({ path: OUT + '/4-lists.png', fullPage: false });
   // locked list: no remove buttons
   await p.click('.list-h >> nth=0'); await p.waitForTimeout(300);
-  ok('locked list shows note', (await p.textContent('body')).includes('zárolt tiltás használja'));
+  ok('locked list shows note', (await p.textContent('body')).includes('In use by a locked block'));
   await p.screenshot({ path: OUT + '/4b-locked-list.png' });
   // stats of all devices + the forest; picking what grows syncs to the computers
-  await p.click('.tabs >> text=Statisztika'); await p.waitForTimeout(400);
+  await p.click('.tabs >> text=Stats'); await p.waitForTimeout(400);
   await p.screenshot({ path: OUT + '/4c-stats.png', fullPage: true });
   const stTxt = await p.textContent('body');
-  ok('stats tab merges devices', stTxt.includes('eszközöd együtt (2)') && !!(await p.$('.forest .land svg')));
-  ok('forest shows grown and withered', stTxt.includes('5 felnőtt') && stTxt.includes('1 elszáradt'));
-  await p.click('.grow[title="Fenyő"]'); await p.waitForTimeout(700);
+  ok('stats tab merges devices', stTxt.includes('All your devices together (2)') && !!(await p.$('.forest .land svg')));
+  ok('forest shows grown and withered', stTxt.includes('5 grown') && stTxt.includes('1 withered'));
+  await p.click('.grow[title="Pine"]'); await p.waitForTimeout(700);
   ok('grow choice saved from web', rows.get('u1').data.settings.growItem === 'pine' && rows.get('u1').data.devices && rows.get('u1').data.devices['dev-mac']);
   ok('desktop takes the grow choice', sync.applyRemote(desktop, rows.get('u1').data, Date.now()).config.settings.growItem === 'pine');
-  await p.click('.tabs >> text=Időzítés'); await p.waitForTimeout(300);
+  await p.click('.tabs >> text=Schedules'); await p.waitForTimeout(300);
   await p.screenshot({ path: OUT + '/5-sched.png' });
   const before = rows.get('u1').data.schedules[0].enabled;
   await p.click('.switch >> nth=0'); await p.waitForTimeout(700);
   ok('schedule toggled from web', rows.get('u1').data.schedules[0].enabled === !before);
-  await p.click('.tabs >> text=Fiók'); await p.waitForTimeout(300);
+  await p.click('.tabs >> text=Account'); await p.waitForTimeout(300);
   await p.screenshot({ path: OUT + '/6-account.png' });
-  ok('account tab shows last computer sync', (await p.textContent('body')).includes('perce'));
+  ok('account tab shows last computer sync', (await p.textContent('body')).includes('min ago'));
   // flexible block: can be stopped from the phone
   rows.get('u1').data.session = null;
-  await p.click('.tabs >> text=Fókusz'); await p.click('text=Frissítés').catch(() => {});
-  await p.click('.tabs >> text=Fiók'); await p.click('text=Frissítés'); await p.waitForTimeout(500);
-  await p.click('.tabs >> text=Fókusz'); await p.waitForTimeout(300);
-  await p.click('.mode >> text=Laza'); await p.click('text=Fókusz indítása mindenhol'); await p.waitForTimeout(700);
+  await p.click('.tabs >> text=Focus'); await p.click('text=Refresh').catch(() => {});
+  await p.click('.tabs >> text=Account'); await p.click('text=Refresh'); await p.waitForTimeout(500);
+  await p.click('.tabs >> text=Focus'); await p.waitForTimeout(300);
+  await p.click('.mode >> text=Flexible'); await p.click('text=Start focus everywhere'); await p.waitForTimeout(700);
   ok('flexible block started', rows.get('u1').data.session && rows.get('u1').data.session.mode === 'flexible');
-  await p.click('text=Leállítás'); await p.waitForTimeout(700);
+  await p.click('text=Stop'); await p.waitForTimeout(700);
   ok('flexible block stopped from phone', rows.get('u1').data.session === null);
   const stopApplied = sync.applyRemote({ ...desktop, session: { startedAt: Date.now() - 1000, endsAt: Date.now() + 600000, listIds: [desktop.lists[0].id], mode: 'flexible', pomodoro: null }, sessionChangedAt: Date.now() - 1000 }, rows.get('u1').data, Date.now());
   ok('desktop accepts the stop of a flexible block', stopApplied.config.session === null);
   // sign out returns to the login screen and forgets the session
-  await p.click('.tabs >> text=Fiók'); await p.click('text=Kijelentkezés'); await p.waitForTimeout(300);
+  await p.click('.tabs >> text=Account'); await p.click('text=Sign out'); await p.waitForTimeout(300);
   ok('sign out returns to login', !!(await p.$('input[type=password]')) && (await p.evaluate(() => localStorage.getItem('halyra.auth'))) === null);
-  await p.fill('input[type=email]', 'anna@halyra.app'); await p.fill('input[type=password]', 'correct-horse'); await p.click('button:has-text("Belépés")'); await p.waitForTimeout(700);
+  await p.fill('input[type=email]', 'anna@halyra.app'); await p.fill('input[type=password]', 'correct-horse'); await p.click('button:has-text("Sign in")'); await p.waitForTimeout(700);
   // English
-  await p.click('.lang >> text=EN'); await p.click('.tabs >> text=Focus'); await p.waitForTimeout(300);
+  await p.click('.tabs >> text=Focus'); await p.waitForTimeout(300);
   await p.evaluate(() => { document.getElementById('toast').className = ''; }); await p.waitForTimeout(300); await p.screenshot({ path: OUT + '/7-en.png' });
   ok('no page errors', errs.length === 0); if (errs.length) console.log(errs);
   await b.close(); sb.close(); web.close(); off.close();
