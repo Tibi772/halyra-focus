@@ -1,22 +1,29 @@
 'use strict';
-// Optional AI (Anthropic Claude) with the user's own API key. Nothing is sent
-// anywhere unless the user adds a key AND uses an AI feature; only the text the
-// feature needs is sent (a style description, or a goal + list names).
+// Optional AI (Google Gemini), either with Halyra's server or with the user's
+// own API key. Nothing is sent anywhere unless the AI is on AND an AI feature is
+// used; only the text the feature needs is sent (a style description, or a goal
+// + list names).
+//
+// The rest of the app speaks in blocks — text, tool call, tool result — and
+// src/core/gemini.js turns that into what Gemini wants and back again, so
+// swapping which model answers touches this file and nothing else.
 const { safeStorage } = require('electron');
+const gem = require('../core/gemini');
 
-const MODEL = 'claude-haiku-5-5'; // quick jobs: styles, focus plans
-const CHAT_MODEL = 'claude-sonnet-5-5'; // Halyra AI chat: smart, with tools and web search
-const API = 'https://api.anthropic.com/v1/messages';
+const MODEL = 'gemini-2.5-flash'; // quick jobs: styles, focus plans
+const CHAT_MODEL = 'gemini-2.5-flash'; // Halyra AI chat: tools and web search
+const API = 'https://generativelanguage.googleapis.com/v1beta/models';
+const endpoint = (model) => `${API}/${encodeURIComponent(model)}:generateContent`;
 
 async function complete(key, { system, prompt, maxTokens = 600, timeoutMs = 20000 }) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(API, {
+    const res = await fetch(endpoint(MODEL), {
       method: 'POST',
       signal: ctrl.signal,
-      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: prompt }] }),
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify(gem.toGemini({ max_tokens: maxTokens, system, messages: [{ role: 'user', content: prompt }] })),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -24,7 +31,7 @@ async function complete(key, { system, prompt, maxTokens = 600, timeoutMs = 2000
       err.code = res.status === 401 || res.status === 403 ? 'invalidKey' : res.status === 429 ? 'rateLimit' : 'apiError';
       throw err;
     }
-    return (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+    return gem.fromGemini(data).content.filter((b) => b.type === 'text').map((b) => b.text).join('');
   } catch (e) {
     if (e.name === 'AbortError') e.code = 'timeout';
     if (!e.code) e.code = 'network';
@@ -98,10 +105,15 @@ async function callMessages(transport, body, timeoutMs = 60000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
+    // The proxy is Halyra's server, which adds the key and counts the message;
+    // with the user's own key we go straight to Google. Either way the body is
+    // already in Gemini's shape, so the server is a forwarder and not a translator.
     const headers = transport.kind === 'proxy'
       ? { 'content-type': 'application/json', authorization: `Bearer ${transport.token}`, apikey: transport.anonKey }
-      : { 'content-type': 'application/json', 'x-api-key': transport.key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
-    const res = await fetch(transport.kind === 'proxy' ? transport.url : API, { method: 'POST', signal: ctrl.signal, headers, body: JSON.stringify(body) });
+      : { 'content-type': 'application/json', 'x-goog-api-key': transport.key };
+    const payload = gem.toGemini(body);
+    if (transport.kind === 'proxy') payload.model = body.model;
+    const res = await fetch(transport.kind === 'proxy' ? transport.url : endpoint(body.model || CHAT_MODEL), { method: 'POST', signal: ctrl.signal, headers, body: JSON.stringify(payload) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const msg = (data && data.error && (data.error.message || data.error)) || data.message || `HTTP ${res.status}`;
@@ -112,7 +124,7 @@ async function callMessages(transport, body, timeoutMs = 60000) {
           : res.status === 404 && transport.kind === 'proxy' ? 'noProxy' : 'apiError';
       throw err;
     }
-    return data;
+    return gem.fromGemini(data);
   } catch (e) {
     if (e.name === 'AbortError') e.code = 'timeout';
     if (!e.code) e.code = 'network';
@@ -136,18 +148,17 @@ async function chat(transport, { system, messages, tools, webSearch, run, maxSte
   for (let step = 0; step < maxSteps; step += 1) {
     let data;
     try {
-      // The system prompt + tool list are the same on every call: cache them (≈90% cheaper input).
-      const cachedTools = tools.map((tl, i) => (i === tools.length - 1 ? { ...tl, cache_control: { type: 'ephemeral' } } : tl));
       data = await callMessages(transport, {
         model: CHAT_MODEL,
         max_tokens: 1600,
-        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
-        tools: search ? [webSearch, ...cachedTools] : cachedTools,
+        system: [{ type: 'text', text: system }],
+        tools: search ? [webSearch, ...tools] : tools,
         messages: msgs,
       });
     } catch (e) {
-      // Some API keys/organizations have web search turned off: carry on without it.
-      if (search && e.code === 'apiError' && /web.?search|server.?tool|not enabled|tool/i.test(e.message)) { search = false; step -= 1; continue; }
+      // Not every key or model will take web search alongside the app's own
+      // tools, and the wording of the refusal differs: carry on without it.
+      if (search && e.code === 'apiError' && /search|server.?tool|not enabled|unsupported|tool/i.test(e.message)) { search = false; step -= 1; continue; }
       throw e;
     }
     const content = Array.isArray(data.content) ? data.content : [];

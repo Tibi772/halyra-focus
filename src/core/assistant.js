@@ -1,5 +1,5 @@
 'use strict';
-// Halyra AI: a chat assistant that knows (almost) everything — through Claude,
+// Halyra AI: a chat assistant that knows (almost) everything — through Gemini,
 // with web search for anything current — and can operate the app for you:
 // start / extend focus, block sites, build lists and schedules, set limits,
 // change the look and what grows. Every change goes through the same rules as
@@ -11,7 +11,8 @@ const GROW = require('../shared/grow');
 const MODES = ['flexible', 'patient', 'strict'];
 const DAY = { sun: 0, sunday: 0, vasárnap: 0, mon: 1, monday: 1, hétfő: 1, tue: 2, tuesday: 2, kedd: 2, wed: 3, wednesday: 3, szerda: 3, thu: 4, thursday: 4, csütörtök: 4, fri: 5, friday: 5, péntek: 5, sat: 6, saturday: 6, szombat: 6 };
 
-// ------------------------------------------------------------------ tool schema (Anthropic tool use)
+// ------------------------------------------------------------------ tool schema
+// Written once, in the app's own shape; src/core/gemini.js translates it for the model.
 
 const TOOLS = [
   { name: 'get_status', description: 'Current state of Halyra Focus: is a block running (until when, how strict), block lists with their sites/apps, schedules, daily limits, today\'s stats, what grows during focus, whether website blocking is installed. Call this before changing things.', input_schema: { type: 'object', properties: {} } },

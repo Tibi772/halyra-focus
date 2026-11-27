@@ -25,7 +25,7 @@ const en = {
 <li>Your block lists, schedules, settings and statistics are stored only on your computer, in the app’s own folder.</li>
 <li>Website blocking writes the domains you choose into your computer’s hosts file through a local helper. Nothing is sent over the internet.</li>
 <li>To block apps, the app looks at the list of running programs on your computer. This list never leaves your computer.</li>
-<li>The app does not connect to the internet by itself. The only exception is optional: if you add your own Anthropic API key, the text you type into the AI style studio or the smart setup is sent to Anthropic’s API to generate the result. Nothing else is ever sent.</li>
+<li>The app does not connect to the internet by itself. The only exception is the AI, and only when you use it: the text you type into Halyra AI, the style studio or the smart setup is sent to Google’s Gemini API — through Halyra’s server if you are signed in, or straight from your computer if you added your own key — to produce the answer. Nothing else is ever sent.</li>
 <li>Opening a link (for example to this website) happens in your browser.</li>
 <li>Daily limits count how long a list’s apps run and, on a Mac, read the address of the front browser tab (only after you allow it). This is used only to count time on your computer and is never sent anywhere.</li>
 </ul>
@@ -136,7 +136,7 @@ const hu = {
 <li>A tiltólistáid, időzítéseid, beállításaid és statisztikáid csak a gépeden, az app saját mappájában tárolódnak.</li>
 <li>A weboldal-tiltás a kiválasztott domaineket egy helyi segédprogramon keresztül a géped hosts fájljába írja. Semmi nem megy ki az internetre.</li>
 <li>Az appok tiltásához az app a gépeden futó programok listáját nézi. Ez a lista soha nem hagyja el a gépedet.</li>
-<li>Az app magától nem csatlakozik az internethez. Az egyetlen kivétel opcionális: ha megadod a saját Anthropic API-kulcsodat, az AI stílusstúdióba vagy az okos beállításba írt szöveg az Anthropic API-jához kerül, hogy elkészüljön az eredmény. Semmi más nem megy el.</li>
+<li>Az app magától nem csatlakozik az internethez. Az egyetlen kivétel az AI, és az is csak akkor, ha használod: a Halyra AI-ba, a stílusstúdióba vagy az okos beállításba írt szöveg a Google Gemini API-jához kerül — belépve a Halyra szerverén át, saját kulccsal közvetlenül a gépedről —, hogy elkészüljön a válasz. Semmi más nem megy el.</li>
 <li>Ha megnyitsz egy linket (például ezt a weboldalt), az a böngésződben történik.</li>
 <li>A napi keret méri, mennyi ideig futnak a lista appjai, és Macen (csak az engedélyed után) kiolvassa az elöl lévő böngészőlap címét. Ezt csak az idő számolására használja a gépeden, és sehova nem küldi el.</li>
 </ul>

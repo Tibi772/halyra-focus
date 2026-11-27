@@ -1271,7 +1271,8 @@ function ipc() {
   });
   handle('ai:setKey', async ({ key }) => {
     const k = String(key || '').trim();
-    if (!/^sk-[\w-]{20,}$/.test(k)) return { ok: false, error: 'aiKeyFormat' };
+    // Google AI Studio keys start with AIza; the old sk- form is no longer ours.
+    if (!/^AIza[\w-]{28,}$/.test(k)) return { ok: false, error: 'aiKeyFormat' };
     try { await ai.complete(k, { system: 'Reply with OK.', prompt: 'OK?', maxTokens: 5, timeoutMs: 15000 }); } catch (e) {
       if (e.code === 'invalidKey') return { ok: false, error: 'aiInvalid' };
       if (e.code === 'network' || e.code === 'timeout') return { ok: false, error: 'aiNetwork' };

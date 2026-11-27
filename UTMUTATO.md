@@ -64,13 +64,13 @@ Az app és a weboldal fiók nélkül is teljesen működik. Ha azt szeretnéd, h
 
 A Halyra AI (✦ gomb az appban, Ctrl/⌘ K) bármire válaszol, keres a weben, és **ki is tudja adni a parancsokat** („tiltsd le a Redditet 18 óráig szigorúan”, „csinálj hétköznapi tanulási időbeosztást”). Három módban fut:
 
-1. **Saját kulccsal** — a felhasználó a Beállítások → Halyra AI kártyán beírja a saját Anthropic API-kulcsát. Ez már most működik.
+1. **Saját kulccsal** — a felhasználó a Beállítások → Halyra AI kártyán beírja a saját Google AI Studio kulcsát (ingyenes). Ez már most működik.
 2. **A te szervereden át (belépett felhasználóknak)** — nem kell nekik kulcs, te fizeted az API-t, és havonta 10 üzenetet kapnak ingyen (Pro-ban napi 50-et). Bekapcsolás:
    1. Előbb legyen kész a 3/b (Supabase).
    2. Supabase → **SQL Editor** → futtasd le a `docs/supabase-ai.sql` tartalmát.
-   3. [console.anthropic.com](https://console.anthropic.com) → API keys → új kulcs. (Billing alatt állíts be havi költséglimitet!)
-   4. GitHubon: **Settings → Secrets and variables → Actions → New repository secret**, három darab: `SUPABASE_ACCESS_TOKEN` (supabase.com → Account → Access Tokens), `SUPABASE_PROJECT_REF` (a `https://XXXX.supabase.co` címben az XXXX), `ANTHROPIC_API_KEY`.
-   5. **Actions → Halyra AI server → Run workflow.** Ez feltölti a `supabase/functions/halyra-ai` szervert. Keret: alapból havi 10 üzenet ingyen, napi 50 Pro-ban (`FREE_MONTHLY`, `PRO_DAILY` titkokkal állítható). Az árazási javaslat a Claude-ban készült dokumentumban van.
+   3. [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → Create API key. Ingyenes kerettel jár; ha fizetős projektre kötöd, állíts be költséglimitet.
+   4. GitHubon: **Settings → Secrets and variables → Actions → New repository secret**, három darab: `SUPABASE_ACCESS_TOKEN` (supabase.com → Account → Access Tokens), `SUPABASE_PROJECT_REF` (a `https://XXXX.supabase.co` címben az XXXX), `GEMINI_API_KEY`.
+   5. **Actions → Halyra AI server → Run workflow.** Ez feltölti a `supabase/functions/halyra-ai` szervert. Keret: alapból havi 10 üzenet ingyen, napi 50 Pro-ban (`FREE_MONTHLY`, `PRO_DAILY` titkokkal állítható). Az árazási javaslat a marketing dokumentumban van.
    6. Pro felhasználó kézzel: SQL Editorban `insert into halyra_plans (user_id, until) values ('<user id>', now() + interval '1 month');` (fizetéshez lásd az árazási javaslatot).
 3. **Offline** — se kulcs, se szerver: az alap parancsokat így is érti (fókusz indítása, oldalak tiltása, statisztika), csak kérdésekre nem válaszol.
 
@@ -120,7 +120,7 @@ Ha később eltüntetnéd: Apple Developer Program (kb. 99 USD/év) + Windows k�
 - 5 téma: Éjfél, Nappal, **Retró CRT**, **Retró 1-bit**, **Retró Vapor** — saját, ékezetes pixel betűtípussal.
 - **AI stílusstúdió:** írd le, milyen legyen (pl. „neon tokiói éjszaka”), és megtervezi a saját témádat — színek, betű, sarkok, háttéreffekt, mindig jól olvasható kontraszttal. Finomhangolható, korlátlanul menthető.
 - **Okos, határozott fókusz-coach:** megmondod, min dolgozol, ő beállítja a tiltást (mit, mennyi ideig, milyen szigorúan). Ha idő előtt kiszállnál, konkrétan megmondja, mit adsz fel. A statisztikádból tippeket ad (pl. a leggyengébb órád automatikus tiltása).
-- Az AI alapból offline működik. Ha a Beállítások → AI résznél megadsz egy saját Anthropic API-kulcsot (console.anthropic.com), Claude AI-t használ.
+- Az AI alapból offline működik. Belépve a Halyra szerverén át megy, vagy a Beállítások → AI résznél megadhatsz egy saját Google AI Studio kulcsot (aistudio.google.com/apikey), és akkor Geminit használ korlát nélkül.
 - **Napi keret** listánként (pl. YouTube napi 30 perc): méri az appok futási idejét és azt, amíg a lista egyik weboldala az elöl lévő böngészőlap; ha elfogy, éjfélig tiltva.
 - **Fókuszhangok:** eső, hullámok, barna zaj, kávézó, kandalló, fehér zaj — az app generálja, a tiltással együtt indul.
 - **Fiók és szinkron (opcionális):** e-mailes belépés, a listák, időzítések, stílusok és a futó fókusz minden gépen ugyanaz. Zárolt tiltást másik eszközről sem lehet leállítani.

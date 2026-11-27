@@ -1734,7 +1734,7 @@ function aiCard() {
     on ? h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => openStyleStudio(null) }, icon('sparkle'), t('style.new')),
       h('button', { class: 'btn danger', onclick: async () => { const r = await api.removeAiKey(); if (r.state) applyState(r.state); } }, t('ai.remove')))
       : h('div', { class: 'row', style: { flexWrap: 'nowrap' } },
-        h('input', { class: 'input', type: 'password', placeholder: `${t('ai.key')} (sk-ant-…)`, autocomplete: 'off', 'data-fid': 'ai-key', oninput: (e) => { key = e.target.value; } }),
+        h('input', { class: 'input', type: 'password', placeholder: `${t('ai.key')} (AIza…)`, autocomplete: 'off', 'data-fid': 'ai-key', oninput: (e) => { key = e.target.value; } }),
         h('button', { class: 'btn primary', onclick: async (e) => {
           e.target.disabled = true;
           const r = await api.setAiKey({ key });
