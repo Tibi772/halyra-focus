@@ -183,7 +183,7 @@ void main() {
   vec3 light = mix(vec3(0.12, 0.11, 0.2), vec3(0.36, 0.4, 0.6), n.y * 0.5 + 0.5) + dif * vec3(0.62, 0.64, 0.82);
   vec3 col = vC * light;
   if (vF > 0.5 && vF < 1.5) col = vC * (0.95 + 0.25 * uGlow) + vC * light * 0.2;
-  if (vF > 1.5 && vF < 2.5) col = mix(col, vec3(0.92, 0.95, 1.0) * light, smoothstep(0.35, 0.9, n.y) * uSnow);
+  if (vF > 1.5 && vF < 2.5) col = mix(col, vec3(0.76, 0.82, 0.94) * min(light, vec3(1.05)), smoothstep(0.35, 0.9, n.y) * uSnow);
   if (vF > 2.5) { float r = length(vW.xz); col *= 0.85 + 0.15 * sin(r * 6.0); }
   float rim = pow(1.0 - abs(dot(n, normalize(uCam - vW))), 3.0);
   col += vec3(0.2, 0.12, 0.32) * rim * step(vW.y, -0.2);
@@ -248,7 +248,14 @@ void main() {
     let D = data || {};
     let W; let worldN = 0; let gemBufs = []; let glowB; let glowN = 0; let ptB; let ptN = 0; const sky = buf([-1, -1, 3, -1, -1, 3]);
     let R = 4; let H = 2;
+    const popAt = {}; let seenGot = null; let lastLevel = null; let growAt = -1e9;
     function rebuild() {
+      const now0 = performance.now();
+      const gotNow = new Set((D.gems || []).filter((g) => g.got).map((g) => g.id));
+      if (seenGot) for (const id of gotNow) if (!seenGot.has(id)) popAt[id] = now0;
+      seenGot = gotNow;
+      if (lastLevel != null && D.level > lastLevel) growAt = now0;
+      lastLevel = D.level;
       const w = buildWorld(D);
       R = w.R; H = w.H;
       if (W) gl.deleteBuffer(W);
@@ -282,7 +289,7 @@ void main() {
     rebuild();
 
     const VP = mat(); const PR = mat(); const VW = mat(); const M = mat(); const ID = trs(mat(), 0, 0, 0, 0, 0, 1);
-    let yaw = 0.7; let target = 0.7; let drag = null; let raf = 0; let alive = true; let visible = true; let W2 = 1; let H2 = 1; let dpr = 1;
+    let yaw = 0.7; let target = 0.7; let drag = null; let view = null; let userOff = 0; let raf = 0; let alive = true; let visible = true; let W2 = 1; let H2 = 1; let dpr = 1;
     let burst = 0; let hover = null; const gemPos = [];
     function resize() {
       const r = canvas.getBoundingClientRect();
@@ -300,10 +307,14 @@ void main() {
       return w > 0 ? [(x / w * 0.5 + 0.5) * W2, (1 - (y / w * 0.5 + 0.5)) * H2] : null;
     };
     const pickAt = (x, y) => { let best = null; let bd = 34; for (const g of gemPos) { const d = Math.hypot(g.s[0] - x, g.s[1] - y); if (d < bd) { bd = d; best = g.gem; } } return best; };
-    const onDown = (e) => { drag = { x: e.clientX, y: e.clientY, yaw: target, moved: 0 }; };
+    const onDown = (e) => { drag = { x: e.clientX, y: e.clientY, yaw: target, off: userOff, moved: 0 }; };
     const onMove = (e) => {
       const r = canvas.getBoundingClientRect();
-      if (drag) { const dx = e.clientX - drag.x; drag.moved = Math.max(drag.moved, Math.abs(dx)); target = drag.yaw - dx * 0.008; return; }
+      if (drag) {
+        const dx = e.clientX - drag.x; drag.moved = Math.max(drag.moved, Math.abs(dx));
+        if (view) userOff = drag.off - dx * 0.008; else target = drag.yaw - dx * 0.008;
+        return;
+      }
       const g = pickAt(e.clientX - r.left, e.clientY - r.top);
       if (g !== hover) { hover = g; canvas.style.cursor = g ? 'pointer' : 'grab'; if (opts.onHover) opts.onHover(g, e); }
     };
@@ -324,12 +335,13 @@ void main() {
       if (!visible || document.hidden) { last = now; return; }
       const dt = Math.min(0.1, (now - last) / 1000); last = now;
       const t = now / 1000;
-      if (!drag && !reduce) target += dt * 0.12;
-      yaw += (target - yaw) * Math.min(1, dt * 6);
+      if (view) target = view.yaw + userOff;
+      else if (!drag && !reduce) target += dt * 0.12;
+      yaw += (target - yaw) * Math.min(1, dt * (view ? 4 : 6));
       burst = Math.max(0, burst - dt * 0.6);
       const aspect = W2 / H2;
-      const dist = (R * 2.6 + 6) / Math.min(1.1, Math.max(0.65, aspect * 0.85));
-      const eye = [Math.sin(yaw) * dist * 0.88, dist * 0.45 + 1, Math.cos(yaw) * dist * 0.88];
+      const dist = ((R * 2.6 + 6) / Math.min(1.1, Math.max(0.65, aspect * 0.85))) * (view && view.zoom ? view.zoom : 1);
+      const eye = [Math.sin(yaw) * dist * 0.88, dist * 0.45 + 1 + (view && view.lift ? view.lift : 0), Math.cos(yaw) * dist * 0.88];
       persp(PR, 0.7, aspect, 0.3, 300);
       lookAt(VW, eye, [0, H * 0.35 - 0.6, 0], [0, 1, 0]);
       mul(VP, PR, VW);
@@ -351,7 +363,9 @@ void main() {
       gl.useProgram(P.lit.p);
       gl.uniformMatrix4fv(P.lit.u.uVP, false, VP); gl.uniform3fv(P.lit.u.uCam, eye); gl.uniform1f(P.lit.u.uSnow, D.season ? 1 : 0); gl.uniform1f(P.lit.u.uGlow, burst);
       const bob = reduce ? 0 : Math.sin(t * 0.6) * 0.1;
-      gl.uniformMatrix4fv(P.lit.u.uM, false, trs(M, 0, bob, 0, 0, 0, 1));
+      const ga = (now - growAt) / 1000;
+      const grow = ga < 0.9 ? 1 + Math.sin(Math.min(1, ga / 0.9) * Math.PI) * 0.045 : 1;
+      gl.uniformMatrix4fv(P.lit.u.uM, false, trs(M, 0, bob, 0, 0, 0, grow));
       bind(P.lit, W, [['aP', 3], ['aN', 3], ['aC', 3], ['aF', 1]], 10);
       gl.drawArrays(gl.TRIANGLES, 0, worldN);
       gemPos.length = 0;
@@ -360,7 +374,9 @@ void main() {
         const a = (g.i / Math.max(1, n)) * Math.PI * 2 + t * 0.15;
         const rad = R + 0.9;
         const y = H * 0.6 + 1.3 + Math.sin(t * 1.1 + g.i) * 0.18 + (g.got ? 0 : -0.6);
-        const sc = (g.got ? 1 : 0.55) * (hover === g.gem ? 1.25 : 1) * (1 + burst * 0.5);
+        const pa = popAt[g.gem.id] != null ? (now - popAt[g.gem.id]) / 1000 : 9;
+        const pop = pa < 0.7 ? 1 + Math.sin(Math.min(1, pa / 0.7) * Math.PI) * 0.9 : 1;
+        const sc = (g.got ? 1 : 0.55) * (hover === g.gem ? 1.25 : 1) * (1 + burst * 0.5) * pop;
         const p = [Math.cos(a) * rad, y + bob, Math.sin(a) * rad];
         gl.uniformMatrix4fv(P.lit.u.uM, false, trs(M, p[0], p[1], p[2], t * (0.6 + g.i * 0.03), 0.25, sc));
         bind(P.lit, g.b, [['aP', 3], ['aN', 3], ['aC', 3], ['aF', 1]], 10);
@@ -383,6 +399,8 @@ void main() {
     raf = requestAnimationFrame(frame);
     return {
       update(d) { D = d || {}; rebuild(); },
+      /** Drive the camera from outside (e.g. scrolling): { yaw, zoom, lift }. null = free orbit again. */
+      setView(v) { view = v || null; if (!v) userOff = 0; },
       celebrate() { burst = 1; target += Math.PI; },
       destroy() {
         alive = false; cancelAnimationFrame(raf);

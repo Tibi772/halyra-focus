@@ -122,3 +122,15 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .grow:disabled span { filter: grayscale(1) brightness(.6); opacity: .5; }
 .grow-art .gw-spin { animation: gw-spin 6s linear infinite; }
 @keyframes gw-spin { to { transform: rotate(360deg); } }
+
+/* Christmas look — same switch as the website (❄️ there), auto in December */
+html.xmas body::before { content: ''; position: fixed; left: 0; right: 0; top: env(safe-area-inset-top, 0); height: 12px; pointer-events: none; z-index: 30;
+  background: radial-gradient(circle at 50% 60%, #ff5d5d 0 3px, transparent 3.6px) 0 0 / 76px 12px, radial-gradient(circle at 50% 60%, #ffd36b 0 3px, transparent 3.6px) 19px 0 / 76px 12px, radial-gradient(circle at 50% 60%, #5fd0ff 0 3px, transparent 3.6px) 38px 0 / 76px 12px, radial-gradient(circle at 50% 60%, #7dff9a 0 3px, transparent 3.6px) 57px 0 / 76px 12px;
+  filter: drop-shadow(0 0 4px rgba(255, 220, 150, .5)); animation: xtw 2.8s ease-in-out infinite; }
+html.xmas body::after { content: ''; position: fixed; inset: -20px 0 0; pointer-events: none; z-index: 29; opacity: .45;
+  background-image: radial-gradient(circle, #fff 0 1.5px, transparent 2px), radial-gradient(circle, #fff 0 1px, transparent 1.5px);
+  background-size: 130px 150px, 90px 110px; background-position: 0 0, 40px 30px; animation: xsnow 16s linear infinite; }
+html.xmas .top .logo::after { content: ' 🎄'; font-size: 14px; }
+@keyframes xtw { 50% { opacity: .5; } }
+@keyframes xsnow { to { background-position: 30px 150px, 10px 110px; } }
+@media (prefers-reduced-motion: reduce) { html.xmas body::before, html.xmas body::after { animation: none; } }

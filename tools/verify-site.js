@@ -100,9 +100,39 @@ async function head(url) {
       // The hero demos focus mode by itself until someone touches it: take over first.
       if (await page.getAttribute('#focus-toggle', 'aria-pressed') === 'true') await page.click('#focus-toggle');
       await page.click('#focus-toggle');
-      await page.waitForTimeout(3000);
-      const blocked = await page.evaluate(() => document.querySelectorAll('#city-labels .c-label.blocked').length);
+      let blocked = 0;
+      for (let i = 0; i < 16 && blocked < 4; i += 1) {
+        await page.waitForTimeout(500);
+        blocked = await page.evaluate(() => document.querySelectorAll('#city-labels .c-label.blocked').length);
+      }
       check(`${short} focus mode locks the distraction buildings`, blocked >= 4, `${blocked} locked`);
+      // The scroll story: scrolling through it grows the 3D island to the last chapter.
+      const story = await page.evaluate(async () => {
+        const sec = document.getElementById('story');
+        if (!sec) return { missing: true };
+        const tr = sec.querySelector('.story-track');
+        const top = tr.getBoundingClientRect().top + scrollY;
+        for (const f of [0.1, 0.4, 0.7, 0.97]) { scrollTo(0, top + (tr.offsetHeight - innerHeight) * f); await new Promise((r) => setTimeout(r, 700)); }
+        const r = { gl: sec.classList.contains('is-3d'), no3d: sec.classList.contains('no3d'), chapter: sec.dataset.chapter, level: document.getElementById('hud-n').textContent, gems: document.getElementById('hud-gems').textContent };
+        scrollTo(0, 0);
+        return r;
+      });
+      check(`${short} scroll story grows the island (${story.gl ? '3D' : 'still picture'})`, (story.gl || story.no3d) && story.chapter === '4' && Number(story.level) > 20, JSON.stringify(story));
+      // The Christmas look switches both ways and is remembered.
+      const xm = await page.evaluate(async () => {
+        const b = document.getElementById('season-btn');
+        if (!b) return { missing: true };
+        const before = document.documentElement.classList.contains('xmas');
+        b.click();
+        await new Promise((r) => setTimeout(r, 300));
+        const after = document.documentElement.classList.contains('xmas');
+        const saved = localStorage.getItem('halyra-season');
+        await new Promise((r) => setTimeout(r, 2700));
+        b.click();
+        return { before, after, saved, back: document.documentElement.classList.contains('xmas') === before };
+      });
+      check(`${short} Christmas look switches on/off and is remembered`, xm.before !== xm.after && xm.saved === (xm.after ? 'on' : 'off') && xm.back, JSON.stringify(xm));
+      await page.waitForTimeout(400);
       if (info.og) images.add(info.og);
       await page.screenshot({ path: path.join(OUT, `desktop-${short.replace(/\W+/g, '_') || 'home'}.png`) });
     }

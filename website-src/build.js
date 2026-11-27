@@ -9,6 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const { en, hu } = require('./content');
+const LEVELS = require('../src/shared/levels');
 
 const SRC = __dirname;
 const OUT = path.resolve(process.argv[2] || path.join(SRC, '..', 'website'));
@@ -83,6 +84,7 @@ ${alt.map((p) => `<link rel="alternate" hreflang="${p.lang}" href="${BASE + p.pa
 <link rel="alternate" hreflang="x-default" href="${BASE + (find(page.id, 'en') || page).path}">
 <meta name="theme-color" content="#07090f">
 <meta name="color-scheme" content="dark">
+<script>(function(){try{var s=localStorage.getItem('halyra-season'),d=new Date(),a=d.getMonth()===11||(d.getMonth()===0&&d.getDate()<=6);if(s==='on'||(s!=='off'&&a))document.documentElement.classList.add('xmas')}catch(e){}})()</script>
 <meta property="og:type" content="${type}">
 <meta property="og:site_name" content="Halyra Focus">
 <meta property="og:title" content="${esc(title)}">
@@ -118,9 +120,10 @@ function nav(page, t, solid) {
   <div class="wrap nav-in">
     <a class="logo" href="${home}" aria-label="Halyra Focus">${ICON.logo}<span>Halyra Focus<small>${page.lang === 'hu' ? 'App- és oldalblokkoló' : 'App & site blocker'}</small></span></a>
     <nav class="nav-links" aria-label="Main">
-      <a href="${sec('features')}">${t.nav.features}</a><a href="${sec('shield')}">${t.nav.shield}</a><a href="${sec('modes')}">${t.nav.modes}</a><a href="${sec('themes')}">${t.nav.themes}</a><a href="${sec('faq')}">${t.nav.faq}</a>
+      <a href="${sec('story')}">${t.nav.levels}</a><a href="${sec('features')}">${t.nav.features}</a><a href="${sec('shield')}">${t.nav.shield}</a><a href="${sec('modes')}">${t.nav.modes}</a><a href="${sec('themes')}">${t.nav.themes}</a><a href="${sec('faq')}">${t.nav.faq}</a>
     </nav>
     <div class="nav-right">
+      <button class="season-btn" type="button" id="season-btn" data-on="${esc(t.xmas.btnOff)}" data-off="${esc(t.xmas.btnOn)}" aria-label="${esc(t.xmas.btnOn)}" title="${esc(t.xmas.btnOn)}"><span class="s-on" aria-hidden="true">❄️</span><span class="s-off" aria-hidden="true">🎄</span></button>
       <div class="lang" role="group" aria-label="${t.footer.language}">
         <a href="${link(page.path, enP.path)}" hreflang="en" lang="en" class="${page.lang === 'en' ? 'on' : ''}">EN</a>
         <a href="${link(page.path, huP.path)}" hreflang="hu" lang="hu" class="${page.lang === 'hu' ? 'on' : ''}">HU</a>
@@ -165,6 +168,57 @@ function shot(page, name, alt, eager) {
   return `<div class="shot"><div class="bar"><i></i><i></i><i></i></div><img src="${asset(page.path, `shots/${name}-${page.lang}.webp`)}" alt="${esc(alt)}" width="1680" height="1140" ${eager ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async"></div>`;
 }
 
+// ------------------------------------------------------------------ the scroll story (3D island) and feedback
+
+const STORY_ITEMS = ['oak', 'pine', 'house', 'birch', 'hut', 'cherry', 'oak', 'shop', 'pine', 'maple', 'windmill', 'oak', 'birch', 'house', 'cactus', 'tower', 'pine', 'cherry', 'oak',
+  'lighthouse', 'maple', 'bonsai', 'house', 'pine', 'castle', 'oak', 'palm', 'birch', 'shop', 'golden', 'rocket', 'cherry', 'pine', 'skyscraper', 'oak', 'maple', 'house', 'pine', 'birch', 'oak'];
+
+function storySection(page, t) {
+  const S = t.story;
+  const gems = LEVELS.gems({}, page.lang).map((g) => ({ id: g.id, shape: g.shape, color: g.color, name: g.name, desc: g.desc }));
+  const titles = LEVELS.TITLES.map((x) => [x[0], page.lang === 'hu' ? x[2] : x[1]]);
+  const data = { items: STORY_ITEMS, gems, titles, levels: [1, 34] };
+  return `<section class="story" id="story" aria-labelledby="story-h">
+  <div class="wrap story-intro">
+    <div class="sec-head center reveal"><div class="eyebrow">${S.eyebrow}</div><h2 id="story-h" data-scrub>${S.h2}</h2><p>${S.p}</p></div>
+  </div>
+  <div class="story-track">
+    <div class="story-sticky">
+      <canvas class="story-canvas" role="img" aria-label="${esc(S.canvasLabel)}"></canvas>
+      <img class="story-fallback" src="${asset(page.path, `shots/island-${page.lang}.webp`)}" alt="" width="1680" height="1140" loading="lazy" decoding="async">
+      <div class="story-hud" aria-hidden="true">
+        <div class="hud-lvl"><small>${S.level}</small><b id="hud-n">1</b></div>
+        <div class="hud-main"><div class="hud-title" id="hud-title">${esc(titles[0][1])}</div><div class="hud-xp"><i id="hud-xp"></i></div></div>
+        <div class="hud-gems">💎 <b id="hud-gems">0</b>/${gems.length}</div>
+      </div>
+      <div class="story-chaps">
+        ${S.chapters.map(([k, h, p], i) => `<article class="chap${i === 0 ? ' on' : ''}" data-i="${i}"><div class="k">${k}</div><h3>${h}</h3><p>${p}</p></article>`).join('\n        ')}
+      </div>
+      <div class="story-board" aria-hidden="true">
+        <div class="sb-title">🏆 ${S.board.title}</div>
+        ${S.board.rows.map(([e, n, m, l], i) => `<div class="sb-row${n === S.you ? ' me' : ''}" style="--i:${i}"><span class="sb-r">${['🥇', '🥈', '🥉'][i] || `#${i + 1}`}</span><span class="sb-e">${e}</span><span class="sb-n"><b>${n}</b><small>${S.level} ${l}</small></span><span class="sb-m">${m}</span></div>`).join('')}
+      </div>
+      <div class="story-tip" id="story-tip" hidden></div>
+      <div class="story-dots" aria-hidden="true">${S.chapters.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('')}</div>
+      <div class="story-hint" aria-hidden="true">${S.hint} ✦</div>
+    </div>
+  </div>
+  <script type="application/json" id="story-data">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>
+</section>`;
+}
+
+function feedbackSection(page, t) {
+  const F = t.feedback;
+  const url = (kind) => `${DL.source}/issues/new?template=${kind === 'bug' ? 'bug.yml' : 'idea.yml'}&labels=${kind === 'bug' ? 'bug' : 'idea'}&version=${encodeURIComponent(`website · ${page.lang}`)}`;
+  return `<section class="sec feedback" id="feedback">
+  <div class="wrap">
+    <div class="sec-head center reveal"><div class="eyebrow">${F.eyebrow}</div><h2 data-scrub>${F.h2}</h2><p>${F.p}</p></div>
+    <div class="fb-btns reveal">${F.btns.map(([k, e, l]) => `<a class="fb-btn" href="${url(k)}" rel="noopener" data-fb="${k}"><span class="fb-e" aria-hidden="true">${e}</span><span>${l}</span></a>`).join('')}</div>
+    <p class="fb-note reveal">${F.note}</p>
+  </div>
+</section>`;
+}
+
 // ------------------------------------------------------------------ pages
 
 function homePage(page) {
@@ -196,6 +250,7 @@ ${nav(page, t)}
         <p class="mobile-note ios-note"><span>${t.hero.mobile.replace('{{app}}', appLink(page))}</span></p><p class="mobile-note android-note"><span>${t.hero.androidNote}</span></p>
         <div class="cta">${dlButtons(t, true)}</div>
         <p class="hero-note">${t.hero.note}</p>
+        <p class="xmas-note">${t.xmas.note} <button type="button" class="link" data-season-off>${t.xmas.off}</button></p>
         <p class="night" id="night" hidden></p>
       </div>
       <div class="stage" data-labels='${esc(JSON.stringify(t.hero.labels))}'>
@@ -212,6 +267,8 @@ ${nav(page, t)}
     <div class="stats">${t.hero.stats.map(([n, l]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('')}</div>
   </div>
 </section>
+
+${storySection(page, t)}
 
 <section class="sec" id="asks">
   <div class="wrap">
@@ -289,6 +346,8 @@ ${nav(page, t)}
   </div>
 </section>
 
+${feedbackSection(page, t)}
+
 <section class="final" id="download">
   <div class="wrap">
     <div class="reveal">
@@ -312,6 +371,8 @@ ${footer(page, t)}
 <script type="application/json" id="egg-text">${JSON.stringify(t.eggs).replace(/</g, '\\u003c')}</script>
 <script src="${asset(page.path, 'site.js')}?v=${VERSION}" defer></script>
 <script src="${asset(page.path, 'world.js')}?v=${VERSION}" defer></script>
+<script src="${asset(page.path, 'island3d.js')}?v=${VERSION}" defer></script>
+<script src="${asset(page.path, 'story.js')}?v=${VERSION}" defer></script>
 </body>
 </html>
 `;
@@ -342,6 +403,7 @@ ${nav(page, t, true)}
   </div>
 </main>
 ${footer(page, t)}
+<script src="${asset(page.path, 'site.js')}?v=${VERSION}" defer></script>
 </body>
 </html>
 `;
@@ -359,6 +421,7 @@ ${nav({ ...page, id: 'home' }, t, true)}
   <div class="wrap"><div class="nf-lock">${ICON.lock}</div><div style="font-family:var(--pixel);color:var(--accent);font-size:22px">404 · blocked by Halyra Focus</div><h1>${t.notFound.h1}</h1><p>${t.notFound.p}</p><p class="nf-timer">Unblocks in <b>∞</b> minutes</p>
   <p><a class="btn pill" href="./">${t.notFound.back}</a> <a class="btn" href="hu/">Magyar főoldal</a></p></div>
 </main>
+<script src="assets/site.js?v=${VERSION}" defer></script>
 </body>
 </html>
 `;
@@ -375,6 +438,7 @@ function write(rel, content) {
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
 fs.cpSync(path.join(SRC, 'assets'), path.join(OUT, 'assets'), { recursive: true });
+fs.copyFileSync(path.join(SRC, '..', 'src', 'renderer', 'island3d.js'), path.join(OUT, 'assets', 'island3d.js'));
 
 for (const page of PAGES) {
   const t = T[page.lang];

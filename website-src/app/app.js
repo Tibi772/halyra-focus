@@ -371,7 +371,7 @@
         st.items.length ? h('div', { class: 'land', html: G.landscape(st.items, { wide: window.innerWidth > 720 }) }) : h('p', { class: 'muted small' }, t('stEmpty')),
         h('div', { class: 'label' }, t('stGrow')),
         h('div', { class: 'grow-row' },
-          G.CATALOG.map((c) => {
+          G.CATALOG.filter((c) => !c.season || (new Date().getMonth() === 11) || cur === c.id).map((c) => {
             const locked = c.unlockH > st.totalH;
             return h('button', { class: `grow${cur === c.id ? ' on' : ''}`, disabled: locked || busy, title: c.name[lang] || c.name.en, onclick: () => pick(c.id) },
               h('span', { html: G.draw(c.id, 1, { minutes: 60 }) }), h('small', null, locked ? t('stLocked', { h: c.unlockH }) : (c.name[lang] || c.name.en)));

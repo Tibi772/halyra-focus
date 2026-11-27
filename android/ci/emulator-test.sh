@@ -88,7 +88,7 @@ js "api.getState().then((s) => api.setConfig({ lists: s.lists.map((l) => (l.id =
 S=$(js "api.startSession({ listIds: ['e2e'], minutes: 3, mode: 'strict' }).then(r => r.ok)")
 U2=$(js "api.unlockRequest({}).then(r => r.status)")
 check "A locked block can't be stopped early" '[ "$S" = "true" ] && [ "$U2" != "\"stopped\"" ]' "$S $U2"
-js "document.querySelectorAll('.modal-back').forEach((m) => m.remove()); go('island')" >/dev/null; sleep 3
+js "(document.querySelectorAll('.modal-back').forEach((m) => m.remove()), go('island'))" >/dev/null; sleep 3
 check "Island view shows the level" '[ "$(js "!!document.querySelector(\".isl-lvl b\")")" = "true" ]'
 node "$HERE/cdp.js" shot "$OUT/05-island.png" >/dev/null
 js "api.setConfig({ settings: { season: 'on' } })" >/dev/null; sleep 2

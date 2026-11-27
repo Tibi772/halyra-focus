@@ -54,6 +54,10 @@ Az app és a weboldal fiók nélkül is teljesen működik. Ha azt szeretnéd, h
    (Az anon kulcs nyilvános kulcs, nyugodtan lehet a kódban — a táblát a 2. lépés szabályai védik.)
 6. Töltsd fel (push). Az új verzióban megjelenik a **Beállítások → Fiók és szinkron** kártya, a weboldalon pedig a **Belépés** gomb működni kezd.
 
+**Ranglista (1.6-tól, opcionális):** ugyanebben a Supabase-projektben **SQL Editor** → futtasd le a `docs/supabase-leaderboard.sql` tartalmát is. Ez három táblát és néhány függvényt hoz létre; a táblákat közvetlenül senki nem olvashatja, csak a függvényeken át, amik ellenőrzik a perceket (senki nem számolhat több időt, mint amennyi eltelt). A ranglista a felhasználóknál alapból ki van kapcsolva: az appban a **Ranglista** menüben csatlakozhatnak becenévvel, baráti csoportot hozhatnak létre kóddal. A függvényeket minden kiadás előtt egy valódi PostgreSQL-en teszteli a CI (`tools/test-leaderboard-sql.sh`).
+
+**Mennyit bír az ingyenes Supabase?** 500 MB adatbázis, 50 000 havi aktív felhasználó, 5 GB adatforgalom/hó; 7 nap tétlenség után szünetelteti a projektet (egy kattintással újraindul). A szinkron 1.6-tól csak egy időbélyeget kérdez le, amíg nincs változás, így a forgalom töredéke a korábbinak. Ha egyszer kinövitek: Pro csomag 25 $/hó (8 GB, 250 GB forgalom, 100 000 felhasználó).
+
 **Webapp (telefonra is):** `https://…/halyra-focus/app/` — belépés után innen indítható a fókusz az összes gépen, szerkeszthetők a listák és a napi keretek. iPhone-on: Megosztás → **Főképernyőhöz adás**, Androidon: menü → **Alkalmazás telepítése**, és appként ott lesz a kezdőképernyőn.
 
 ## 3/c. Halyra AI mindenkinek (opcionális, fizetős API)

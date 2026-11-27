@@ -46,7 +46,7 @@ function windowState(isMac) {
       const ps = `Add-Type -Namespace W -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);'
 $p = Get-Process notepad -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
 if (-not $p) { 'none' } elseif ([W.U]::IsIconic($p.MainWindowHandle)) { 'hidden' } else { 'shown' }`;
-      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { timeout: 15000, windowsHide: true }, done);
+      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')], { timeout: 20000, windowsHide: true }, done);
     }
   });
 }
@@ -58,6 +58,8 @@ module.exports = async function selftest(ctx) {
   const log = (name, ok, detail = '') => {
     checks.push({ name, ok: Boolean(ok), detail: String(detail).slice(0, 2000) });
     console.log(`[selftest] ${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+    // written as it goes, so a run that hangs still leaves what it found
+    try { fs.writeFileSync(path.join(out, 'progress.json'), JSON.stringify(checks, null, 1)); } catch (_) { /* ignore */ }
   };
   const win = () => ctx.win();
   const js = (code) => win().webContents.executeJavaScript(code, true);
@@ -224,6 +226,7 @@ module.exports = async function selftest(ctx) {
     // Hiding instead of closing (what chat apps get by default): the app keeps running,
     // its window is put away while the block lasts and comes back when it ends.
     await ctx.setConfig({ settings: { appAction: 'hide' } });
+    await sleep(6000); // the "blocked" note for one app shows at most every 5 s
     const hideBefore = ctx.blockCount(TEST_APP.name);
     const child2 = isMac ? spawn('/usr/bin/open', ['-a', 'Chess'], { stdio: 'ignore' }) : spawn('notepad.exe', [], { detached: true, stdio: 'ignore' });
     child2.on('error', () => {});

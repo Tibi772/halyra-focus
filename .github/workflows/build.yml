@@ -84,8 +84,17 @@ jobs:
         run: |
           $env:HALYRA_SELFTEST_OUT = Join-Path $env:RUNNER_TEMP 'selftest'
           $log = Join-Path $env:RUNNER_TEMP 'selftest-log.txt'
-          $p = Start-Process -FilePath 'dist\win-unpacked\Halyra Focus.exe' -ArgumentList '--selftest' -Wait -PassThru -RedirectStandardOutput $log
+          # Wait for the app itself only (-Wait would also wait for every process it started).
+          $p = Start-Process -FilePath 'dist\win-unpacked\Halyra Focus.exe' -ArgumentList '--selftest' -PassThru -RedirectStandardOutput $log
+          $null = $p.Handle
+          $done = $p.WaitForExit(630000)
           if (Test-Path $log) { Get-Content $log }
+          if (-not $done) {
+            Write-Host 'Self-test did not finish in time. Checks so far:'
+            Get-Content (Join-Path $env:HALYRA_SELFTEST_OUT 'progress.json') -ErrorAction SilentlyContinue
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            exit 1
+          }
           Get-Content (Join-Path $env:HALYRA_SELFTEST_OUT 'results.json')
           if ($p.ExitCode -ne 0) { exit 1 }
 

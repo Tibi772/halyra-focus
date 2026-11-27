@@ -35,6 +35,144 @@
   document.querySelectorAll('.reveal').forEach((el) => (io ? io.observe(el) : el.classList.add('in')));
   setTimeout(revealAll, 2500);
 
+  // ---------------------------------------------------------------- headings come in word by word, grids in a cascade
+  const stillMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!stillMotion) {
+    document.querySelectorAll('.sec-head h2, .story-intro h2').forEach((h) => {
+      let n = 0;
+      const walk = (node) => {
+        for (const c of [...node.childNodes]) {
+          if (c.nodeType === 3) {
+            const frag = document.createDocumentFragment();
+            for (const part of c.textContent.split(/(\s+)/)) {
+              if (!part) continue;
+              if (/^\s+$/.test(part)) { frag.appendChild(document.createTextNode(part)); continue; }
+              const w = document.createElement('span');
+              w.className = 'w';
+              w.style.setProperty('--w', String(n));
+              n += 1;
+              w.textContent = part;
+              frag.appendChild(w);
+            }
+            c.replaceWith(frag);
+          } else if (c.nodeType === 1) walk(c);
+        }
+      };
+      walk(h);
+      h.classList.add('words');
+    });
+    document.querySelectorAll('.grid, .modes, .fb-btns').forEach((g) => [...g.children].forEach((c, i) => c.style.setProperty('--d', `${(i % 3) * 90 + Math.floor(i / 3) * 40}ms`)));
+  }
+
+  // ---------------------------------------------------------------- scroll-linked depth (Apple-style): screenshots tilt up into place
+  const scrubbed = [...document.querySelectorAll('[data-scrub], .frow .shot, .panes, .shield-shot .shot, .cmp')];
+  if (!stillMotion && scrubbed.length) {
+    let ticking = false;
+    const vis = new Set();
+    const ioS = 'IntersectionObserver' in window ? new IntersectionObserver((es) => es.forEach((e) => (e.isIntersecting ? vis.add(e.target) : vis.delete(e.target))), { rootMargin: '120px 0px' }) : null;
+    scrubbed.forEach((el) => { el.classList.add('scrub'); if (ioS) ioS.observe(el); else vis.add(el); });
+    const update = () => {
+      ticking = false;
+      const vh = window.innerHeight;
+      for (const el of vis) {
+        const r = el.getBoundingClientRect();
+        const s = Math.max(0, Math.min(1, (vh - r.top) / (vh * 0.75)));
+        el.style.setProperty('--s', s.toFixed(3));
+      }
+    };
+    addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+    addEventListener('resize', update);
+    update();
+    setTimeout(update, 300);
+  }
+
+  // ---------------------------------------------------------------- slow-drifting light in the background
+  if (!stillMotion) {
+    const orbs = document.createElement('div');
+    orbs.className = 'bg-orbs';
+    orbs.setAttribute('aria-hidden', 'true');
+    orbs.innerHTML = '<i></i><i></i><i></i>';
+    document.body.prepend(orbs);
+    let ot = false;
+    addEventListener('scroll', () => {
+      if (ot) return;
+      ot = true;
+      requestAnimationFrame(() => { ot = false; orbs.style.setProperty('--y', `${(Math.sin(scrollY / 900) * 70).toFixed(1)}px`); });
+    }, { passive: true });
+  }
+
+  // ---------------------------------------------------------------- Christmas look (auto in December, switchable, remembered)
+  (function season() {
+    const root = document.documentElement;
+    const btn = document.getElementById('season-btn');
+    let snow = null;
+    let flakes = [];
+    let raf = 0;
+    let blizzardUntil = 0;
+    const label = () => {
+      if (!btn) return;
+      const on = root.classList.contains('xmas');
+      const t = on ? btn.dataset.on : btn.dataset.off;
+      btn.setAttribute('aria-label', t);
+      btn.title = t;
+      btn.setAttribute('aria-pressed', String(on));
+    };
+    const make = (n) => Array.from({ length: n }, () => ({ x: Math.random() * innerWidth, y: Math.random() * innerHeight, r: 0.8 + Math.random() * 2, v: 0.3 + Math.random() * 0.7, w: Math.random() * 6.3 }));
+    const startSnow = () => {
+      if (snow || stillMotion) return;
+      snow = document.createElement('canvas');
+      snow.className = 'snow';
+      snow.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(snow);
+      const ctx = snow.getContext('2d');
+      const fit = () => { const d = Math.min(2, window.devicePixelRatio || 1); snow.width = innerWidth * d; snow.height = innerHeight * d; ctx.setTransform(d, 0, 0, d, 0, 0); };
+      fit();
+      addEventListener('resize', fit);
+      flakes = make(innerWidth < 700 ? 22 : 40);
+      let last = 0;
+      const frame = (now) => {
+        raf = requestAnimationFrame(frame);
+        if (document.hidden || now - last < 30) return;
+        last = now;
+        const heavy = Date.now() < blizzardUntil;
+        if (!heavy && flakes.length > 60) flakes.length = innerWidth < 700 ? 22 : 40;
+        ctx.clearRect(0, 0, innerWidth, innerHeight);
+        ctx.fillStyle = '#fff';
+        for (const f of flakes) {
+          f.y += f.v * (heavy ? 3.2 : 1); f.w += 0.013; f.x += Math.sin(f.w) * (heavy ? 1.6 : 0.4) + (heavy ? 1.2 : 0);
+          if (f.y > innerHeight + 4) { f.y = -4; f.x = Math.random() * innerWidth; }
+          if (f.x > innerWidth + 4) f.x = -4;
+          ctx.globalAlpha = 0.25 + f.r / 6;
+          ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 6.283); ctx.fill();
+        }
+      };
+      raf = requestAnimationFrame(frame);
+    };
+    const stopSnow = () => { cancelAnimationFrame(raf); if (snow) snow.remove(); snow = null; };
+    const set = (on, remember) => {
+      root.classList.toggle('xmas', on);
+      if (remember) { try { localStorage.setItem('halyra-season', on ? 'on' : 'off'); } catch (_) { /* private mode */ } }
+      if (on) startSnow(); else stopSnow();
+      label();
+    };
+    let clicks = [];
+    if (btn) btn.addEventListener('click', () => {
+      const now = Date.now();
+      clicks = [...clicks.filter((x) => now - x < 2500), now];
+      if (clicks.length >= 5) {
+        clicks = [];
+        set(true, true);
+        blizzardUntil = now + 8000;
+        flakes = flakes.concat(make(170));
+        document.dispatchEvent(new CustomEvent('halyra:egg', { detail: { id: 'blizzard' } }));
+        return;
+      }
+      set(!root.classList.contains('xmas'), true);
+    });
+    document.querySelectorAll('[data-season-off]').forEach((b) => b.addEventListener('click', () => set(false, true)));
+    set(root.classList.contains('xmas'), false);
+  }());
+
   // ---------------------------------------------------------------- 3D-ish polish: tilt screenshots, card spotlight
   const fine = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
