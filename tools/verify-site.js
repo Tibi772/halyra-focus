@@ -96,9 +96,15 @@ async function head(url) {
       check(`${short} shows the current version v${VERSION}`, info.version === `v${VERSION}`, info.version);
       const scene = await page.evaluate(() => ({ labels: document.querySelectorAll('#city-labels .c-label').length, gl: Boolean(document.querySelector('.stage.is-3d')), eggs: Boolean(document.getElementById('egg-text')) }));
       check(`${short} hero scene runs (${scene.gl ? '3D' : '2D fallback'})`, scene.labels >= 6 && scene.eggs, JSON.stringify(scene));
-      // The hero demos focus mode by itself until someone touches it: take over first.
-      if (await page.getAttribute('#focus-toggle', 'aria-pressed') === 'true') await page.click('#focus-toggle');
+      // The hero demos focus mode by itself until someone touches it. The first
+      // click takes over, but the demo may flip the switch in the same moment,
+      // so keep clicking until it is really on instead of assuming one click did it.
       await page.click('#focus-toggle');
+      for (let i = 0; i < 6; i += 1) {
+        if (await page.getAttribute('#focus-toggle', 'aria-pressed') === 'true') break;
+        await page.click('#focus-toggle');
+        await page.waitForTimeout(250);
+      }
       let blocked = 0;
       for (let i = 0; i < 16 && blocked < 4; i += 1) {
         await page.waitForTimeout(500);
