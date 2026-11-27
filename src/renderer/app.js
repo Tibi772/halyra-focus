@@ -86,9 +86,23 @@ function icon(name) {
   s.innerHTML = P[name] || '';
   return s;
 }
+/**
+ * The mark. In winter the open end of the ring catches a little snow and the
+ * centre gets a cold halo — the same mark, wearing the season, rather than a
+ * different logo for December.
+ */
 function logo(size = 30) {
-  const wrap = h('span', { class: 'logo', style: { width: `${size}px`, height: `${size}px` } });
-  wrap.innerHTML = `<svg viewBox="0 0 32 32" width="${size}" height="${size}"><defs><linearGradient id="lg${size}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--accent)"/><stop offset="1" style="stop-color:var(--accent-2)"/></linearGradient></defs><circle cx="16" cy="16" r="11" fill="none" stroke="url(#lg${size})" stroke-width="4" stroke-dasharray="52 80" stroke-linecap="round" transform="rotate(-45 16 16)"/><circle cx="16" cy="16" r="4.2" fill="url(#lg${size})"/></svg>`;
+  const winter = typeof seasonAmount === 'function' ? seasonAmount() : 0;
+  const wrap = h('span', { class: `logo${winter > 0 ? ' logo-winter' : ''}`, style: { width: `${size}px`, height: `${size}px` } });
+  const id = `lg${size}`;
+  const snow = winter > 0 ? `
+    <g opacity="${(0.45 + winter * 0.55).toFixed(2)}">
+      <path d="M8.2 7.4a11 11 0 0 1 4.6-2.6c1.1.9 2.3 1 3.5.4 1 .8 2.1 1 3.3.5" fill="none" stroke="#eaf3ff" stroke-width="2.1" stroke-linecap="round" opacity=".92"/>
+      <circle cx="24.4" cy="9.1" r="1.25" fill="#eaf3ff"/>
+      <circle cx="6.4" cy="20.6" r="1" fill="#dceaff" opacity=".8"/>
+    </g>` : '';
+  const halo = winter > 0 ? `<circle cx="16" cy="16" r="7.4" fill="none" stroke="#bcd8ff" stroke-width="1" opacity="${(winter * 0.4).toFixed(2)}"/>` : '';
+  wrap.innerHTML = `<svg viewBox="0 0 32 32" width="${size}" height="${size}"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--accent)"/><stop offset="1" style="stop-color:var(--accent-2)"/></linearGradient></defs>${halo}<circle cx="16" cy="16" r="11" fill="none" stroke="url(#${id})" stroke-width="4" stroke-dasharray="52 80" stroke-linecap="round" transform="rotate(-45 16 16)"/><circle cx="16" cy="16" r="4.2" fill="url(#${id})"/>${snow}</svg>`;
   return wrap;
 }
 

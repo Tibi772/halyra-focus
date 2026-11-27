@@ -33,11 +33,27 @@ function rgbToHsl([r, g, b]) {
   return [h, s, l];
 }
 const toHex = (rgb) => `#${rgb.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+/**
+ * Reads a colour the way people and language models actually write them, not
+ * only the one form the prompt asked for. A style used to fall back to the
+ * built-in engine for the whole theme because one colour came back as "#fff"
+ * or "rgb(12, 14, 22)".
+ */
 function fromHex(hex) {
-  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
-  if (!m) return null;
-  const n = parseInt(m[1], 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const str = String(hex == null ? '' : hex).trim();
+  const six = /^#?([0-9a-f]{6})$/i.exec(str);
+  if (six) {
+    const n = parseInt(six[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const three = /^#?([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(str);
+  if (three) return [1, 2, 3].map((i) => parseInt(three[i] + three[i], 16));
+  const rgb = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(str);
+  if (rgb) {
+    const out = [1, 2, 3].map((i) => Math.round(Number(rgb[i])));
+    return out.every((v) => Number.isFinite(v) && v >= 0 && v <= 255) ? out : null;
+  }
+  return null;
 }
 const hsl = (h, s, l) => toHex(hslToRgb(h, s, l));
 function luminance(rgb) {

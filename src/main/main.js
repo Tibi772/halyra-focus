@@ -840,6 +840,23 @@ function quitAllowed() {
   return !(ev.blocking && (ev.mode !== 'flexible' || config.settings.pinHash));
 }
 
+// The app icon wears the season too: snow settles on the mark in the dock and
+// on the taskbar while the winter look is on, and melts off when it is not.
+let iconIsWinter = null;
+function applyAppIcon() {
+  const want = seasonOn(config.settings.season || 'auto') > 0;
+  if (want === iconIsWinter) return;
+  iconIsWinter = want;
+  const file = path.join(ASSETS, want ? 'icon-winter.png' : 'icon.png');
+  if (!fs.existsSync(file)) return;
+  try {
+    const img = nativeImage.createFromPath(file);
+    if (img.isEmpty()) return;
+    if (platform.IS_MAC && app.dock) app.dock.setIcon(img);
+    else if (win && !win.isDestroyed()) win.setIcon(img);
+  } catch (_) { /* the icon is decoration; never let it break startup */ }
+}
+
 function applyLoginItem() {
   if (!app.isPackaged) return;
   try {
@@ -867,6 +884,7 @@ function applyConfigChange(partial, pin) {
   config = candidate;
   saveConfig();
   if (prevLogin !== config.settings.launchAtLogin) applyLoginItem();
+  applyAppIcon();
   if (prevTheme !== config.settings.theme || 'customThemes' in (partial || {})) applyWindowTheme();
   if (prevLang !== lang()) { buildAppMenu(); updateTray(lastEval, true); }
   tick();
@@ -1431,6 +1449,7 @@ function boot() {
   ipc();
   buildAppMenu();
   applyLoginItem();
+  applyAppIcon();
   tray = new Tray(trayIcon());
   tray.on('click', () => { if (!platform.IS_MAC) showWindow(); });
   createWindow();
