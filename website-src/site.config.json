@@ -1,4 +1,9 @@
 {
   "repo": "Tibi772/halyra-focus",
-  "domain": ""
+  "domain": "",
+  "verify": {
+    "google": "",
+    "bing": ""
+  },
+  "indexnow": "a528b8128984ae5ef406f73e339ff9d2"
 }

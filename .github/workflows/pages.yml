@@ -37,3 +37,18 @@ jobs:
           git add -A
           git commit -qm "Deploy website ${GITHUB_SHA::7}"
           git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+      # Tells Bing, DuckDuckGo and Yandex right away that the pages changed.
+      # Google ignores IndexNow; for Google use Search Console (see docs/SEO.md).
+      - name: Ping IndexNow
+        continue-on-error: true
+        run: |
+          KEY=$(node -p "require('./website-src/site.config.json').indexnow || ''")
+          [ -n "$KEY" ] || exit 0
+          DOMAIN=$(node -p "require('./website-src/site.config.json').domain || ''")
+          OWNER=$(echo "${GITHUB_REPOSITORY%%/*}" | tr '[:upper:]' '[:lower:]')
+          if [ -n "$DOMAIN" ]; then HOST="$DOMAIN"; BASE="https://$DOMAIN"; else HOST="$OWNER.github.io"; BASE="https://$OWNER.github.io/${GITHUB_REPOSITORY#*/}"; fi
+          URLS=$(grep -o '<loc>[^<]*</loc>' site/sitemap.xml | sed 's|</*loc>||g' | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.stringify(s.trim().split(/\n/))))")
+          curl -sS -m 30 -X POST https://api.indexnow.org/indexnow \
+            -H 'Content-Type: application/json' \
+            -d "{\"host\":\"$HOST\",\"key\":\"$KEY\",\"keyLocation\":\"$BASE/$KEY.txt\",\"urlList\":$URLS}" \
+            -w '\nIndexNow HTTP %{http_code}\n'

@@ -21,6 +21,10 @@ const BASE = domain ? `https://${domain}` : `https://${owner.toLowerCase()}.gith
 const LINK_INDEX = process.env.LINK_INDEX === '1';
 const VERSION = JSON.parse(fs.readFileSync(path.join(SRC, '..', 'package.json'), 'utf8')).version;
 const TODAY = new Date().toISOString().slice(0, 10);
+// Search-engine ownership proof. Paste the codes you get from Google Search Console
+// and Bing Webmaster Tools into website-src/site.config.json → verify.
+const VERIFY = conf.verify || {};
+const INDEXNOW = String(conf.indexnow || '').trim();
 const DL = {
   mac: `https://github.com/${repo}/releases/latest/download/HalyraFocus-mac.dmg`,
   win: `https://github.com/${repo}/releases/latest/download/HalyraFocus-Setup.exe`,
@@ -82,7 +86,7 @@ function head(page, t, { title, desc, type = 'website', jsonld = [] }) {
 <link rel="canonical" href="${url}">
 ${alt.map((p) => `<link rel="alternate" hreflang="${p.lang}" href="${BASE + p.path}">`).join('\n')}
 <link rel="alternate" hreflang="x-default" href="${BASE + (find(page.id, 'en') || page).path}">
-<meta name="theme-color" content="#07090f">
+${VERIFY.google ? `<meta name="google-site-verification" content="${esc(VERIFY.google)}">\n` : ''}${VERIFY.bing ? `<meta name="msvalidate.01" content="${esc(VERIFY.bing)}">\n` : ''}<meta name="theme-color" content="#07090f">
 <meta name="color-scheme" content="dark">
 <script>(function(){try{var s=localStorage.getItem('halyra-season'),d=new Date(),a=d.getMonth()===11||(d.getMonth()===0&&d.getDate()<=6);if(s==='on'||(s!=='off'&&a))document.documentElement.classList.add('xmas')}catch(e){}})()</script>
 <meta property="og:type" content="${type}">
@@ -450,6 +454,7 @@ for (const page of PAGES) {
   write(path.join(page.path, 'index.html'), html);
 }
 write('404.html', notFoundPage());
+if (INDEXNOW) write(`${INDEXNOW}.txt`, INDEXNOW);
 write('robots.txt', `User-agent: *\nAllow: /\n\nSitemap: ${BASE}/sitemap.xml\n`);
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
