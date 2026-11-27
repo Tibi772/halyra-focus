@@ -172,7 +172,7 @@ async function syncNow(force) {
       const hadSession = Boolean(config.session && config.session.endsAt > Date.now());
       const r = sync.applyRemote(config, row.data, Date.now(), { pinSet: Boolean(config.settings.pinHash) });
       if (r.changed) {
-        if (!hadSession && r.config.session && r.config.session.endsAt > Date.now()) notify(t('note.remote'), t('note.startedBody', { time: fmtClock(r.config.session.endsAt) }));
+        if (!hadSession && r.config.session && r.config.session.endsAt > Date.now()) notify(t('note.remote'), t('note.startedBody', { time: fmtClock(r.config.session.endsAt) }), 'important');
         applyingRemote = true;
         config = r.config;
         saveConfig();
@@ -426,8 +426,30 @@ function saveStats() {
   try { writeJsonAtomic(statsPath, stats); } catch (e) { console.error('save stats', e); }
 }
 
-function notify(title, body) {
-  if (!config.settings.notifications || !Notification.isSupported()) return;
+// Notifications are the fastest way to make a focus app annoying, so most of
+// what happens is collected and shown inside the app the next time it is opened
+// ("While you were away"). Only the few things you would want to know right now
+// interrupt you, and even those are rate-limited.
+const notices = [];           // what to show in the app when it is next opened
+let lastNoticeAt = 0;         // throttle for the quiet kind
+const QUIET_GAP = 20 * 60000; // at most one nice-to-know popup every 20 minutes
+
+function noticesFor() { return notices.slice(-8); }
+
+function notify(title, body, level = 'quiet') {
+  const now = Date.now();
+  notices.push({ title, body, at: now, level });
+  if (notices.length > 20) notices.splice(0, notices.length - 20);
+  if (win && !win.isDestroyed()) win.webContents.send('notices', noticesFor());
+  const pref = config.settings.notifyLevel || 'important';
+  if (!config.settings.notifications || pref === 'off' || !Notification.isSupported()) return;
+  if (level !== 'important') {
+    if (pref === 'important') return;
+    if (now - lastNoticeAt < QUIET_GAP) return;
+  }
+  // Nothing to interrupt: the app is already in front of you.
+  if (win && !win.isDestroyed() && win.isVisible() && win.isFocused()) return;
+  lastNoticeAt = now;
   try { new Notification({ title, body, silent: !config.settings.sound }).show(); } catch (_) { /* ignore */ }
 }
 
@@ -641,8 +663,8 @@ function transitions(prev, ev, now) {
   }
   const prevIds = new Set(prev.sources.map((s) => s.id));
   for (const s of ev.sources) {
-    if (s.type === 'schedule' && !prevIds.has(s.id)) notify(t('note.schedule', { name: s.name }), t('note.scheduleBody', { time: fmtClock(s.endsAt) }));
-    if (s.type === 'limit' && !prevIds.has(s.id)) notify(t('note.limit', { name: s.name }), t('note.limitBody'));
+    if (s.type === 'schedule' && !prevIds.has(s.id)) notify(t('note.schedule', { name: s.name }), t('note.scheduleBody', { time: fmtClock(s.endsAt) }), 'important');
+    if (s.type === 'limit' && !prevIds.has(s.id)) notify(t('note.limit', { name: s.name }), t('note.limitBody'), 'important');
   }
 }
 
@@ -669,7 +691,7 @@ function tick() {
       const it = GROW.BY_ID[s.grow];
       notify(t('grow.doneTitle', { name: it.name[lang()] || it.name.en }), t('note.endedBody', { m: mins }));
     } else {
-      notify(t('note.ended'), t('note.endedBody', { m: mins }));
+      notify(t('note.ended'), t('note.endedBody', { m: mins }), 'important');
     }
   }
   for (const [id, until] of Object.entries(config.skips || {})) {
@@ -677,7 +699,7 @@ function tick() {
   }
   if (typeof config.unlockAt === 'number') {
     if (now >= config.unlockAt + engine.COOL_WINDOW_MS) { config.unlockAt = null; changed = true; }
-    else if (now - dt * 1000 < config.unlockAt && now >= config.unlockAt) notify(t('cool.readyTitle'), t('cool.readyBody'));
+    else if (now - dt * 1000 < config.unlockAt && now >= config.unlockAt) notify(t('cool.readyTitle'), t('cool.readyBody'), 'important');
   }
   if (changed) saveConfig();
 

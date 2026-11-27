@@ -61,4 +61,5 @@ contextBridge.exposeInMainWorld('api', {
   onNavigate: on('navigate'),
   onOpenUnlock: on('open-unlock'),
   onOverlay: on('overlay'),
+  onNotices: on('notices'),
 });

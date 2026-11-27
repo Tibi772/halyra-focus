@@ -750,3 +750,22 @@ body[data-theme='crt'].xmas .view-title::after { content: '_'; }
 .btn.ghost { background: transparent; }
 @media (max-width: 760px) { .lb-row { grid-template-columns: 34px 28px minmax(0, 1fr) auto; } .lb-bar { display: none; } .gem-list { grid-template-columns: 1fr; } }
 .isl-tip[hidden] { display: none; }
+
+/* The emergency exit. It has to exist — an app nobody can stop is not one a
+   store will carry — but it should feel like the back door it is, not an
+   invitation. Quiet until you look for it. */
+.btn.quiet-exit {
+  border-color: transparent; background: none; box-shadow: none;
+  color: var(--muted); font-weight: 500; font-size: 13px;
+  opacity: .5; padding-left: 2px; padding-right: 2px;
+  transition: opacity .2s ease, color .2s ease;
+}
+.btn.quiet-exit:hover, .btn.quiet-exit:focus-visible {
+  opacity: 1; color: var(--danger, #ff6b6b); text-decoration: underline;
+}
+
+/* "While you were away": the quiet alternative to a pile of system popups. */
+.card.away { border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); }
+.away-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.away-list li { display: flex; align-items: baseline; gap: 6px; font-size: 14px; line-height: 1.45; }
+.away-list li > .away-when { margin-left: auto; white-space: nowrap; opacity: .7; }

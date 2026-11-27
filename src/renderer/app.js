@@ -11,6 +11,8 @@ const ui = {
   setup: null,
   presets: [],
   installed: null,
+  notices: [],
+  noticesSeen: Number(localStorage.getItem('halyra.noticesSeen') || 0),
 };
 
 // ------------------------------------------------------------------ tiny DOM helpers
@@ -899,9 +901,26 @@ async function startFocus(force) {
   else chime(true);
 }
 
+/** What happened while the app was closed, shown once, here, instead of as a
+ *  pile of system notifications nobody asked for. */
+function awayCard() {
+  const list = (ui.notices || []).filter((n) => !ui.noticesSeen || n.at > ui.noticesSeen);
+  if (!list.length) return null;
+  return h('div', { class: 'card away' },
+    h('div', { class: 'row' },
+      h('b', null, t('away.title')),
+      h('span', { class: 'spacer' }),
+      h('button', { class: 'btn sm ghost', onclick: () => { ui.noticesSeen = Date.now(); try { localStorage.setItem('halyra.noticesSeen', String(ui.noticesSeen)); } catch (_) { /* ignore */ } renderAll(); } }, t('away.clear'))),
+    h('ul', { class: 'away-list' }, list.slice(-5).reverse().map((n) => h('li', null,
+      h('b', null, n.title), n.body ? h('span', { class: 'muted' }, ` — ${n.body}`) : null,
+      h('span', { class: 'muted small away-when' }, fmtClock(n.at))))));
+}
+
 function renderFocus() {
   const ev = S.eval;
   const parts = [];
+  const away = awayCard();
+  if (away) parts.push(away);
   const active = ev.sources.length > 0;
   const session = ev.sources.find((s) => s.type === 'session');
   const onBreak = session && session.phase === 'break';
@@ -1123,9 +1142,13 @@ function openLockedModal(r, pin) {
     modalHead(t('unlock.lockedTitle', { time: fmtClock(r.endsAt) }), () => self.close()),
     coachBlock(),
     h('p', { class: 'muted' }, t('unlock.lockedSub')),
+    // The way out stays reachable — a locked app that cannot be stopped at all
+    // is not something an app store will carry, and it is not fair either. It
+    // just does not shout: a quiet line in the corner, not a red button.
     h('div', { class: 'modal-foot' },
-      h('button', { class: 'btn danger', onclick: async () => { const e = await api.unlockEmergency({ pin }); self.close(); if (!handleUnlockResult(e) && e.status === 'challenge') openChallengeModal(); } }, icon('key'), t('unlock.emergency')),
-      h('button', { class: 'btn primary', onclick: () => self.close() }, t('unlock.cancel'))),
+      h('button', { class: 'btn quiet-exit', title: t('unlock.emergencySub'), onclick: async () => { const e = await api.unlockEmergency({ pin }); self.close(); if (!handleUnlockResult(e) && e.status === 'challenge') openChallengeModal(); } }, t('unlock.emergency')),
+      h('span', { class: 'spacer' }),
+      h('button', { class: 'btn primary', onclick: () => self.close() }, icon('shield'), t('unlock.cancel'))),
   ]);
 }
 
@@ -1604,7 +1627,10 @@ function renderSettings() {
         : h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.web'))), helperBlock),
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.behavior'))),
         isMobile() ? null : toggleRow(t('set.login'), 'launchAtLogin'), isMobile() ? null : toggleRow(t('set.overlay'), 'showOverlay'),
-        toggleRow(t('set.notifications'), 'notifications'), toggleRow(t('set.sound'), 'sound')),
+        toggleRow(t('set.notifications'), 'notifications'), toggleRow(t('set.sound'), 'sound'),
+        h('div', { class: 'set-row' }, h('div', { class: 'label' }, t('set.notifyLevel'), h('small', null, t('set.notifySub'))),
+          h('select', { class: 'select', style: { width: 'auto' }, onchange: (e) => patchConfig({ settings: { notifyLevel: e.target.value } }) },
+            ['all', 'important', 'off'].map((v) => h('option', { value: v, selected: (S.settings.notifyLevel || 'important') === v }, t(`notify.${v}`)))))),
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.unlock'))),
         numRow(t('set.patientDelay'), 'patientDelaySec', 10, 3600), numRow(t('set.emergencyDelay'), 'emergencyDelaySec', 1, 120, 60), numRow(t('set.challenge'), 'challengeLength', 30, 600),
         toggleRow(t(isMobile() ? 'set.toolsMobile' : 'set.tools'), 'strictBlocksTools'),
@@ -1745,5 +1771,6 @@ function openOnboarding() {
 api.onState(applyState);
 api.onToast(({ kind, text }) => toast(text, kind));
 api.onNavigate((v) => go(v));
+api.onNotices((list) => { ui.notices = list; if (ui.view === 'focus') renderAll(); });
 api.onOpenUnlock(() => { go('focus'); openUnlock(); });
 Promise.all([api.getState(), api.getPresets()]).then(([state, presets]) => { ui.presets = presets; applyState(state); });

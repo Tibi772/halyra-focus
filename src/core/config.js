@@ -79,6 +79,9 @@ function defaults(lang = 'en') {
       launchAtLogin: true,
       showOverlay: true,
       notifications: true,
+      // 'all' | 'important' | 'off' — everything is collected in the app either
+      // way; this only decides what is allowed to interrupt you.
+      notifyLevel: 'important',
       sound: true,
       defaultMode: 'flexible',
       defaultMinutes: 50,
@@ -254,6 +257,7 @@ function sanitizeSettings(input, base) {
     launchAtLogin: bool(i.launchAtLogin, b.launchAtLogin),
     showOverlay: bool(i.showOverlay, b.showOverlay),
     notifications: bool(i.notifications, b.notifications),
+    notifyLevel: ['all', 'important', 'off'].includes(i.notifyLevel) ? i.notifyLevel : b.notifyLevel,
     sound: bool(i.sound, b.sound),
     defaultMode: MODES.includes(i.defaultMode) ? i.defaultMode : b.defaultMode,
     defaultMinutes: int(i.defaultMinutes, 1, 24 * 60, b.defaultMinutes),
