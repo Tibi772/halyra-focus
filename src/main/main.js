@@ -1355,7 +1355,13 @@ function ipc() {
     return { signedIn: true };
   }));
   handle('cloud:reset', ({ email }) => cloudCall(() => cloud.resetPassword(String(email || '').trim())));
-  handle('cloud:signOut', () => { cloud.signOut(); syncState.lastSync = 0; remoteDevices = {}; lastPulledStamp = ''; return { ok: true, state: fullState() }; });
+  // Signing out would cut this computer off from a block that is running on the
+  // account, so it is held back exactly as long as quitting is — no cheating.
+  handle('cloud:signOut', () => {
+    if (!quitAllowed()) return { ok: false, error: 'signOutLocked', state: fullState() };
+    cloud.signOut(); syncState.lastSync = 0; remoteDevices = {}; lastPulledStamp = '';
+    return { ok: true, state: fullState() };
+  });
   handle('cloud:syncNow', async () => { dirty = true; lastPulledStamp = ''; await syncNow(true); return { ok: !syncState.error, error: syncState.error, state: fullState() }; });
 
   handle('app:open-external', ({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { ok: true }; });

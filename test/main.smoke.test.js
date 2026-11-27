@@ -181,7 +181,11 @@ test('main process boots and IPC works end-to-end', async () => {
   assert.equal(accSt.cloud.enabled, false);
   assert.equal(accSt.cloud.signedIn, false);
   assert.equal(typeof accSt.usage, 'object');
-  assert.equal((await call('cloud:signOut')).ok, true);
+  // a locked block is running here: signing out would let this computer slip out of it
+  const outLocked = await call('cloud:signOut');
+  assert.equal(outLocked.ok, false);
+  assert.equal(outLocked.error, 'signOutLocked');
+  assert.equal((await call('unlock:request', { pin: '4321' })).status, 'locked', 'a locked block really is locked');
 
   // daily limit + focus sound settings round-trip
   const withLimit = accSt.lists.map((l, i) => (i === 0 ? { ...l, limitMin: 45 } : l));
