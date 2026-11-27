@@ -19,9 +19,9 @@ alter table public.halyra_ai_usage enable row level security;
 alter table public.halyra_plans enable row level security;
 -- users may read their own plan and usage (the app can show "12 / 30 today")
 drop policy if exists "own usage" on public.halyra_ai_usage;
-create policy "own usage" on public.halyra_ai_usage for select using (auth.uid() = user_id);
+create policy "own usage" on public.halyra_ai_usage for select to authenticated using ((select auth.uid()) = user_id);
 drop policy if exists "own plan" on public.halyra_plans;
-create policy "own plan" on public.halyra_plans for select using (auth.uid() = user_id);
+create policy "own plan" on public.halyra_plans for select to authenticated using ((select auth.uid()) = user_id);
 
 -- Counts one message; refuses when the allowance is used up.
 -- Pro: free_limit is ignored, pro_limit per day. Free: free_limit per calendar month.

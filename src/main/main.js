@@ -1,6 +1,6 @@
 'use strict';
 const {
-  app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, Notification, dialog, shell, screen,
+  app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, Notification, dialog, shell, screen, powerMonitor,
 } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -27,7 +27,7 @@ const LEVELS = require('../shared/levels');
 const assistant = require('../core/assistant');
 const blockinfoLib = require('../core/blockinfo');
 const { blockInfo } = blockinfoLib;
-const CLOUD_CONF = (() => { try { return require('../shared/cloud.json'); } catch (_) { return {}; } })();
+const CLOUD_CONF = process.env.HALYRA_CLOUD_OFF === '1' ? {} : (() => { try { return require('../shared/cloud.json'); } catch (_) { return {}; } })();
 
 const SELFTEST = process.argv.includes('--selftest');
 const SELFTEST_OUT = process.env.HALYRA_SELFTEST_OUT || path.join(require('os').tmpdir(), 'halyra-selftest');
@@ -139,9 +139,21 @@ function scheduleSync(ms) {
 // another device changed something (keeps the free database tier's bandwidth low).
 let lastPulledStamp = '';
 let lastSyncPoll = 0;
+// How often a signed-in computer asks "did anything change?". Kept low so the free
+// database tier lasts: every check costs a little bandwidth, on every computer, all day.
+//   window open and in front → 45 s · a focus session running → 4 min · in the background → 12 min
+// Opening the window, waking the computer or unlocking it always checks at once.
+const SYNC_FRONT = 45000;
+const SYNC_SESSION = 4 * 60000;
+const SYNC_BACKGROUND = 12 * 60000;
 function syncInterval() {
-  const active = (win && !win.isDestroyed() && win.isVisible() && win.isFocused()) || (config.session && config.session.endsAt > Date.now());
-  return active ? 60000 : 180000;
+  if (win && !win.isDestroyed() && win.isVisible() && win.isFocused()) return SYNC_FRONT;
+  if (config.session && config.session.endsAt > Date.now()) return SYNC_SESSION;
+  return SYNC_BACKGROUND;
+}
+/** Check now if the last check is older than `minAge` (used on focus / wake). */
+function syncSoon(minAge = 15000) {
+  if (Date.now() - lastSyncPoll > minAge) syncNow(true).catch(() => {});
 }
 async function syncNow(force) {
   if (!cloud || !cloud.enabled() || !cloud.signedIn() || syncState.busy) return;
@@ -170,7 +182,7 @@ async function syncNow(force) {
       }
       if (r.keptLocal) dirty = true;
     }
-    const statsDue = statsSyncDirty && nowMs - lastStatsPush > 5 * 60000;
+    const statsDue = statsSyncDirty && nowMs - lastStatsPush > 10 * 60000;
     if (dirty || !row || statsDue || statsSyncNow) {
       const devices = { ...remoteDevices, [deviceId]: sync.deviceEntry(stats, nowMs, { name: deviceName(), platform: process.platform }) };
       const at = await cloud.push(sync.buildPayload(config, deviceId, nowMs, devices), deviceId);
@@ -923,7 +935,8 @@ function createWindow() {
       if (platform.IS_MAC && app.dock) app.dock.hide();
     }
   });
-  win.on('show', () => push());
+  win.on('show', () => { push(); syncSoon(); });
+  win.on('focus', () => syncSoon());
 }
 
 function showWindow() {
@@ -1400,6 +1413,11 @@ function boot() {
   verifyHostsLater();
   setInterval(tick, 1000);
   setTimeout(syncNow, 3000);
+  // Waking or unlocking the computer checks the account at once (the network needs a moment after sleep).
+  if (powerMonitor && powerMonitor.on) {
+    powerMonitor.on('resume', () => setTimeout(() => syncSoon(0), 5000));
+    powerMonitor.on('unlock-screen', () => syncSoon());
+  }
   if (SELFTEST) runSelftest();
 }
 

@@ -24,6 +24,7 @@ async function req(method, url, { headers = {}, body } = {}) {
       if (res.status === 400 && /invalid login|invalid_grant|credentials/i.test(String(msg))) code = 'badLogin';
       else if (/not confirmed|email_not_confirmed/i.test(String(msg))) code = 'notConfirmed';
       else if (/already registered|already exists|user_already_exists/i.test(String(msg))) code = 'exists';
+      else if (/email_address_not_authorized|email address[^.]*not authorized/i.test(`${msg} ${data && data.error_code}`)) code = 'emailOff';
       else if (/password/i.test(String(msg)) && res.status === 422) code = 'weakPassword';
       else if (res.status === 401 || res.status === 403) code = 'auth';
       else if (res.status === 429) code = 'rateLimit';

@@ -102,5 +102,24 @@ select pg_temp.check((select count(*) from halyra_lb_groups_mine()) = 1, 'group 
 select halyra_lb_leave((select id from g));
 reset role;
 select pg_temp.check((select count(*) from halyra_lb_groups) = 0, 'empty groups are removed');
+
+-- sync rows: each user sees only their own; "delete my account" removes everything
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+insert into halyra_sync (user_id, data, device) values ('00000000-0000-0000-0000-00000000000b', '{"v":1}', 'pc');
+do $$ begin insert into halyra_sync (user_id, data, device) values ('00000000-0000-0000-0000-00000000000c', '{}', 'x'); raise exception 'CHECK FAILED: wrote someone else''s row'; exception when others then if sqlerrm like 'CHECK FAILED%' then raise; end if; raise notice 'PASS cannot write another user''s row'; end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+select pg_temp.check((select count(*) from halyra_sync) = 0, 'cannot read another user''s row');
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+select halyra_lb_report('Bence', '🐼', true, (date_trunc('week', now() at time zone 'utc'))::date, 10, 10, 1, 1);
+select halyra_delete_account();
+reset role;
+select pg_temp.check(not exists (select 1 from auth.users where id = '00000000-0000-0000-0000-00000000000b'), 'account deleted');
+select pg_temp.check(not exists (select 1 from halyra_sync where user_id = '00000000-0000-0000-0000-00000000000b'), 'synced data deleted with the account');
+select pg_temp.check(not exists (select 1 from halyra_lb where user_id = '00000000-0000-0000-0000-00000000000b'), 'leaderboard entry deleted with the account');
+set role anon;
+select pg_temp.as_user('');
+do $$ begin perform * from halyra_sync; raise exception 'CHECK FAILED: anon reads sync'; exception when insufficient_privilege then raise notice 'PASS signed-out callers cannot touch sync data'; end $$;
+reset role;
 SQL
 echo "LEADERBOARD SQL: ALL PASSED"

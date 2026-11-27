@@ -38,7 +38,7 @@
       noSched: 'No schedules yet — create them in the app.', everyDay: 'Every day', days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
       signedInAs: 'Signed in as {e}', lastFrom: 'Last update from a computer: {t}', never: 'not yet', ago: '{n} min ago', justNow: 'just now', refresh: 'Refresh',
       install: 'Add to Home Screen', installHint: 'iPhone: Share → Add to Home Screen. Android: menu → Install app.', site: 'Website',
-      err: { badLogin: 'Wrong email or password.', notConfirmed: 'Confirm your email first (check your inbox).', exists: 'This email already has an account — sign in.', weakPassword: 'Use at least 8 characters.', rateLimit: 'Too many attempts — wait a minute.', network: 'No connection. Try again.', server: 'The server had a problem. Try again.', auth: 'Please sign in again.' },
+      err: { badLogin: 'Wrong email or password.', notConfirmed: 'Confirm your email first (check your inbox).', exists: 'This email already has an account — sign in.', weakPassword: 'Use at least 8 characters.', rateLimit: 'Too many attempts — wait a minute.', emailOff: 'We can’t send emails yet (password reset is coming soon). Signing up and signing in work.', network: 'No connection. Try again.', server: 'The server had a problem. Try again.', auth: 'Please sign in again.' },
     },
     hu: {
       sub: 'Web és telefon', welcome: 'A fókuszod, minden eszközön', intro: 'Lépj be a Halyra Focus fiókoddal: innen is elindíthatod a tiltást az összes gépeden, és szerkesztheted a listákat, kereteket, időzítéseket.',
@@ -61,7 +61,7 @@
       noSched: 'Még nincs időzítés — az appban hozhatsz létre.', everyDay: 'Minden nap', days: ['V', 'H', 'K', 'Sze', 'Cs', 'P', 'Szo'],
       signedInAs: 'Bejelentkezve: {e}', lastFrom: 'Utolsó frissítés géptől: {t}', never: 'még nem', ago: '{n} perce', justNow: 'épp most', refresh: 'Frissítés',
       install: 'Kezdőképernyőre', installHint: 'iPhone: Megosztás → Főképernyőhöz adás. Android: menü → Alkalmazás telepítése.', site: 'Weboldal',
-      err: { badLogin: 'Hibás e-mail vagy jelszó.', notConfirmed: 'Előbb erősítsd meg az e-mail-címed (nézd meg a postafiókod).', exists: 'Ehhez a címhez már van fiók — lépj be.', weakPassword: 'Legalább 8 karakter legyen.', rateLimit: 'Túl sok próbálkozás — várj egy percet.', network: 'Nincs kapcsolat. Próbáld újra.', server: 'Szerverhiba. Próbáld újra.', auth: 'Kérlek, lépj be újra.' },
+      err: { badLogin: 'Hibás e-mail vagy jelszó.', notConfirmed: 'Előbb erősítsd meg az e-mail-címed (nézd meg a postafiókod).', exists: 'Ehhez a címhez már van fiók — lépj be.', weakPassword: 'Legalább 8 karakter legyen.', rateLimit: 'Túl sok próbálkozás — várj egy percet.', emailOff: 'E-mailt még nem tudunk küldeni (a jelszó-visszaállítás hamarosan jön). Regisztráció és belépés működik.', network: 'Nincs kapcsolat. Próbáld újra.', server: 'Szerverhiba. Próbáld újra.', auth: 'Kérlek, lépj be újra.' },
     },
   };
   let lang = store.get('lang') || (/^hu\b/i.test(navigator.language || '') ? 'hu' : 'en');
@@ -85,6 +85,7 @@
       if (res.status === 400 && /invalid login|invalid_grant|credentials/i.test(msg)) throw new CErr('badLogin');
       if (/not confirmed/i.test(msg)) throw new CErr('notConfirmed');
       if (/already registered|already exists/i.test(msg)) throw new CErr('exists');
+      if (/email_address_not_authorized|email address[^.]*not authorized/i.test(`${msg} ${data && data.error_code}`)) throw new CErr('emailOff');
       if (res.status === 422 && /password/i.test(msg)) throw new CErr('weakPassword');
       if (res.status === 401 || res.status === 403) throw new CErr('auth');
       if (res.status === 429) throw new CErr('rateLimit');
@@ -110,6 +111,17 @@
     row = Array.isArray(rows) && rows[0] ? rows[0] : null;
     lastPull = Date.now();
     return row;
+  }
+  /** Background refresh: asks only for the "last changed" stamp, downloads everything only when it moved. */
+  async function pullIfChanged() {
+    if (!row) return pull();
+    const tok = await token();
+    const rows = await req('GET', `/rest/v1/halyra_sync?select=device,updated_at&user_id=eq.${encodeURIComponent(auth.user.id)}`, { auth: tok });
+    const meta = Array.isArray(rows) && rows[0] ? rows[0] : null;
+    lastPull = Date.now();
+    if (!meta) { row = null; return row; }
+    if (meta.updated_at === row.updated_at && meta.device === row.device) return row;
+    return pull();
   }
   async function change(mutate) {
     await pull();
@@ -426,10 +438,11 @@
   async function refresh() {
     if (!auth || !ENABLED || busy || document.hidden) return;
     const typing = document.activeElement && document.activeElement.tagName === 'INPUT';
-    try { await pull(); } catch (e) { if (e.code === 'auth') toast(t('err.auth'), true); }
-    if (!typing) render();
+    const before = row;
+    try { await pullIfChanged(); } catch (e) { if (e.code === 'auth') toast(t('err.auth'), true); }
+    if (!typing && row !== before) render();
   }
-  setInterval(refresh, 15000);
+  setInterval(refresh, 30000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - lastPull > 5000) refresh(); });
 
   document.documentElement.lang = lang;

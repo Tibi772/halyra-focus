@@ -8,6 +8,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+// This build may ship with a real account server; the test never talks to it.
+process.env.HALYRA_CLOUD_OFF = '1';
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'hf-smoke-'));
 const handlers = {};
 const sent = [];
