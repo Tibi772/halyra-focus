@@ -19,6 +19,14 @@
     .ov-icon svg { width: 26px; height: 26px; }
     .ov b { display: block; font-size: 17px; font-family: var(--font-display); letter-spacing: -.01em; }
     .ov span { color: var(--muted); font-size: 13px; }
+    /* Christmas look: a red–green gift icon and a few soft lights along the top edge */
+    .festive .ov-icon { background: linear-gradient(135deg, #e2394a, #b51f37); color: #fff; position: relative; }
+    .festive .ov-icon::after { content: ''; position: absolute; left: 50%; top: 4px; bottom: 4px; width: 5px; margin-left: -2.5px; background: #ffd36b; border-radius: 3px; }
+    .festive .ov-icon svg { position: relative; z-index: 1; }
+    .festive .ov::before { content: ''; position: absolute; left: 24px; right: 24px; top: -3px; height: 6px; border-radius: 3px;
+      background: radial-gradient(circle, #ff5d5d 0 2.5px, transparent 3px) 0 0/48px 6px, radial-gradient(circle, #ffd36b 0 2.5px, transparent 3px) 16px 0/48px 6px, radial-gradient(circle, #5fd0ff 0 2.5px, transparent 3px) 32px 0/48px 6px;
+      animation: twinkle 2.4s ease-in-out infinite; }
+    @keyframes twinkle { 50% { opacity: .45; } }
   </style>
 </head>
 <body data-theme="midnight">

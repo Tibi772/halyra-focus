@@ -11,12 +11,14 @@ const statsLib = require('../src/core/stats');
 const { PRESETS } = require('../src/core/presets');
 const stylegen = require('../src/core/stylegen');
 const coach = require('../src/core/coach');
+const LEVELS = require('../src/shared/levels');
 
 const out = path.resolve(process.argv[2] || 'preview');
 const root = path.join(__dirname, '..', 'src');
 fs.rmSync(out, { recursive: true, force: true });
 fs.cpSync(path.join(root, 'renderer'), path.join(out, 'renderer'), { recursive: true });
 fs.cpSync(path.join(root, 'shared'), path.join(out, 'shared'), { recursive: true });
+fs.copyFileSync(path.join(root, 'mobile', 'web', 'mobile.css'), path.join(out, 'renderer', 'mobile.css'));
 
 const NOW = new Date(2026, 10, 25, 14, 12, 30).getTime(); // Wed 14:12:30
 
@@ -73,7 +75,15 @@ function state(lang, mutate) {
     unlock: null, helper: { installed: true, verified: true, expected: 10, supported: true }, stats: fakeStats(),
     cloud: c._cloud || { enabled: true, signedIn: false, email: null, lastSync: 0, error: null },
     usage: c._usage || {},
+    levels: levelsFor(lang), season: false,
   };
+}
+
+function levelsFor(lang) {
+  const st = rawStats();
+  for (let k = 0; k < 40; k += 1) statsLib.addDone(st, NOW - k * 7 * 3600000, 50, NOW - k * 7 * 3600000 - 50 * 60000);
+  const inp = { ...statsLib.levelInputs(st, NOW), grown: 22, shield: true, xmas: true };
+  return { ...LEVELS.levelOf(LEVELS.xpOf(inp), lang), gems: LEVELS.gems(inp, lang) };
 }
 
 const scenarios = {};
@@ -150,6 +160,10 @@ __mods.coach = ${wrap('coach.js')};
   const S = JSON.parse(JSON.stringify(SC[q.get('scenario') || 'idle-en']));
   if (q.get('theme')) S.settings.theme = q.get('theme');
   if (q.get('platform')) S.platform = q.get('platform');
+  if (S.platform === 'android') document.write('<link rel="stylesheet" href="mobile.css">');
+  if (q.get('xmas') === '1') S.season = true;
+  if (q.get('lb') === '1') { S.cloud = { enabled: true, signedIn: true, email: 'anna@halyra.app', lastSync: S.now - 20000, error: null }; Object.assign(S.settings, { lbOn: true, lbName: 'Anna', lbEmoji: '🐼' }); }
+  if (q.get('lb') === 'join') { S.cloud = { enabled: true, signedIn: true, email: 'anna@halyra.app', lastSync: S.now - 20000, error: null }; }
   if (q.get('grow') && S.session) { S.session.grow = q.get('grow'); if (q.get('p')) { const d = S.session.endsAt - S.session.startedAt; S.session.startedAt = S.now - d * Number(q.get('p')); S.session.endsAt = S.session.startedAt + d; } }
   if (q.get('celebrate')) S.lastGrown = { id: 'cel' + Math.random(), i: q.get('celebrate'), m: 50, ok: q.get('lost') !== '1', at: S.now };
   let push = null;
@@ -175,6 +189,11 @@ __mods.coach = ${wrap('coach.js')};
     coachLine: async () => ({ text: __mods.coach.coachLine({ goal: S.session && S.session.goal, leftMs: 33 * 60000, totalMs: 51 * 60000, streak: S.stats.streak, todayMin: 20 }, S.lang), streak: S.stats.streak }),
     chatGet: async () => ({ log: q.get('chat') === 'demo' ? DEMO_CHAT[S.lang] : [], mode: q.get('aimode') || 'key' }), chatReset: async () => ({ log: [], mode: 'key' }),
     chat: async (text) => ({ log: [...DEMO_CHAT[S.lang], { role: 'user', text }, { role: 'assistant', text: '…' }], mode: 'key' }),
+    lbBoard: async (scope) => ({ ok: true, groups: [{ id: 'g1', name: S.lang === 'hu' ? 'Suli banda' : 'Study crew', code: 'K7Q2XD', members: 6, owner: true }],
+      rows: [['Bence', '🦉', 812, 14, 9], ['Anna', '🦊', 745, 12, 6], ['Marci', '🐙', 690, 11, 4], [S.settings.lbName || 'You', S.settings.lbEmoji || '🐼', 515, 9, 3, true], ['Lili', '🐝', 380, 8, 2], ['Dani', '🚀', 240, 6, 0]]
+        .map(([name, emoji, week_minutes, level, streak, me], i) => ({ rank: i + 1, name, emoji, week_minutes: scope === 'group' ? Math.round(week_minutes * 0.8) : week_minutes, level, streak, me: Boolean(me) })) }),
+    lbCreate: async (name) => ({ ok: true, group: { id: 'g2', name, code: 'ABC123' } }), lbJoin: async () => ({ ok: false, error: 'server' }), lbLeave: ok,
+    lbOff: async () => { S.settings.lbOn = false; S.rev++; return { ok: true, state: JSON.parse(JSON.stringify(S)) }; },
     browseApps: async () => [], installHelper: ok, uninstallHelper: ok, exportConfig: ok, importConfig: ok, openExternal: ok, quit: ok,
     onState: (cb) => { push = cb; return () => {}; }, onToast: () => () => {}, onNavigate: () => () => {}, onOpenUnlock: () => () => {}, onOverlay: () => () => {},
   };
@@ -184,7 +203,7 @@ __mods.coach = ${wrap('coach.js')};
   window.__open = q.get('open');
   setTimeout(() => {
     const v = q.get('view');
-    if (v) { const b = [...document.querySelectorAll('.nav-btn')][['focus','lists','schedules','stats','settings'].indexOf(v)]; if (b) b.click(); }
+    if (v) window.go(v);
     if (q.get('open') === 'list') { const cs = document.querySelectorAll('.list-card'); const i = Number(q.get('idx') || 0); const c = cs[i < 0 ? cs.length + i : i]; if (c) c.click(); }
     if (q.get('scrollTo')) setTimeout(() => { const el = document.querySelector(q.get('scrollTo')); if (el) el.scrollIntoView({ block: 'center' }); }, 120);
     if (q.get('open') === 'schedule') { const c = document.querySelector('.sched-card .btn'); if (c) c.click(); }

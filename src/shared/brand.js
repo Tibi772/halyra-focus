@@ -8,6 +8,9 @@ const BRAND = {
   appId: 'com.halyra.focus',
   helperLabel: 'com.halyra.focus.helper',
   website: 'https://tibi772.github.io/halyra-focus/', // change when a custom domain is set (website-src/site.config.json)
+  repo: 'https://github.com/Tibi772/halyra-focus',
+  // Optional: a Tally / Google Forms link for feedback. Empty = GitHub issue forms.
+  feedbackForm: '',
   hostsMarkerBegin: '# >>> HalyraFocus BEGIN (managed, do not edit)',
   hostsMarkerEnd: '# <<< HalyraFocus END',
 };

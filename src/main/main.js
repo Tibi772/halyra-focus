@@ -23,8 +23,10 @@ const { CloudClient } = require('./cloud');
 const webusage = require('../core/webusage');
 const blockrules = require('../core/blockrules');
 const GROW = require('../shared/grow');
+const LEVELS = require('../shared/levels');
 const assistant = require('../core/assistant');
-const { blockInfo } = require('../core/blockinfo');
+const blockinfoLib = require('../core/blockinfo');
+const { blockInfo } = blockinfoLib;
 const CLOUD_CONF = (() => { try { return require('../shared/cloud.json'); } catch (_) { return {}; } })();
 
 const SELFTEST = process.argv.includes('--selftest');
@@ -130,14 +132,27 @@ function cloudStore() {
 
 function scheduleSync(ms) {
   clearTimeout(syncTimer);
-  syncTimer = setTimeout(syncNow, ms);
+  syncTimer = setTimeout(() => syncNow(true), ms);
 }
 
-async function syncNow() {
+// Polls only a tiny "last changed" stamp; the full data is downloaded only when
+// another device changed something (keeps the free database tier's bandwidth low).
+let lastPulledStamp = '';
+let lastSyncPoll = 0;
+function syncInterval() {
+  const active = (win && !win.isDestroyed() && win.isVisible() && win.isFocused()) || (config.session && config.session.endsAt > Date.now());
+  return active ? 60000 : 180000;
+}
+async function syncNow(force) {
   if (!cloud || !cloud.enabled() || !cloud.signedIn() || syncState.busy) return;
+  if (!force && !dirty && !statsSyncNow && Date.now() - lastSyncPoll < syncInterval() - 2000) return;
+  lastSyncPoll = Date.now();
   syncState.busy = true;
   try {
-    const row = await cloud.pull();
+    const meta = cloud.pullMeta ? await cloud.pullMeta() : null;
+    const stamp = meta ? `${meta.updated_at}|${meta.device}` : '';
+    const row = !meta ? (cloud.pullMeta ? null : await cloud.pull()) : (stamp !== lastPulledStamp ? await cloud.pull() : { device: meta.device, updated_at: meta.updated_at, data: null, cached: true });
+    if (row && row.data) lastPulledStamp = stamp;
     const nowMs = Date.now();
     if (row && row.data) remoteDevices = sync.otherDevices(row.data, deviceId, nowMs);
     if (row && row.data && row.device !== deviceId && Date.parse(row.updated_at) > lastRemoteAt) {
@@ -158,7 +173,8 @@ async function syncNow() {
     const statsDue = statsSyncDirty && nowMs - lastStatsPush > 5 * 60000;
     if (dirty || !row || statsDue || statsSyncNow) {
       const devices = { ...remoteDevices, [deviceId]: sync.deviceEntry(stats, nowMs, { name: deviceName(), platform: process.platform }) };
-      await cloud.push(sync.buildPayload(config, deviceId, nowMs, devices), deviceId);
+      const at = await cloud.push(sync.buildPayload(config, deviceId, nowMs, devices), deviceId);
+      if (typeof at === 'string') lastPulledStamp = `${at}|${deviceId}`;
       dirty = false;
       statsSyncDirty = false;
       statsSyncNow = false;
@@ -174,6 +190,41 @@ async function syncNow() {
     applyingRemote = false;
     push();
   }
+}
+
+// ------------------------------------------------------------------ leaderboard (opt-in)
+
+let lastLbReport = 0;
+let lastLbKey = '';
+function mergedStatsNow() {
+  return Object.keys(remoteDevices).length && cloud && cloud.signedIn() ? sync.mergeStats(stats, remoteDevices) : stats;
+}
+function lbReady() { return Boolean(config.settings.lbOn && cloud && cloud.enabled() && cloud.signedIn()); }
+async function lbReportNow(force) {
+  if (stats.lbDeletePending && cloud && cloud.enabled() && cloud.signedIn() && !config.settings.lbOn) {
+    await cloud.lbDeleteMe();
+    stats.lbDeletePending = false;
+    statsDirty = true;
+    return;
+  }
+  if (!lbReady()) return;
+  const now = Date.now();
+  const week = statsLib.thisWeek(mergedStatsNow(), now);
+  const lv = levelState(now);
+  const rep = {
+    name: config.settings.lbName || t('lb.anon'), emoji: config.settings.lbEmoji || '🦊', public: config.settings.lbPublic === true,
+    weekStart: week.start, weekMinutes: week.minutes, totalMinutes: lv.inputs.focusMin, level: lv.level, streak: statsSummary(now).streak,
+  };
+  const key = JSON.stringify(rep);
+  if (!force && (key === lastLbKey || now - lastLbReport < 10 * 60000)) return;
+  await cloud.lbReport(rep);
+  lastLbKey = key;
+  lastLbReport = now;
+}
+async function lbCall(fn) {
+  if (!cloud || !cloud.enabled()) return { ok: false, error: 'notConfigured' };
+  if (!cloud.signedIn()) return { ok: false, error: 'signedOut' };
+  try { return { ok: true, ...(await fn()) }; } catch (e) { return { ok: false, error: e.code || 'server', message: String(e.message || '').slice(0, 160) }; }
 }
 
 // ------------------------------------------------------------------ earn-to-unlock
@@ -241,6 +292,8 @@ function assistantCtx() {
     knownApps: () => [...(installedAppsCache || []), ...PRESETS.flatMap((p) => p.apps || [])],
     helperInstalled: () => hostsState.installed,
     cleanKeywords: (k) => cfgLib.cleanKeywords(k),
+    weather: (place) => assistant.weather(fetchJson, place, { lang: lang(), city: config.settings.aiCity }),
+    levels: () => levelState(Date.now()),
     wallet: () => walletBalance(),
     spendEarned: (id, m) => spendEarned(id, m),
     makeTheme: async (describe) => {
@@ -296,6 +349,51 @@ function statsSummary(now) {
   mergedCache = { at: now, key, summary };
   return summary;
 }
+
+async function fetchJson(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal, headers: { accept: 'application/json' } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } finally { clearTimeout(timer); }
+}
+
+/** Level, XP and gems — from every signed-in device's stats together. */
+let levelCache = { at: 0, key: '', v: null };
+function levelInputsNow(now) {
+  const merged = Object.keys(remoteDevices).length && cloud && cloud.signedIn() ? sync.mergeStats(stats, remoteDevices) : stats;
+  const inp = statsLib.levelInputs(merged, now);
+  inp.shield = (config.lists || []).some((l) => l.always);
+  inp.earned = ((stats.wallet || {}).spent || 0) > 0;
+  return inp;
+}
+function levelState(now) {
+  if (levelCache.v && now - levelCache.at < 5000) return levelCache.v;
+  const inp = levelInputsNow(now);
+  const v = { ...LEVELS.levelOf(LEVELS.xpOf(inp), lang()), gems: LEVELS.gems(inp, lang()), inputs: inp };
+  levelCache = { at: now, key: '', v };
+  return v;
+}
+/** Level-ups and new gems get a notification (once). */
+function checkLevelUp(now) {
+  const v = levelState(now);
+  const seen = stats.seen || (stats.seen = { level: v.level, gems: v.gems.filter((g) => g.got).map((g) => g.id) });
+  if (v.level > seen.level) {
+    notify(t('lvl.upTitle', { n: v.level }), t('lvl.upBody', { title: v.title }));
+    lastLevelUp = { level: v.level, at: now };
+  }
+  const fresh = v.gems.filter((g) => g.got && !seen.gems.includes(g.id));
+  for (const g of fresh.slice(0, 2)) notify(t('lvl.gemTitle', { name: g.name }), g.desc);
+  if (v.level !== seen.level || fresh.length) {
+    stats.seen = { level: Math.max(seen.level, v.level), gems: [...seen.gems, ...fresh.map((g) => g.id)] };
+    statsDirty = true;
+    if (fresh.length) lastGem = { ids: fresh.map((g) => g.id), at: now };
+  }
+}
+let lastLevelUp = null;
+let lastGem = null;
 
 function cloudPublic() {
   return {
@@ -366,6 +464,10 @@ function fullState() {
     helper: { ...hostsState, supported: platform.IS_MAC || platform.IS_WIN, outdated: Boolean(platform.helperOutdated && hostsState.installed && platform.helperOutdated()) },
     browsers: guard ? guard.state() : null,
     stats: statsSummary(now),
+    levels: levelState(now),
+    season: seasonOn(now),
+    levelEvent: lastLevelUp && now - lastLevelUp.at < 60000 ? lastLevelUp : null,
+    gemEvent: lastGem && now - lastGem.at < 60000 ? lastGem : null,
     customThemes: (config.customThemes || []).map((t) => ({ ...t, vars: stylegen.cssVars(t) })),
     insights: currentInsights(now),
     aiModel: ai.MODEL,
@@ -437,28 +539,57 @@ function verifyHostsLater() {
   }, platform.IS_MOBILE ? 300 : 4000);
 }
 
+let hider = null;
+let hiddenPids = new Map(); // pid → app name, for the "hidden" message on Windows
+function getHider() {
+  if (hider === null) {
+    hider = (platform.makeHider && platform.makeHider((pid) => {
+      const name = hiddenPids.get(pid);
+      if (name) appBlockedNotice(name, lastEval || evalNow(), 'hide');
+    })) || false;
+  }
+  return hider || null;
+}
+
+/** Stats + the friendly message, at most every 5 s per app. */
+function appBlockedNotice(name, ev, action) {
+  const now = Date.now();
+  if (now - (lastOverlay.get(name) || 0) < 5000) return;
+  lastOverlay.set(name, now);
+  statsLib.addBlock(stats, now, name);
+  statsDirty = statsSyncDirty = true;
+  showOverlay(name, ev, action);
+}
+
 async function enforceApps(ev) {
   if (appCheckBusy) return;
   let apps = engine.enforced(ev).apps;
   if (ev.blocking && ev.mode === 'strict' && config.settings.strictBlocksTools) apps = [...apps, ...TAMPER_TOOLS];
   // "Only these sites": browsers we cannot filter tab by tab are closed while it is on.
   if (ev.blocking && ev.allow && ev.allow.length && platform.unfilterableBrowsers) apps = [...apps, ...platform.unfilterableBrowsers()];
-  if (!apps.length) return;
+  const hd = getHider();
+  if (!apps.length) { if (hd && hiddenPids.size) { hiddenPids = new Map(); hd.set([]); } return; }
   appCheckBusy = true;
   try {
     const hits = await platform.findBlocked(apps);
-    if (!hits.length) return;
-    platform.kill(hits.map((h) => h.pid));
-    const now = Date.now();
+    // Chat apps (or all apps, by choice) are hidden instead of quit, so nothing is lost.
+    const tools = new Set(TAMPER_TOOLS.map((a) => a.name));
+    const act = (h) => (hd && !tools.has(h.app.name) ? platform.appAction(h.app, config.settings.appAction) : 'close');
+    const toHide = hits.filter((h) => act(h) === 'hide');
+    const toClose = hits.filter((h) => act(h) !== 'hide');
+    if (hd) {
+      hiddenPids = new Map(toHide.map((h) => [h.pid, h.app.name]));
+      const hid = await hd.set([...hiddenPids.keys()]);
+      const named = new Set(hid.map((p) => hiddenPids.get(p)).filter(Boolean));
+      for (const name of named) appBlockedNotice(name, ev, 'hide');
+    }
+    if (!toClose.length) return;
+    platform.kill(toClose.map((h) => h.pid));
     const seen = new Set();
-    for (const h of hits) {
+    for (const h of toClose) {
       if (seen.has(h.app.name)) continue;
       seen.add(h.app.name);
-      if (now - (lastOverlay.get(h.app.name) || 0) < 5000) continue;
-      lastOverlay.set(h.app.name, now);
-      statsLib.addBlock(stats, now, h.app.name);
-      statsDirty = statsSyncDirty = true;
-      showOverlay(h.app.name, ev);
+      appBlockedNotice(h.app.name, ev, 'close');
     }
   } catch (e) {
     console.error('enforce', e);
@@ -516,6 +647,9 @@ function tick() {
     config.session = null;
     unlocker.cancel();
     changed = true;
+    statsLib.addDone(stats, s.endsAt, mins, s.startedAt);
+    statsDirty = statsSyncDirty = true;
+    levelCache.at = 0;
     if (s.grow && statsLib.addGrown(stats, { id: s.startedAt, t: s.endsAt, i: s.grow, m: mins, ok: true })) {
       statsDirty = statsSyncDirty = true;
       lastGrown = { id: String(s.startedAt), i: s.grow, m: mins, ok: true, at: now };
@@ -563,7 +697,9 @@ function tick() {
   }
   if (tickCount % 2 === 0 || blockingChanged) enforceApps(ev);
   if (tickCount % (platform.IS_WIN ? 6 : 2) === 1) trackUsage(ev, now);
-  if (tickCount % 30 === 0) syncNow();
+  if (tickCount % 15 === 0) syncNow();
+  if (tickCount % 15 === 1) { try { checkLevelUp(now); } catch (e) { console.error('levels', e); } }
+  if (tickCount % 150 === 7) lbReportNow().catch(() => {});
   if (tickCount % 60 === 5) weeklyReport(now);
   if (tickCount % 30 === 0) { statsLib.prune(stats, now); saveStats(); }
   if (tickCount % 10 === 0 && hostsState.installed && !hostsState.verified) {
@@ -820,9 +956,25 @@ function createOverlay() {
 }
 
 let overlayTimer = null;
-function showOverlay(appName, ev) {
+/** A short, friendly line for a blocked app — in the app's language, festive in season. */
+function friendlyLine(appName, ev, action) {
+  const pick = (k) => { const a = t(k); return Array.isArray(a) && a.length ? a[Math.floor(Math.random() * a.length)] : ''; };
+  const ends = ev && ev.blocking && ev.endsAt ? ev.endsAt : null;
+  const vars = { app: appName, time: ends ? fmtClock(ends) : '' };
+  const fill = (x) => String(x || '').replace(/\{(\w+)\}/g, (_, k) => (k in vars ? vars[k] : ''));
+  const kind = ends ? (action === 'hide' ? 'hide' : 'close') : 'always';
+  const festive = seasonOn() && Math.random() < 0.6;
+  return fill(pick(festive ? `appmsg.xmas.${kind}` : `appmsg.${kind}`)) || t('overlay.blocked', { app: appName });
+}
+
+function seasonOn(now = Date.now()) {
+  return blockinfoLib.seasonOn(config.settings.season || 'auto', now);
+}
+
+function showOverlay(appName, ev, action) {
+  const line = friendlyLine(appName, ev, action);
   if (!config.settings.showOverlay) {
-    notify(t('overlay.blocked', { app: appName }), '');
+    notify(line, '');
     return;
   }
   if (!overlay || overlay.isDestroyed()) createOverlay();
@@ -830,10 +982,10 @@ function showOverlay(appName, ev) {
   overlay.setPosition(Math.round(area.x + (area.width - 460) / 2), Math.round(area.y + 24));
   const left = ev.endsAt ? t('overlay.leftTime', { t: fmtLeft(ev.endsAt - Date.now()) }) : '';
   const custom = activeCustomTheme();
-  const quotes = t('quotes');
+  const quotes = t(seasonOn() ? 'quotes.xmas' : 'quotes');
   const quote = Array.isArray(quotes) ? quotes[Math.floor(Math.random() * quotes.length)] : '';
   const payload = {
-    title: t('overlay.blocked', { app: appName }), sub: `${quote} ${left}`.trim(), theme: custom ? 'custom' : config.settings.theme,
+    title: line, sub: `${quote} ${left}`.trim(), theme: custom ? 'custom' : config.settings.theme, festive: seasonOn(),
     vars: custom ? stylegen.cssVars(custom) : null, font: custom ? custom.font : null,
   };
   const send = () => { overlay.webContents.send('overlay', payload); overlay.showInactive(); };
@@ -1068,6 +1220,24 @@ function ipc() {
   });
   handle('ai:removeKey', () => { config.settings.aiKeyEnc = null; saveConfig(); return { ok: true, state: fullState() }; });
   handle('earn:spend', ({ listId, minutes }) => spendEarned(String(listId || ''), Number(minutes) || 0));
+  handle('lb:board', ({ scope, groupId }) => lbCall(async () => {
+    if (config.settings.lbOn) await lbReportNow(true).catch(() => {});
+    const [rows, groups] = await Promise.all([cloud.lbBoard(scope === 'group' ? 'group' : 'global', groupId || null), cloud.lbGroups()]);
+    return { rows: Array.isArray(rows) ? rows : [], groups: Array.isArray(groups) ? groups : [] };
+  }));
+  handle('lb:create', ({ name }) => lbCall(async () => ({ group: await cloud.lbCreateGroup(String(name || '').slice(0, 40)) })));
+  handle('lb:join', ({ code }) => lbCall(async () => ({ group: await cloud.lbJoin(String(code || '').replace(/[^a-z0-9]/gi, '').slice(0, 12)) })));
+  handle('lb:leave', ({ groupId }) => lbCall(async () => { await cloud.lbLeave(String(groupId || '')); return {}; }));
+  handle('lb:off', async () => {
+    // Leaving always works locally, even if the server can't be reached right now.
+    let ok = true;
+    if (cloud && cloud.enabled() && cloud.signedIn()) { try { await cloud.lbDeleteMe(); } catch (_) { ok = false; } }
+    stats.lbDeletePending = !ok;
+    statsDirty = true;
+    config.settings.lbOn = false;
+    saveConfig();
+    return { ok, state: fullState() };
+  });
   handle('cooldown:set', ({ start }) => {
     const now = Date.now();
     const cd = engine.coolDown(config, now);
@@ -1161,18 +1331,19 @@ function ipc() {
   };
   handle('cloud:signUp', ({ email, password }) => cloudCall(async () => {
     const r = await cloud.signUp(String(email || '').trim(), String(password || ''));
-    if (r.signedIn) { lastRemoteAt = 0; await syncNow(); }
+    if (r.signedIn) { lastRemoteAt = 0; lastPulledStamp = ''; await syncNow(true); }
     return r;
   }));
   handle('cloud:signIn', ({ email, password }) => cloudCall(async () => {
     await cloud.signIn(String(email || '').trim(), String(password || ''));
     lastRemoteAt = 0;
-    await syncNow();
+    lastPulledStamp = '';
+    await syncNow(true);
     return { signedIn: true };
   }));
   handle('cloud:reset', ({ email }) => cloudCall(() => cloud.resetPassword(String(email || '').trim())));
-  handle('cloud:signOut', () => { cloud.signOut(); syncState.lastSync = 0; remoteDevices = {}; return { ok: true, state: fullState() }; });
-  handle('cloud:syncNow', async () => { dirty = true; await syncNow(); return { ok: !syncState.error, error: syncState.error, state: fullState() }; });
+  handle('cloud:signOut', () => { cloud.signOut(); syncState.lastSync = 0; remoteDevices = {}; lastPulledStamp = ''; return { ok: true, state: fullState() }; });
+  handle('cloud:syncNow', async () => { dirty = true; lastPulledStamp = ''; await syncNow(true); return { ok: !syncState.error, error: syncState.error, state: fullState() }; });
 
   handle('app:open-external', ({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { ok: true }; });
   handle('app:quit', () => ({ ok: tryQuit() }));

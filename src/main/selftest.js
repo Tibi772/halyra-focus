@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const dns = require('dns').promises;
 const net = require('net');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const bt = require('./selftest-browser');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -33,6 +33,22 @@ function tryConnect(host, port) {
 
 async function lookupAll(host) {
   try { return (await dns.lookup(host, { all: true })).map((a) => a.address); } catch (e) { return [`ERR ${e.code || e.message}`]; }
+}
+
+/** 'hidden' / 'shown' / 'none' for the test app's window (Chess on a Mac, Notepad on Windows). */
+function windowState(isMac) {
+  return new Promise((resolve) => {
+    const done = (err, out) => resolve(err ? `error: ${String(err.message || err).slice(0, 120)}` : String(out || '').trim() || 'none');
+    if (isMac) {
+      const jxa = "ObjC.import('AppKit'); const a = $.NSWorkspace.sharedWorkspace.runningApplications; let r = 'none'; for (let i = 0; i < a.count; i++) { const x = a.objectAtIndex(i); if (ObjC.unwrap(x.localizedName) === 'Chess') r = x.isHidden ? 'hidden' : 'shown'; } r";
+      execFile('/usr/bin/osascript', ['-l', 'JavaScript', '-e', jxa], { timeout: 8000 }, done);
+    } else {
+      const ps = `Add-Type -Namespace W -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);'
+$p = Get-Process notepad -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+if (-not $p) { 'none' } elseif ([W.U]::IsIconic($p.MainWindowHandle)) { 'hidden' } else { 'shown' }`;
+      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { timeout: 15000, windowsHide: true }, done);
+    }
+  });
 }
 
 module.exports = async function selftest(ctx) {
@@ -63,14 +79,14 @@ module.exports = async function selftest(ctx) {
 
   try {
     // ---------------------------------------------------------------- UI
-    const loaded = await waitFor(() => js("document.querySelectorAll('.nav-btn').length === 5"), 30000);
+    const loaded = await waitFor(() => js("document.querySelectorAll('.nav-btn').length === 7"), 30000);
     let why = '';
     if (!loaded) {
       let dom = '';
       try { dom = await js("(document.readyState + ' | api=' + typeof window.api + ' | ' + document.body.innerHTML.slice(0, 600))"); } catch (e) { dom = `executeJavaScript failed: ${e.message}`; }
       why = `${dom}\n--- renderer log ---\n${(ctx.rendererLog ? ctx.rendererLog() : []).join('\n')}`;
     }
-    log('UI loads (sidebar with 5 sections)', loaded, why);
+    log('UI loads (sidebar with 7 sections)', loaded, why);
     if (!loaded) throw new Error('UI did not load — see renderer log above');
     await sleep(700);
     log('First-run onboarding appears', await js("!!document.querySelector('.ob-steps')"));
@@ -78,7 +94,7 @@ module.exports = async function selftest(ctx) {
     await ctx.setConfig({ settings: { onboarded: true } });
     await js("document.querySelectorAll('.modal-back').forEach((m) => m.remove()); true");
 
-    const views = ['focus', 'lists', 'schedules', 'stats', 'settings'];
+    const views = ['focus', 'lists', 'schedules', 'stats', 'island', 'ranks', 'settings'];
     for (let i = 0; i < views.length; i += 1) {
       await js(`document.querySelectorAll('.nav-btn')[${i}].click(); true`);
       await sleep(400);
@@ -86,6 +102,23 @@ module.exports = async function selftest(ctx) {
       log(`View renders: ${views[i]}`, ok);
       await shot(`02-view-${views[i]}`);
     }
+    // levels & the 3D island
+    await js("go('island'); true");
+    await sleep(900);
+    log('Island view shows the level', await js("!!document.querySelector('.isl-lvl b') && Number(document.querySelector('.isl-lvl b').textContent) >= 1"));
+    log('3D island draws (or explains why not)', await js("!!document.querySelector('.isl-canvas') && (document.querySelector('.isl-canvas').width > 0 || document.querySelector('.isl-card').classList.contains('no3d'))"));
+    await shot('02-island-3d');
+    // Christmas look on/off and hiding menus
+    await ctx.setConfig({ settings: { season: 'on' } });
+    await sleep(400);
+    log('Christmas look switches on', await js("document.body.classList.contains('xmas') && !!document.querySelector('.garland')"));
+    await shot('02-christmas');
+    await ctx.setConfig({ settings: { season: 'off', hiddenNav: ['stats', 'ranks'] } });
+    await sleep(400);
+    log('Christmas look switches off', await js("!document.body.classList.contains('xmas') && !document.querySelector('.garland') && !document.querySelector('canvas.snow')"));
+    log('Hidden menu items disappear', await js("document.querySelectorAll('.nav-btn').length === 5"));
+    await ctx.setConfig({ settings: { season: 'auto', hiddenNav: [] } });
+    await sleep(300);
     await js("document.querySelectorAll('.nav-btn')[0].click(); true");
     for (const theme of ['daylight', 'crt', 'onebit', 'vapor', 'midnight']) {
       const r = await ctx.setConfig({ settings: { theme } });
@@ -188,8 +221,24 @@ module.exports = async function selftest(ctx) {
     log('Block banner window was shown', Boolean(ctx.overlay()));
     await shot('06-block-banner', ctx.overlay() || win());
 
+    // Hiding instead of closing (what chat apps get by default): the app keeps running,
+    // its window is put away while the block lasts and comes back when it ends.
+    await ctx.setConfig({ settings: { appAction: 'hide' } });
+    const hideBefore = ctx.blockCount(TEST_APP.name);
+    const child2 = isMac ? spawn('/usr/bin/open', ['-a', 'Chess'], { stdio: 'ignore' }) : spawn('notepad.exe', [], { detached: true, stdio: 'ignore' });
+    child2.on('error', () => {});
+    child2.unref();
+    const hidSeen = await waitFor(async () => ctx.blockCount(TEST_APP.name) > hideBefore, 25000, 300);
+    const hidState = await waitFor(async () => (await windowState(isMac)) === 'hidden', 15000, 700);
+    log(`Blocked app is hidden, not closed (${isMac ? 'Chess' : 'Notepad'})`, hidSeen && hidState && (await ctx.platform.findBlocked([TEST_APP])).length > 0, await windowState(isMac));
+    await shot('06b-hidden-banner', ctx.overlay() || win());
+
     // ---------------------------------------------------------------- stop
     ctx.stopAll();
+    const shownAgain = await waitFor(async () => (await windowState(isMac)) === 'shown', 15000, 700);
+    log('Hidden app comes back when the block ends', shownAgain, await windowState(isMac));
+    await ctx.setConfig({ settings: { appAction: 'smart' } });
+    ctx.platform.kill((await ctx.platform.findBlocked([TEST_APP])).map((h) => h.pid));
     const cleaned = await waitFor(() => !fs.readFileSync(ctx.platform.hostsPath(), 'utf8').includes(BLOCK_SITE), 30000);
     log('Stopping removes the site from the hosts file', cleaned);
     const back = await waitFor(async () => (await lookupAll(BLOCK_SITE)).some((a) => a !== '0.0.0.0' && a !== '::' && !a.startsWith('ERR')), 20000, 800);

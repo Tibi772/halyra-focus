@@ -26,7 +26,7 @@ adb shell am start -n $PKG/.MainActivity >/dev/null
 sleep 10
 SOCK=$(adb shell cat /proc/net/unix | grep -o 'webview_devtools_remote_[0-9]*' | head -1)
 adb forward tcp:9222 localabstract:"$SOCK" >/dev/null
-check "App opens and its UI loads (5 tabs)" '[ "$(js "document.querySelectorAll(\".nav-btn\").length")" = "5" ]'
+check "App opens and its UI loads (6 tabs)" '[ "$(js "document.querySelectorAll(\".nav-btn\").length")" = "6" ]'
 check "No script errors in the app" '[ "$(js "window.__halyraErrors.length")" = "0" ]' "$(js 'window.__halyraErrors')"
 check "Runs as the phone version" '[ "$(js "api.getState().then(s => s.platform)")" = "\"android\"" ]'
 PERMS=$(js "api.getState().then(s => s.mobile.perms)")
@@ -88,7 +88,14 @@ js "api.getState().then((s) => api.setConfig({ lists: s.lists.map((l) => (l.id =
 S=$(js "api.startSession({ listIds: ['e2e'], minutes: 3, mode: 'strict' }).then(r => r.ok)")
 U2=$(js "api.unlockRequest({}).then(r => r.status)")
 check "A locked block can't be stopped early" '[ "$S" = "true" ] && [ "$U2" != "\"stopped\"" ]' "$S $U2"
-js "document.querySelectorAll('.modal-back').forEach((m) => m.remove()); document.querySelectorAll('.nav-btn')[4].click()" >/dev/null; sleep 1
+js "document.querySelectorAll('.modal-back').forEach((m) => m.remove()); go('island')" >/dev/null; sleep 3
+check "Island view shows the level" '[ "$(js "!!document.querySelector(\".isl-lvl b\")")" = "true" ]'
+node "$HERE/cdp.js" shot "$OUT/05-island.png" >/dev/null
+js "api.setConfig({ settings: { season: 'on' } })" >/dev/null; sleep 2
+check "Christmas look switches on" '[ "$(js "document.body.classList.contains(\"xmas\")")" = "true" ]'
+node "$HERE/cdp.js" shot "$OUT/05-island-christmas.png" >/dev/null
+js "api.setConfig({ settings: { season: 'off' } }).then(() => go('settings'))" >/dev/null; sleep 1
+check "Christmas look switches off" '[ "$(js "document.body.classList.contains(\"xmas\")")" = "false" ]'
 node "$HERE/cdp.js" shot "$OUT/05-settings.png" >/dev/null
 js "api.setConfig({ settings: { theme: 'crt' } }).then(() => document.querySelectorAll('.nav-btn')[0].click())" >/dev/null; sleep 2
 node "$HERE/cdp.js" shot "$OUT/06-retro-crt.png" >/dev/null

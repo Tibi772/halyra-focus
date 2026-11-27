@@ -15,6 +15,8 @@
     { id: 'bonsai', kind: 'tree', unlockH: 20, name: { en: 'Bonsai', hu: 'Bonszai' } },
     { id: 'palm', kind: 'tree', unlockH: 35, name: { en: 'Palm', hu: 'Pálma' } },
     { id: 'golden', kind: 'tree', unlockH: 60, name: { en: 'Golden tree', hu: 'Aranyfa' } },
+    // Only offered while the Christmas look is on (a grown one stays forever).
+    { id: 'xmas', kind: 'tree', unlockH: 0, season: 'xmas', name: { en: 'Christmas tree', hu: 'Karácsonyfa' } },
     { id: 'hut', kind: 'building', unlockH: 0, name: { en: 'Hut', hu: 'Kunyhó' } },
     { id: 'house', kind: 'building', unlockH: 0, name: { en: 'House', hu: 'Ház' } },
     { id: 'shop', kind: 'building', unlockH: 2, name: { en: 'Corner shop', hu: 'Kisbolt' } },
@@ -143,6 +145,24 @@
         out += `<path d="M${n(tx)} ${n(base - h)} q ${n(dx * 0.5 * s)} ${n((dy - 10) * s)} ${n(dx * s)} ${n((dy + 6) * s)} q ${n(-dx * 0.45 * s)} ${n(-6 * s)} ${n(-dx * s)} ${n(-(dy + 6) * s)} z" ${f('palmLeaf')}/>`;
       }
       if (p >= 0.9) out += `<circle cx="${n(tx - 3)}" cy="${n(base - h + 4)}" r="2.6" ${f('trunk')}/><circle cx="${n(tx + 2)}" cy="${n(base - h + 5)}" r="2.6" ${f('trunkDark')}/>`;
+      return out;
+    }
+    if (id === 'xmas') {
+      let out = drawTree('pine', p, f, mono);
+      const h = lerp(8, 18, s);
+      const top = base - h;
+      const orn = seg(p, 0.5, 0.85);
+      if (orn > 0) {
+        // a little garland and baubles, then the star on top
+        out += `<path d="M${n(60 - 13 * s)} ${n(top - 2 * s)} Q60 ${n(top + 4 * s)} ${n(60 + 14 * s)} ${n(top - 6 * s)} M${n(60 - 9 * s)} ${n(top - 17 * s)} Q60 ${n(top - 12 * s)} ${n(60 + 10 * s)} ${n(top - 20 * s)}" fill="none" ${stroke(mono)('gold', 1.3 * s)} stroke-linecap="round" opacity="${n(orn)}"/>`;
+        const balls = [[-12, -3, 'red'], [6, -1, 'gold'], [13, -9, 'glassDark'], [-6, -15, 'gold'], [8, -19, 'red'], [-2, -27, 'glassDark'], [-14, -11, 'flower']];
+        balls.forEach(([dx, dy, c], i) => { if (orn > i / balls.length) out += `<circle cx="${n(60 + dx * s)}" cy="${n(top + dy * s)}" r="${n(2.1 * s)}" ${f(c)}/>`; });
+      }
+      if (p >= 0.9) {
+        const sy = top - 43 * s - 3;
+        out += `<path d="M60 ${n(sy - 6)} l1.9 4.1 4.5 .5 -3.3 3.1 .9 4.4 -4 -2.2 -4 2.2 .9 -4.4 -3.3 -3.1 4.5 -.5z" ${f('gold')}/>`;
+        if (!mono) out += `<circle cx="60" cy="${n(sy)}" r="7" fill="#ffd36b" fill-opacity=".22"/>`;
+      }
       return out;
     }
     if (id === 'pine') {
@@ -348,10 +368,10 @@
     return `<svg class="${cls}" viewBox="0 0 120 120"${size} xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${g}<g transform="translate(60 104) scale(${scale}) translate(-60 -104)">${body}</g></svg>`;
   }
 
-  /** Items the user can pick with `hours` of total focus, and the next one to unlock. */
-  function unlocked(hours) {
-    const open = CATALOG.filter((c) => c.unlockH <= hours);
-    const next = CATALOG.filter((c) => c.unlockH > hours).sort((a, b) => a.unlockH - b.unlockH)[0] || null;
+  /** Items the user can pick with `hours` of total focus (seasonal ones only with opts.season), and the next one to unlock. */
+  function unlocked(hours, opts = {}) {
+    const open = CATALOG.filter((c) => c.unlockH <= hours && (!c.season || opts.season));
+    const next = CATALOG.filter((c) => c.unlockH > hours && !c.season).sort((a, b) => a.unlockH - b.unlockH)[0] || null;
     return { open: open.map((c) => c.id), next };
   }
 

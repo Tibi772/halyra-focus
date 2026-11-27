@@ -26,6 +26,8 @@ jobs:
         with:
           node-version: 22
       - run: node --test test/*.test.js
+      - name: Leaderboard database functions (real PostgreSQL)
+        run: tools/test-leaderboard-sql.sh
 
   build:
     needs: unit

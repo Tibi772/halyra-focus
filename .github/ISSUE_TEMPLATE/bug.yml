@@ -1,0 +1,21 @@
+name: 🐞 Something's broken / Valami nem működik
+description: A block that didn't work, a crash, anything odd · Nem működő tiltás, összeomlás, bármi furcsa
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened? · Mi történt?
+      description: What did you expect, and what happened instead? · Mit vártál, és mi történt helyette?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we make it happen again? · Hogyan lehet előidézni?
+      placeholder: "1. … 2. … 3. …"
+  - type: input
+    id: version
+    attributes:
+      label: App version & device · Verzió és eszköz
+      placeholder: Halyra Focus 1.6.0 · Mac · en

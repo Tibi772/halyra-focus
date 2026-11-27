@@ -166,7 +166,9 @@ function mockSupabase() {
         if (!uid) return send(401, { message: 'JWT expired' });
         if (req.method === 'GET') {
           const want = (url.searchParams.get('user_id') || '').replace('eq.', '');
-          return send(200, want === uid && rows.has(uid) ? [rows.get(uid)] : []); // RLS: only own row
+          const cols = (url.searchParams.get('select') || 'data,device,updated_at').split(',');
+          const pickCols = (r) => Object.fromEntries(cols.map((c) => [c, r[c]]));
+          return send(200, want === uid && rows.has(uid) ? [pickCols(rows.get(uid))] : []); // RLS: only own row
         }
         if (req.method === 'POST') {
           for (const r of json) {
@@ -176,10 +178,21 @@ function mockSupabase() {
           return send(201);
         }
       }
+      if (url.pathname.startsWith('/rest/v1/rpc/')) {
+        if (!uid) return send(401, { message: 'JWT expired' });
+        const fn = url.pathname.slice('/rest/v1/rpc/'.length);
+        calls.push({ fn, uid, args: json });
+        if (fn === 'halyra_lb_create_group') return send(200, [{ id: 'g1', name: json.p_name, code: 'ABC123' }]);
+        if (fn === 'halyra_lb_join') return json.p_code === 'ABC123' ? send(200, [{ id: 'g1', name: 'Club', code: 'ABC123' }]) : send(400, { message: 'group not found' });
+        if (fn === 'halyra_lb_board') return send(200, [{ rank: 1, name: 'Anna', emoji: '🦊', week_minutes: 120, level: 4, streak: 2, me: true }]);
+        if (fn === 'halyra_lb_groups_mine') return send(200, [{ id: 'g1', name: 'Club', code: 'ABC123', members: 2, owner: true }]);
+        return send(200, null);
+      }
       return send(404, { message: 'not found' });
     });
   });
-  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, url: `http://127.0.0.1:${server.address().port}`, rows, refresh })));
+  const calls = [];
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, url: `http://127.0.0.1:${server.address().port}`, rows, refresh, calls })));
 }
 
 const memStore = () => { let s = null; return { load: () => s, save: (v) => { s = v; }, peek: () => s }; };
@@ -203,7 +216,22 @@ test('cloud: sign up, push, sign in on a second device, pull, refresh, errors', 
     await assert.rejects(a.signUp('me@example.com', 'correct-horse'), (e) => e.code === 'exists');
     assert.equal(await a.pull(), null);
     const payload = sync.buildPayload(base(), 'dev-a', NOW);
-    await a.push(payload, 'dev-a');
+    const at = await a.push(payload, 'dev-a');
+    assert.match(at, /^\d{4}-\d\d-\d\dT/, 'push tells which stamp it wrote');
+    const meta = await a.pullMeta();
+    assert.deepEqual(Object.keys(meta).sort(), ['device', 'updated_at'], 'the poll downloads only the stamp');
+    assert.equal(meta.updated_at, at);
+
+    // leaderboard calls go to the right functions with the right argument names
+    await a.lbReport({ name: 'Anna', emoji: '🦊', public: true, weekStart: '2026-11-23', weekMinutes: 120.4, totalMinutes: 900, level: 4, streak: 2 });
+    const rep = mock.calls.find((c) => c.fn === 'halyra_lb_report');
+    assert.deepEqual(rep.args, { p_name: 'Anna', p_emoji: '🦊', p_public: true, p_week_start: '2026-11-23', p_week_minutes: 120, p_total: 900, p_level: 4, p_streak: 2 });
+    assert.equal((await a.lbCreateGroup('Club')).code, 'ABC123');
+    assert.equal((await a.lbJoin('ABC123')).id, 'g1');
+    await assert.rejects(a.lbJoin('NOPE00'));
+    assert.equal((await a.lbBoard('group', 'g1'))[0].me, true);
+    assert.deepEqual(mock.calls.find((c) => c.fn === 'halyra_lb_board').args, { p_scope: 'group', p_group: 'g1' });
+    assert.equal((await a.lbGroups())[0].members, 2);
 
     const b = new CloudClient({ url: mock.url, anonKey: 'anon' }, memStore());
     await assert.rejects(b.signIn('me@example.com', 'wrong-password'), (e) => e.code === 'badLogin');

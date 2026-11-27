@@ -69,6 +69,8 @@ const P = {
   wave: '<path d="M2 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0"/><path d="M2 18c2-4 4-4 6 0s4 4 6 0 4-4 6 0" opacity=".5"/>',
   cloud: '<path d="M17.5 19H7a5 5 0 1 1 .9-9.9A6 6 0 0 1 19.5 11 4 4 0 0 1 17.5 19z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  island: '<path d="M2 17c3 2 7 2.5 10 2.5S19 19 22 17"/><path d="M5 17.5 8 12h8l3 5.5"/><path d="M12 12V4l5 3-5 2"/>',
+  ranks: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3a3 3 0 0 1-3 4M7 5H4a3 3 0 0 0 3 4"/>',
 };
 function icon(name) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -351,7 +353,7 @@ function structKey() {
   const ev = S.eval;
   return [S.rev, S.lang, S.settings.theme, ev.blocking, ev.mode, ev.sources.map((s) => `${s.id}:${s.phase}:${s.endsAt}`).join(','),
     S.helper.installed, S.helper.verified, S.helper.outdated, S.browsers ? S.browsers.denied.join(',') + S.browsers.waiting.join(',') : '', S.unlock ? S.unlock.kind : '', ui.view, JSON.stringify(permState()), S.stats.todayBlocks, Math.floor(S.stats.todayMinutes),
-    S.cloud ? `${S.cloud.signedIn}${S.cloud.lastSync}${S.cloud.error}` : '', `${S.settings.growOn}${S.settings.growItem}${S.stats.garden ? S.stats.garden.grown + S.stats.garden.withered : 0}`, ui.view === 'lists' ? Object.values(S.usage || {}).map((x) => Math.floor(x / 60)).join(',') : ''].join('|');
+    S.cloud ? `${S.cloud.signedIn}${S.cloud.lastSync}${S.cloud.error}` : '', S.season ? 1 : 0, S.levels ? `${S.levels.level}:${S.levels.gems.filter((g) => g.got).length}` : '', `${S.settings.growOn}${S.settings.growItem}${S.stats.garden ? S.stats.garden.grown + S.stats.garden.withered : 0}`, ui.view === 'lists' ? Object.values(S.usage || {}).map((x) => Math.floor(x / 60)).join(',') : ''].join('|');
 }
 
 const CUSTOM_KEYS = new Set();
@@ -409,6 +411,9 @@ function applyState(state) {
     updateLive();
   }
   for (const m of modalStack) if (m.live) m.live();
+  applySeason();
+  refreshIsland();
+  if (!first) celebrateLevel(); else if (S.levelEvent) lastCelebrated = S.levelEvent.at;
   updateSound();
   if (!first || S.settings.onboarded) maybeCelebrate();
   if (first && !S.settings.onboarded) openOnboarding();
@@ -471,14 +476,18 @@ function openPermissions() {
 // ------------------------------------------------------------------ shell
 
 function renderSidebar() {
-  const nav = [['focus', 'focus'], ['lists', 'lists'], ['schedules', 'schedules'], ['stats', 'stats'], ['settings', 'settings']];
+  const hidden = new Set(S.settings.hiddenNav || []);
+  const nav = [['focus', 'focus'], ['lists', 'lists'], ['schedules', 'schedules'], ['stats', 'stats'], ['island', 'island'], ['ranks', 'ranks'], ['settings', 'settings']]
+    .filter(([id]) => !hidden.has(id) && !(isMobile() && id === 'ranks'));
   const ev = S.eval;
   const session = ev.sources.find((s) => s.type === 'session');
   const onBreak = session && session.phase === 'break';
   const sb = document.getElementById('sidebar');
   ensureAiFab();
-  sb.replaceChildren(
-    h('div', { class: 'brand' }, logo(30), h('div', { class: 'brand-name' }, 'Halyra Focus', h('small', null, t('brand.sub')))),
+  sb.replaceChildren(...[
+    garland(),
+    h('div', { class: 'brand' }, logo(30), h('div', { class: 'brand-name' }, 'Halyra Focus', h('small', null, t('brand.sub'))), isMobile() ? null : seasonToggle()),
+    isMobile() || hidden.has('island') ? null : levelChip(),
     h('nav', { class: 'nav' }, nav.map(([id, ic]) => h('button', { class: `nav-btn${ui.view === id ? ' on' : ''}`, onclick: () => go(id) }, icon(ic), h('span', { class: 'nav-label' }, t(isMobile() ? `navShort.${id}` : `nav.${id}`))))),
     h('div', { class: 'side-foot' },
       h('button', { class: 'ai-launch', 'data-fid': 'ai-open', onclick: () => openChat(), title: 'Ctrl/⌘ K' }, icon('sparkle'), h('span', null, 'Halyra AI'), h('kbd', null, S.platform === 'darwin' ? '⌘K' : 'Ctrl K')),
@@ -489,7 +498,7 @@ function renderSidebar() {
         h('div', { class: 'status-text' },
           ev.blocking ? t('focus.on') : onBreak ? t('focus.break') : ev.standing && ev.standing.any ? t('tray.shield') : t('tray.idle'),
           (ev.blocking || onBreak) ? h('b', { 'data-live': 'side-left' }, ringModel().time) : null))),
-  );
+  ].filter(Boolean));
 }
 
 // ------------------------------------------------------------------ Halyra AI chat
@@ -520,8 +529,8 @@ function md(text) {
 }
 
 const CHAT_EXAMPLES = {
-  en: ['Block YouTube Shorts and Reddit for 2 hours', 'Start a 50-minute strict focus', 'Weekdays 9–12: block social media', 'How much did I focus this week?', 'Explain the Pomodoro technique in 3 lines', 'Grow a cherry tree'],
-  hu: ['Tiltsd le a YouTube Shortsot és a Redditet 2 órára', 'Indíts 50 perc szigorú fókuszt', 'Hétköznap 9–12: tiltsd a közösségi médiát', 'Mennyit fókuszáltam ezen a héten?', 'Magyarázd el a fotoszintézist 3 mondatban', 'Növessz cseresznyefát'],
+  en: ['Block YouTube Shorts and Reddit for 2 hours', 'Start a 50-minute strict focus', 'Weekdays 9–12: block social media', 'How much did I focus this week?', 'What’s the weather like?', 'Hide the Stats menu', 'Grow a cherry tree'],
+  hu: ['Tiltsd le a YouTube Shortsot és a Redditet 2 órára', 'Indíts 50 perc szigorú fókuszt', 'Hétköznap 9–12: tiltsd a közösségi médiát', 'Mennyit fókuszáltam ezen a héten?', 'Hány fok van most?', 'Rejtsd el a statisztikát', 'Növessz cseresznyefát'],
 };
 
 function chatActionLabel(a) {
@@ -626,7 +635,9 @@ function go(view) {
 function renderAll() {
   renderSidebar();
   const view = document.getElementById('view');
-  const views = { focus: renderFocus, lists: renderLists, schedules: renderSchedules, stats: renderStats, settings: renderSettings };
+  const views = { focus: renderFocus, lists: renderLists, schedules: renderSchedules, stats: renderStats, island: renderIsland, ranks: renderRanks, settings: renderSettings };
+  if (!views[ui.view]) ui.view = 'focus';
+  if (island.inst && ui.view !== 'island') { island.inst.destroy(); island.inst = null; }
   const active = document.activeElement;
   const fid = active && active.dataset ? active.dataset.fid : null;
   view.replaceChildren(h('div', { class: 'view' }, views[ui.view]()));
@@ -748,8 +759,8 @@ function openGrowPicker() {
   let tab = (GROW.BY_ID[S.settings.growItem] || GROW.BY_ID.oak).kind;
   openModal((self) => {
     const hours = growHours();
-    const items = GROW.CATALOG.filter((c) => c.kind === tab);
     const cur = S.settings.growOn === false ? null : S.settings.growItem;
+    const items = GROW.CATALOG.filter((c) => c.kind === tab && (!c.season || S.season || cur === c.id));
     const pick = async (patch) => { await patchConfig({ settings: patch }); self.render(); };
     return [
       modalHead(t('grow.pick'), () => self.close()),
@@ -1585,7 +1596,9 @@ function renderSettings() {
         h('div', { class: 'set-row', style: { marginTop: '8px' } }, h('div', { class: 'label' }, t('set.language')),
           h('select', { class: 'select', style: { width: '200px' }, onchange: (e) => patchConfig({ settings: { lang: e.target.value } }) },
             [['auto', t('set.auto')], ['hu', 'Magyar'], ['en', 'English']].map(([v, n]) => h('option', { value: v, selected: s.lang === v }, n))))),
+      personalizeCard(),
       aiCard(),
+      aiPersonaCard(),
       isMobile()
         ? h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('perm.title'))), h('p', { class: 'muted', style: { marginTop: 0 } }, t('perm.sub')), permRows())
         : h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.web'))), helperBlock),
@@ -1608,6 +1621,7 @@ function renderSettings() {
         h('div', { class: 'row' },
           h('button', { class: 'btn', onclick: () => api.exportConfig() }, icon('download'), t('set.export')),
           h('button', { class: 'btn', onclick: async () => { const r = await api.importConfig({}); if (r.state) applyState(r.state); if (r.ok) toast(t('ok.imported')); else if (r.error) toast(t(`err.${r.error}`), 'error'); } }, icon('upload'), t('set.import')))),
+      feedbackCard(),
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, t('set.about'))),
         h('div', { class: 'row' }, logo(36), h('div', null, h('b', null, 'Halyra Focus'), h('div', { class: 'muted small' }, t('set.version', { v: S.version }))), h('span', { class: 'spacer' }),
           h('button', { class: 'btn', onclick: () => api.openExternal(BRAND.website) }, icon('ext'), t('set.website')),

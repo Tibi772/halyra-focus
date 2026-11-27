@@ -65,6 +65,17 @@ function defaults(lang = 'en') {
       growWither: true,
       earnRatio: 3,
       coolDownH: 0,
+      appAction: 'smart',
+      season: 'auto',
+      hiddenNav: [],
+      aiName: 'Halyra',
+      aiTone: 'friendly',
+      aiAbout: '',
+      aiCity: '',
+      lbOn: false,
+      lbName: '',
+      lbEmoji: '🦊',
+      lbPublic: false,
       launchAtLogin: true,
       showOverlay: true,
       notifications: true,
@@ -102,6 +113,9 @@ function cleanAppNames(arr, kind) {
 }
 
 const COOLDOWNS = [0, 1, 24, 72];
+const NAV_HIDEABLE = ['lists', 'schedules', 'stats', 'island', 'ranks'];
+const pick = (v, b, allowed, fallback) => (allowed.includes(v) ? v : (allowed.includes(b) ? b : fallback));
+const cleanName = (v, fallback) => (typeof v === 'string' && v.trim() ? v.replace(/[^\p{L}\p{N} _.-]/gu, '').trim().slice(0, 20) || fallback : fallback);
 
 function cleanKeywords(raw) {
   const out = [];
@@ -221,6 +235,22 @@ function sanitizeSettings(input, base) {
     earnRatio: [2, 3, 4, 6].includes(Number(i.earnRatio)) ? Number(i.earnRatio) : ([2, 3, 4, 6].includes(Number(b.earnRatio)) ? Number(b.earnRatio) : 3),
     // Hours you must wait before always-on protection can be weakened (0 = no wait).
     coolDownH: COOLDOWNS.includes(Number(i.coolDownH)) ? Number(i.coolDownH) : (COOLDOWNS.includes(Number(b.coolDownH)) ? Number(b.coolDownH) : 0),
+    // Blocked apps: 'smart' hides chat apps and closes the rest; 'hide' / 'close' for all.
+    appAction: pick(i.appAction, b.appAction, ['smart', 'hide', 'close'], 'smart'),
+    // Christmas look: 'auto' = December to 6 January.
+    season: pick(i.season, b.season, ['auto', 'on', 'off'], 'auto'),
+    // Menu items the user doesn't want to see (focus and settings always stay).
+    hiddenNav: Array.isArray(i.hiddenNav) ? [...new Set(i.hiddenNav.filter((x) => NAV_HIDEABLE.includes(x)))] : (Array.isArray(b.hiddenNav) ? b.hiddenNav : []),
+    // How Halyra AI talks to you.
+    aiName: cleanName(i.aiName, b.aiName || 'Halyra'),
+    aiTone: pick(i.aiTone, b.aiTone, ['friendly', 'brief', 'coach', 'funny', 'formal'], 'friendly'),
+    aiAbout: typeof i.aiAbout === 'string' ? i.aiAbout.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').slice(0, 600) : (b.aiAbout || ''),
+    aiCity: typeof i.aiCity === 'string' ? i.aiCity.replace(/[^\p{L}\p{N} ,.'-]/gu, '').slice(0, 60) : (b.aiCity || ''),
+    // Leaderboard (opt-in, needs an account).
+    lbOn: bool(i.lbOn, b.lbOn === true),
+    lbName: typeof i.lbName === 'string' ? i.lbName.replace(/[^\p{L}\p{N} _.-]/gu, '').trim().slice(0, 24) : (b.lbName || ''),
+    lbEmoji: typeof i.lbEmoji === 'string' && i.lbEmoji.length <= 8 && !/[<>&"']/.test(i.lbEmoji) ? i.lbEmoji : (b.lbEmoji || '🦊'),
+    lbPublic: bool(i.lbPublic, b.lbPublic === true),
     launchAtLogin: bool(i.launchAtLogin, b.launchAtLogin),
     showOverlay: bool(i.showOverlay, b.showOverlay),
     notifications: bool(i.notifications, b.notifications),
@@ -329,7 +359,7 @@ function verifyPin(settings, pin) {
 }
 
 module.exports = {
-  cleanKeywords, COOLDOWNS,
+  cleanKeywords, COOLDOWNS, NAV_HIDEABLE,
   THEMES, LANGS, VERSION, uid, defaults, presetToList, mergeEditable, normalizeLoaded, sanitizeCustomThemes,
   sanitizeLists, sanitizeSchedules, hashPin, verifyPin, upgradePresetLists,
 };

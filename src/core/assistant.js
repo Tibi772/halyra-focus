@@ -45,6 +45,15 @@ const TOOLS = [
     keywords: { type: 'array', items: { type: 'string' } }, list: { type: 'string' } }, required: ['keywords'] } },
   { name: 'spend_earned_minutes', description: 'Open an "earn" list for some of the minutes the user earned by focusing (minutes 0 = lock it again and refund the rest).', input_schema: { type: 'object', properties: {
     list: { type: 'string' }, minutes: { type: 'integer', minimum: 0, maximum: 120 } }, required: ['list', 'minutes'] } },
+  { name: 'get_weather', description: 'Current weather and the next days for a place (city name). Without a place it uses the user\'s saved city, or their approximate location.', input_schema: { type: 'object', properties: { place: { type: 'string' } } } },
+  { name: 'get_time', description: 'The current local date and time (and time zone) on this device.', input_schema: { type: 'object', properties: {} } },
+  { name: 'customize_app', description: 'Personalise Halyra Focus: hide or show menu items (lists, schedules, stats, island, ranks — focus and settings always stay), the Christmas look (on/off/auto), what happens to blocked apps (smart = hide chat apps and close the rest, hide, close), and the assistant\'s own name and tone.', input_schema: { type: 'object', properties: {
+    hide_menu: { type: 'array', items: { type: 'string', enum: ['lists', 'schedules', 'stats', 'island', 'ranks'] } },
+    show_menu: { type: 'array', items: { type: 'string', enum: ['lists', 'schedules', 'stats', 'island', 'ranks'] } },
+    season: { type: 'string', enum: ['on', 'off', 'auto'] }, blocked_apps: { type: 'string', enum: ['smart', 'hide', 'close'] },
+    assistant_name: { type: 'string' }, assistant_tone: { type: 'string', enum: ['friendly', 'brief', 'coach', 'funny', 'formal'] }, city: { type: 'string' } } } },
+  { name: 'remember_about_me', description: 'Save a short note about the user (goals, school/job, what distracts them, preferences) so future answers are personal. The user can see and edit these notes in Settings. Use only for things they tell you and want remembered.', input_schema: { type: 'object', properties: { note: { type: 'string' }, forget: { type: 'boolean' } }, required: ['note'] } },
+  { name: 'get_level', description: 'The user\'s level, XP, title and achievements (gems) on their focus island.', input_schema: { type: 'object', properties: {} } },
   { name: 'set_grow', description: 'Choose what grows or gets built during focus sessions (or "none").', input_schema: { type: 'object', properties: { item: { type: 'string', enum: [...GROW.CATALOG.map((c) => c.id), 'none'] } }, required: ['item'] } },
   { name: 'set_theme', description: 'Change the app\'s look: a built-in theme (midnight, daylight, crt, onebit, vapor) or a new custom style from a short description.', input_schema: { type: 'object', properties: { theme: { type: 'string', enum: ['midnight', 'daylight', 'crt', 'onebit', 'vapor'] }, describe: { type: 'string' } } } },
   { name: 'get_stats', description: 'Focus statistics: last 7 days, streak, most blocked apps/sites, the forest.', input_schema: { type: 'object', properties: {} } },
@@ -250,6 +259,49 @@ async function runTool(ctx, name, input = {}) {
       const until = (ctx.config().passes || {})[l.id];
       return { ok: true, list: l.name, openUntil: until ? fmtTime(until) : null, earnedMinutesLeft: ctx.wallet ? ctx.wallet() : undefined };
     }
+    case 'get_weather': {
+      if (!ctx.weather) return fail('Weather is not available here.');
+      try { return { ok: true, ...(await ctx.weather(String(input.place || '').slice(0, 60))) }; } catch (e) { return fail(e && e.message === 'notfound' ? 'Place not found.' : 'Could not reach the weather service.'); }
+    }
+    case 'get_time': {
+      const d = new Date(ctx.now());
+      let tz = '';
+      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { tz = ''; }
+      return { ok: true, time: fmtTime(ctx.now()), date: d.toISOString().slice(0, 10), weekday: d.getDay(), timeZone: tz, local: d.toString() };
+    }
+    case 'customize_app': {
+      const st = config.settings;
+      const hidden = new Set(st.hiddenNav || []);
+      for (const m of input.hide_menu || []) hidden.add(m);
+      for (const m of input.show_menu || []) hidden.delete(m);
+      const patch = { hiddenNav: [...hidden] };
+      if (input.season) patch.season = input.season;
+      if (input.blocked_apps) patch.appAction = input.blocked_apps;
+      if (input.assistant_name) patch.aiName = String(input.assistant_name).slice(0, 20);
+      if (input.assistant_tone) patch.aiTone = input.assistant_tone;
+      if (typeof input.city === 'string') patch.aiCity = input.city.slice(0, 60);
+      const r = ctx.applyConfigChange({ settings: patch });
+      if (!r.ok) return fail(r.error);
+      const after = ctx.config().settings;
+      return { ok: true, hiddenMenu: after.hiddenNav, season: after.season, blockedApps: after.appAction, assistantName: after.aiName, tone: after.aiTone, city: after.aiCity };
+    }
+    case 'remember_about_me': {
+      const note = String(input.note || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+      if (!note) return fail('Empty note.');
+      const cur = String(config.settings.aiAbout || '');
+      let lines = cur.split('\n').map((x) => x.trim()).filter(Boolean);
+      if (input.forget) lines = lines.filter((x) => !x.toLowerCase().includes(note.toLowerCase()));
+      else if (!lines.some((x) => x.toLowerCase() === note.toLowerCase())) lines.push(note);
+      let text = lines.join('\n');
+      while (text.length > 600 && lines.length > 1) { lines.shift(); text = lines.join('\n'); }
+      const r = ctx.applyConfigChange({ settings: { aiAbout: text } });
+      return r.ok ? { ok: true, notes: lines } : fail(r.error);
+    }
+    case 'get_level': {
+      const lv = ctx.levels ? ctx.levels() : null;
+      if (!lv) return fail('Not available.');
+      return { ok: true, level: lv.level, title: lv.title, xp: lv.xp, toNextLevel: lv.need - lv.into, nextTitle: lv.nextTitle, nextTitleAtLevel: lv.nextBandAt, gems: lv.gems.map((g) => ({ name: g.name, got: g.got, how: g.desc })) };
+    }
     case 'set_grow': {
       if (input.item === 'none') { ctx.applyConfigChange({ settings: { growOn: false } }); return { ok: true }; }
       const item = GROW.BY_ID[input.item];
@@ -276,18 +328,32 @@ async function runTool(ctx, name, input = {}) {
 
 // ------------------------------------------------------------------ system prompt
 
+const TONES = {
+  friendly: 'Be warm, direct and decisive — like a smart friend who wants them to succeed.',
+  brief: 'Be very brief: short sentences, no small talk, straight to the point.',
+  coach: 'Be an encouraging but firm coach: name the next concrete step, hold them to their goals, celebrate wins.',
+  funny: 'Be playful and a little funny (light jokes, never sarcastic about their struggles), while still being genuinely helpful.',
+  formal: 'Be polite and professional, a little more formal.',
+};
+
 function systemPrompt(ctx) {
   const hu = ctx.lang === 'hu';
+  const st = (ctx.config && ctx.config().settings) || {};
+  const name = st.aiName && st.aiName !== 'Halyra' ? st.aiName : 'Halyra AI';
+  const about = String(st.aiAbout || '').trim();
   return [
-    'You are Halyra AI, the assistant inside Halyra Focus — an app and website blocker for Mac, Windows and Android.',
+    `You are ${name}, the assistant inside Halyra Focus — an app and website blocker for Mac, Windows and Android.`,
     'You are very knowledgeable: answer any question well (studying, coding, writing, science, history, health basics, life advice, planning). Use web search for anything current or that you are not sure about, and mention sources briefly.',
     'You can also operate the app with your tools: start/extend focus, block sites or parts of sites, block keywords, build lists and schedules, set daily limits, make a list always-on (blocked around the clock, optionally with SafeSearch) or earn-to-unlock (opened with minutes earned by focusing), spend earned minutes, change the look and what grows during focus. When the user asks for something the tools can do, do it (call get_status first if you need names), then confirm briefly what changed.',
     'For porn or gambling problems, be kind and never shaming: suggest an always-on list with SafeSearch, keyword blocking, a PIN given to someone they trust and a 24 h cool-down, so a weak moment can pass.',
-    'Be warm, direct and decisive — like a smart friend who wants them to succeed. Keep answers short unless asked for detail. Use simple Markdown (bold, lists, links) only when it helps.',
+    `${TONES[st.aiTone] || TONES.friendly} Keep answers short unless asked for detail. Use simple Markdown (bold, lists, links) only when it helps.`,
+    'You can also look up the weather (get_weather), the time, the user\'s level and achievements, and personalise the app (customize_app: hide menu items, Christmas look, what happens to blocked apps, your own name and tone). When the user tells you something about themselves that would help later (goals, exams, job, what distracts them), offer to remember it and use remember_about_me.',
+    about ? `What the user asked you to remember about them:\n${about}` : '',
+    st.aiCity ? `The user\'s city (for weather and local questions): ${st.aiCity}.` : '',
     'Never help to get around a running patient/strict block, a PIN, or the user\'s own rules (e.g. suggest other browsers, VPNs, deleting the app). If they want to stop early, remind them why they started and point to the Stop button in the app.',
     'If the user seems to be in crisis or talks about harming themselves, respond with care and suggest local emergency services or a crisis line.',
     `Reply in ${hu ? 'Hungarian' : 'the user\'s language (default English)'}. Current local time: ${new Date(ctx.now()).toString()}.`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 // ------------------------------------------------------------------ offline understanding (no AI connection)
@@ -328,6 +394,19 @@ function siteTokens(raw) {
  * Understands a handful of commands without an AI connection.
  * Returns { handled, reply, calls:[{name,input}] } — calls are run by the caller.
  */
+const PLACE_STOP = new Set(['milyen', 'hogyan', 'mennyien', 'holnap', 'holnapután', 'reggel', 'este', 'ma', 'most', 'itt', 'otthon', 'kint', 'bent', 'hétvégén', 'hétfőn', 'kedden', 'szerdán', 'csütörtökön', 'pénteken', 'szombaton', 'vasárnap', 'délután', 'éjjel', 'éjszaka', 'nálunk', 'mennyien']);
+/** "…in London", "…Debrecenben", "Budapesten…" → the city (or '' for "here"). */
+function weatherPlace(text) {
+  const raw = String(text || '');
+  const en = /\b(?:in|at|for)\s+([A-Za-zÀ-ž][\p{L} .'-]{1,40}?)\s*(?:today|tomorrow|now|this week)?[?.!]*\s*$/u.exec(raw);
+  if (en && !/^(the|today|tomorrow|here|my area)$/i.test(en[1].trim())) return en[1].trim();
+  for (const m of raw.matchAll(/(?:^|[^\p{L}])(\p{Lu}[\p{L}-]{1,30}?)(ban|ben|on|en|ön|n)(?![\p{L}])/gu)) {
+    const word = (m[1] + m[2]).toLowerCase();
+    if (!PLACE_STOP.has(word)) return m[1];
+  }
+  return '';
+}
+
 function offline(text, lang) {
   const hu = lang === 'hu';
   const t = ` ${norm(text)} `;
@@ -336,6 +415,22 @@ function offline(text, lang) {
   const mode = parseMode(t);
   const growHit = GROW.CATALOG.find((c) => t.includes(` ${norm(c.name.en)}`) || t.includes(` ${norm(c.name.hu)}`) || t.includes(` ${c.id}`));
 
+  if (/\b(weather|temperature|forecast|idojaras|hany fok|homerseklet|esik|esni fog|havazik|rain|snow|hideg|meleg|ido lesz|milyen (az )?ido)\b/.test(t) || /hany fok/.test(t)) {
+    const place = weatherPlace(text);
+    return { handled: true, calls: [{ name: 'get_weather', input: { place } }] };
+  }
+  if (/\b(what time|hany ora|mennyi az ido|milyen nap van|what day|datum|date today)\b/.test(t)) return { handled: true, calls: [{ name: 'get_time', input: {} }] };
+  if (/(karacsony|christmas|xmas|unnepi|holiday)/.test(t) && /\b(ki|off|kapcsold ki|tuntesd el|disable|be|on|kapcsold be|enable)\b/.test(t)) {
+    const off = /\b(ki|off|kapcsold ki|tuntesd el|disable)\b/.test(t);
+    return { handled: true, calls: [{ name: 'customize_app', input: { season: off ? 'off' : 'on' } }] };
+  }
+  const MENU = [['lists', /\b(list|lists|lista|listak|listakat)\b/], ['schedules', /\b(schedule|schedules|idozites|idoziteseket|idozitest)\b/], ['stats', /\b(stat|stats|statisztika|statisztikat)\b/], ['island', /\b(island|sziget|szigetet|level|szint)\b/], ['ranks', /\b(rank|ranks|leaderboard|ranglista|ranglistat)\b/]];
+  if (/\b(hide|remove from menu|rejtsd|tuntesd el|vedd ki|show|mutasd|tedd vissza)\b/.test(t) && MENU.some(([, re]) => re.test(t))) {
+    const ids = MENU.filter(([, re]) => re.test(t)).map(([id]) => id);
+    const show = /\b(show|mutasd|tedd vissza)\b/.test(t);
+    return { handled: true, calls: [{ name: 'customize_app', input: show ? { show_menu: ids } : { hide_menu: ids } }] };
+  }
+  if (/\b(level\w*|szint\w*|xp|achievement\w*|gems?|kristaly\w*)\b/.test(t) && !sites.length) return { handled: true, calls: [{ name: 'get_level', input: {} }] };
   if (/\b(stop|leallit|allitsd le|kapcsold ki|vege a tiltas)/.test(t) && !sites.length) return { handled: true, calls: [{ name: 'stop_focus', input: {} }] };
   if (/\b(extend|hosszabbit|meghosszabbit|meg \d+|\+\s*\d+)/.test(t) && minutes) return { handled: true, calls: [{ name: 'extend_focus', input: { minutes } }] };
   if (/\b(unblock|enged|oldd fel|vedd le|torold)\b/.test(t) && sites.length) return { handled: true, calls: [{ name: 'unblock_sites', input: { sites } }] };
@@ -367,15 +462,60 @@ function offlineReply(lang, results) {
     else if (name === 'unblock_sites') lines.push(hu ? `✅ Levéve: ${r.removed.join(', ')}.` : `✅ Removed: ${r.removed.join(', ')}.`);
     else if (name === 'set_grow') lines.push(hu ? `🌱 Mostantól ez nő: ${r.grows}.` : `🌱 Now growing: ${r.grows}.`);
     else if (name === 'get_stats') lines.push(hu ? `📊 Ma: **${r.last7[6].focusMinutes} perc**, a héten: **${r.last7.reduce((a, b) => a + b.focusMinutes, 0)} perc**, sorozat: **${r.streak} nap**, összesen **${r.totalFocusHours} óra**.` : `📊 Today: **${r.last7[6].focusMinutes} min**, this week: **${r.last7.reduce((a, b) => a + b.focusMinutes, 0)} min**, streak: **${r.streak} days**, total **${r.totalFocusHours} h**.`);
+    else if (name === 'get_weather') lines.push(weatherLine(r, hu));
+    else if (name === 'get_time') lines.push(hu ? `🕒 Most **${r.time}** van (${r.date}).` : `🕒 It’s **${r.time}** (${r.date}).`);
+    else if (name === 'customize_app') lines.push(hu ? '✅ Kész, átállítottam.' : '✅ Done — updated.');
+    else if (name === 'get_level') lines.push(hu ? `🏝️ **${r.level}. szint** — ${r.title}. Még **${r.toNextLevel} XP** a következőig. Kristályok: ${r.gems.filter((g) => g.got).length}/${r.gems.length}.` : `🏝️ **Level ${r.level}** — ${r.title}. **${r.toNextLevel} XP** to the next one. Gems: ${r.gems.filter((g) => g.got).length}/${r.gems.length}.`);
     else if (name === 'get_status') lines.push(r.blocking ? (hu ? `🔒 Tiltás fut **${r.blocking.until}**-ig (${r.blocking.mode}).` : `🔒 Blocking until **${r.blocking.until}** (${r.blocking.mode}).`) : (hu ? 'Most nincs tiltás.' : 'Nothing is blocked right now.'));
   }
   return lines.join('\n');
 }
 
-function offlineHelp(lang) {
-  return lang === 'hu'
-    ? 'Offline módban ezeket értem: „indíts 50 perc fókuszt szigorúan”, „tiltsd le a youtube.com/shorts-ot 2 órára”, „hosszabbíts 15 percet”, „mennyit fókuszáltam?”, „növessz fenyőt”. Bármi másra (kérdések, tanulás, tervek) kapcsold be a Halyra AI-t a Beállításokban.'
-    : 'Offline I understand things like “start 50 min strict focus”, “block youtube.com/shorts for 2 hours”, “extend 15 min”, “how much did I focus?”, “grow a pine”. For everything else (questions, study help, planning) turn on Halyra AI in Settings.';
+const WMO = {
+  en: { 0: ['☀️', 'clear sky'], 1: ['🌤️', 'mostly clear'], 2: ['⛅', 'partly cloudy'], 3: ['☁️', 'cloudy'], 45: ['🌫️', 'fog'], 48: ['🌫️', 'icy fog'], 51: ['🌦️', 'light drizzle'], 53: ['🌦️', 'drizzle'], 55: ['🌧️', 'heavy drizzle'], 56: ['🌧️', 'freezing drizzle'], 57: ['🌧️', 'freezing drizzle'], 61: ['🌦️', 'light rain'], 63: ['🌧️', 'rain'], 65: ['🌧️', 'heavy rain'], 66: ['🌧️', 'freezing rain'], 67: ['🌧️', 'freezing rain'], 71: ['🌨️', 'light snow'], 73: ['🌨️', 'snow'], 75: ['❄️', 'heavy snow'], 77: ['🌨️', 'snow grains'], 80: ['🌦️', 'rain showers'], 81: ['🌧️', 'rain showers'], 82: ['⛈️', 'heavy showers'], 85: ['🌨️', 'snow showers'], 86: ['❄️', 'heavy snow showers'], 95: ['⛈️', 'thunderstorm'], 96: ['⛈️', 'thunderstorm with hail'], 99: ['⛈️', 'thunderstorm with hail'] },
+  hu: { 0: ['☀️', 'derült'], 1: ['🌤️', 'többnyire derült'], 2: ['⛅', 'részben felhős'], 3: ['☁️', 'borult'], 45: ['🌫️', 'köd'], 48: ['🌫️', 'zúzmarás köd'], 51: ['🌦️', 'gyenge szitálás'], 53: ['🌦️', 'szitálás'], 55: ['🌧️', 'erős szitálás'], 56: ['🌧️', 'ónos szitálás'], 57: ['🌧️', 'ónos szitálás'], 61: ['🌦️', 'gyenge eső'], 63: ['🌧️', 'eső'], 65: ['🌧️', 'erős eső'], 66: ['🌧️', 'ónos eső'], 67: ['🌧️', 'ónos eső'], 71: ['🌨️', 'gyenge havazás'], 73: ['🌨️', 'havazás'], 75: ['❄️', 'erős havazás'], 77: ['🌨️', 'hószemcsék'], 80: ['🌦️', 'zápor'], 81: ['🌧️', 'zápor'], 82: ['⛈️', 'heves zápor'], 85: ['🌨️', 'hózápor'], 86: ['❄️', 'erős hózápor'], 95: ['⛈️', 'zivatar'], 96: ['⛈️', 'zivatar jégesővel'], 99: ['⛈️', 'zivatar jégesővel'] },
+};
+function wmo(code, hu) { const t = WMO[hu ? 'hu' : 'en']; return t[code] || t[Math.floor(code / 10) * 10] || ['🌡️', '']; }
+
+/** "Weather" tool result → one friendly line (offline replies and tests). */
+function weatherLine(r, hu) {
+  const [ic, desc] = wmo(r.now.code, hu);
+  const day = (d) => (d ? `${Math.round(d.min)}–${Math.round(d.max)} °C${d.rain != null ? (hu ? `, eső esélye ${d.rain}%` : `, ${d.rain}% chance of rain`) : ''}` : '');
+  return hu
+    ? `${ic} **${r.place}**: most **${Math.round(r.now.temp)} °C** (hőérzet ${Math.round(r.now.feels)} °C), ${desc}. Ma ${day(r.today)}.${r.tomorrow ? ` Holnap ${day(r.tomorrow)}, ${wmo(r.tomorrow.code, true)[1]}.` : ''}`
+    : `${ic} **${r.place}**: **${Math.round(r.now.temp)} °C** now (feels like ${Math.round(r.now.feels)} °C), ${desc}. Today ${day(r.today)}.${r.tomorrow ? ` Tomorrow ${day(r.tomorrow)}, ${wmo(r.tomorrow.code, false)[1]}.` : ''}`;
 }
 
-module.exports = { TOOLS, WEB_SEARCH, runTool, systemPrompt, offline, offlineReply, offlineHelp, status, findList, parseMinutes };
+/** Open-Meteo (free, no key) → compact weather. `fetchJson(url)` is injected. */
+async function weather(fetchJson, place, opts = {}) {
+  const lang = opts.lang === 'hu' ? 'hu' : 'en';
+  let loc = null;
+  const q = String(place || opts.city || '').trim();
+  if (q) {
+    const g = await fetchJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=${lang}&format=json`);
+    const r = g && g.results && g.results[0];
+    if (!r) throw new Error('notfound');
+    loc = { name: r.name, country: r.country || '', lat: r.latitude, lon: r.longitude };
+  } else {
+    const ip = await fetchJson('https://get.geojs.io/v1/ip/geo.json');
+    if (!ip || !ip.latitude) throw new Error('notfound');
+    loc = { name: ip.city || ip.region || ip.country || '?', country: ip.country || '', lat: Number(ip.latitude), lon: Number(ip.longitude), approx: true };
+  }
+  const w = await fetchJson(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3`);
+  const c = w.current || {};
+  const d = w.daily || {};
+  const dayAt = (i) => (d.time && d.time[i] ? { date: d.time[i], code: d.weather_code[i], max: d.temperature_2m_max[i], min: d.temperature_2m_min[i], rain: d.precipitation_probability_max ? d.precipitation_probability_max[i] : null } : null);
+  return {
+    place: loc.country && loc.name !== loc.country ? `${loc.name}, ${loc.country}` : loc.name, approximate: Boolean(loc.approx),
+    now: { temp: c.temperature_2m, feels: c.apparent_temperature, code: c.weather_code, wind: c.wind_speed_10m, precipitation: c.precipitation },
+    today: dayAt(0), tomorrow: dayAt(1), dayAfter: dayAt(2), source: 'Open-Meteo',
+  };
+}
+
+function offlineHelp(lang) {
+  return lang === 'hu'
+    ? 'Offline módban ezeket értem: „indíts 50 perc fókuszt szigorúan”, „tiltsd le a youtube.com/shorts-ot 2 órára”, „hosszabbíts 15 percet”, „mennyit fókuszáltam?”, „hány fok van?”, „hányas szinten vagyok?”, „rejtsd el a statisztikát”, „karácsonyi mód ki”. Bármi másra (kérdések, tanulás, tervek) kapcsold be a Halyra AI-t a Beállításokban.'
+    : 'Offline I understand things like “start 50 min strict focus”, “block youtube.com/shorts for 2 hours”, “extend 15 min”, “how much did I focus?”, “what’s the weather?”, “what level am I?”, “hide stats from the menu”, “Christmas look off”. For everything else (questions, study help, planning) turn on Halyra AI in Settings.';
+}
+
+module.exports = { TOOLS, WEB_SEARCH, runTool, systemPrompt, offline, offlineReply, offlineHelp, status, findList, parseMinutes, weather, weatherLine, wmo, weatherPlace };

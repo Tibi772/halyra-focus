@@ -1,0 +1,27 @@
+name: 💡 Idea / Ötlet
+description: Something to add, change or remove · Valami, amit tegyünk bele, változtassunk vagy vegyünk ki
+labels: [idea]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind? · Milyen?
+      options:
+        - Add something · Tegyetek bele valamit
+        - Change something · Változtassatok valamin
+        - Remove something · Vegyetek ki valamit
+        - I just like something · Csak tetszik valami
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Tell us · Meséld el
+      description: What would make Halyra better for you? · Mitől lenne jobb neked a Halyra?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version & device · Verzió és eszköz
+      placeholder: Halyra Focus 1.6.0 · Windows · hu

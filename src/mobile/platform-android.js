@@ -97,6 +97,8 @@ module.exports = {
   findBlocked: async () => [],
   activeWebPage: async () => null,
   kill() {},
+  makeHider: () => null, // phones block apps with their own full-screen page
+  appAction: () => 'close',
   listInstalledApps,
   appFromPath: () => null,
   helperInstalled: () => Boolean(perms().vpn),

@@ -47,6 +47,16 @@ function addSession(stats, ms) {
   day(stats, ms).sessions += 1;
 }
 
+/** A session that ran to the end: counts for levels and some achievements. */
+function addDone(stats, endMs, minutes, startMs) {
+  const d = day(stats, endMs);
+  d.done = (d.done || 0) + 1;
+  d.longest = Math.max(d.longest || 0, Math.round(minutes || 0));
+  const h = new Date(startMs || endMs).getHours();
+  if (h < 7) d.early = 1;
+  if (h >= 22 || new Date(endMs).getHours() >= 23) d.night = 1;
+}
+
 /** A finished (ok) or abandoned (withered) grow item. `id` = session start, so devices don't double it. */
 function addGrown(stats, rec) {
   stats.garden = Array.isArray(stats.garden) ? stats.garden : [];
@@ -72,6 +82,18 @@ function gardenSummary(stats, ms) {
   };
 }
 
+/** Monday of the week of `ms` (local) as "YYYY-MM-DD", and focus minutes since then. */
+function thisWeek(stats, ms) {
+  const d = new Date(ms);
+  const back = (d.getDay() + 6) % 7;
+  let minutes = 0;
+  for (let i = 0; i <= back; i += 1) {
+    const v = stats.days[dayKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() - i, 12).getTime())];
+    if (v) minutes += v.focusSec / 60;
+  }
+  return { start: dayKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() - back, 12).getTime()), minutes: Math.floor(minutes) };
+}
+
 /** Last full week (Mon–Sun before the week of `ms`): { key, minutes, sessions, grown, bestDay }. */
 function lastWeek(stats, ms) {
   const d = new Date(ms);
@@ -95,14 +117,65 @@ function lastWeek(stats, ms) {
 
 function prune(stats, ms, keepDays = 400) {
   const cutoff = dayKey(ms - keepDays * 86400000);
-  for (const k of Object.keys(stats.days)) if (k < cutoff) delete stats.days[k];
+  for (const k of Object.keys(stats.days)) {
+    if (k >= cutoff) continue;
+    // Old days leave, but what they count towards levels stays.
+    const v = stats.days[k];
+    const a = stats.archive || (stats.archive = { focusSec: 0, done: 0, longest: 0, bestStreak: 0, early: 0, night: 0 });
+    a.focusSec += v.focusSec || 0;
+    a.done += v.done || 0;
+    a.longest = Math.max(a.longest, v.longest || 0);
+    if (v.early) a.early = 1;
+    if (v.night) a.night = 1;
+    delete stats.days[k];
+  }
+}
+
+/** Everything levels & achievements need (see src/shared/levels.js). */
+function levelInputs(stats, ms, streakMinMinutes = 25) {
+  const a = stats.archive || {};
+  let focusSec = a.focusSec || 0;
+  let done = a.done || 0;
+  let longest = a.longest || 0;
+  let early = Boolean(a.early);
+  let night = Boolean(a.night);
+  let xmas = false;
+  const keys = Object.keys(stats.days).sort();
+  for (const k of keys) {
+    const v = stats.days[k];
+    focusSec += v.focusSec || 0;
+    done += v.done || 0;
+    longest = Math.max(longest, v.longest || 0);
+    if (v.early) early = true;
+    if (v.night) night = true;
+    if (/-12-2[456]$/.test(k) && v.focusSec >= 60) xmas = true;
+  }
+  // best streak and "perfect week" (Mon–Sun, all 7 days ≥ the streak minimum)
+  let best = a.bestStreak || 0;
+  let run = 0;
+  let prev = null;
+  let perfectWeek = false;
+  const okDays = new Set(keys.filter((k) => stats.days[k].focusSec >= streakMinMinutes * 60));
+  for (const k of keys) {
+    if (!okDays.has(k)) { run = 0; prev = k; continue; }
+    const d = new Date(`${k}T12:00:00`);
+    const y = prev ? new Date(`${prev}T12:00:00`) : null;
+    run = y && Math.round((d - y) / 86400000) === 1 && okDays.has(prev) ? run + 1 : 1;
+    best = Math.max(best, run);
+    prev = k;
+    if (d.getDay() === 0 && run >= 7) perfectWeek = true;
+  }
+  const garden = Array.isArray(stats.garden) ? stats.garden : [];
+  const grown = garden.filter((g) => g.ok).length;
+  for (const g of garden) if (g.ok) longest = Math.max(longest, g.m || 0);
+  return { focusMin: Math.floor(focusSec / 60), sessions: done, grown, bestStreak: best, longestMin: longest, early, night, perfectWeek, xmas };
 }
 
 function sum(obj) {
   return Object.values(obj || {}).reduce((a, b) => a + b, 0);
 }
 
-function summarize(stats, ms, streakMinMinutes = 25) {
+function summarize(stats, ms, streakMinMinutes = 25, opts = {}) {
   const last7 = [];
   for (let i = 6; i >= 0; i -= 1) {
     const d = new Date(ms);
@@ -113,15 +186,24 @@ function summarize(stats, ms, streakMinMinutes = 25) {
   }
   const today = stats.days[dayKey(ms)] || { focusSec: 0, blocks: {}, sessions: 0 };
 
+  // One rest day per week doesn't break the streak (a "freeze"), so a single
+  // missed day isn't a disaster — two in a row, or two in a week, still are.
   let streak = 0;
+  let lastFreeze = -99;
+  let freezes = 0;
   for (let i = 0; i < 400; i += 1) {
     const d = new Date(ms);
     const k = dayKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() - i, 12).getTime());
     const v = stats.days[k];
     const ok = v && v.focusSec >= streakMinMinutes * 60;
-    if (ok) streak += 1;
-    else if (i === 0) continue; // today doesn't break the streak until it's over
-    else break;
+    if (ok) { streak += 1; continue; }
+    if (i === 0) continue; // today doesn't break the streak until it's over
+    if (opts.freeze !== false && streak > 0 && i - lastFreeze >= 7 && i - lastFreeze !== 1) {
+      const kb = dayKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() - i - 1, 12).getTime());
+      const vb = stats.days[kb];
+      if (vb && vb.focusSec >= streakMinMinutes * 60) { lastFreeze = i; freezes += 1; continue; }
+    }
+    break;
   }
 
   const totals = {};
@@ -140,6 +222,7 @@ function summarize(stats, ms, streakMinMinutes = 25) {
     weekMinutes: last7.reduce((a, b) => a + b.minutes, 0),
     totalHours: Math.round(totalFocus / 360) / 10,
     streak,
+    freezes,
     last7,
     top,
     garden: gardenSummary(stats, ms),
@@ -147,4 +230,4 @@ function summarize(stats, ms, streakMinMinutes = 25) {
 }
 
 module.exports = {
-  addGrown, gardenSummary, lastWeek, dayKey, emptyStats, addFocus, addBlock, addUsage, usageToday, addSession, prune, summarize };
+  addGrown, gardenSummary, lastWeek, dayKey, emptyStats, addFocus, addBlock, addUsage, usageToday, addSession, addDone, prune, summarize, levelInputs, thisWeek };

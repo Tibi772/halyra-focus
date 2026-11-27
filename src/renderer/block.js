@@ -23,6 +23,7 @@
     if (b.font) body.dataset.font = b.font;
     if (b.effect) body.dataset.effect = b.effect;
     document.documentElement.lang = b.lang || 'en';
+    body.classList.toggle('festive', Boolean(b.festive));
     $('eyebrow').textContent = d.kind === 'limit' ? (tx.limit || 'Daily limit reached') : (tx.title || 'Blocked right now');
     $('app').textContent = d.app || '';
     $('mode').textContent = tx[d.mode] || d.mode || '';

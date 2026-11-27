@@ -110,13 +110,41 @@ class CloudClient {
     return Array.isArray(rows) && rows[0] ? rows[0] : null;
   }
 
+  /** Just the "last changed" stamp (tiny), so devices only download data when something changed. */
+  async pullMeta() {
+    const tok = await this.token();
+    const rows = await req('GET', `${this.url}/rest/v1/halyra_sync?select=device,updated_at&user_id=eq.${encodeURIComponent(this.userId())}`, { headers: { apikey: this.key, authorization: `Bearer ${tok}` } });
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  }
+
+  async rpc(name, args) {
+    const tok = await this.token();
+    return req('POST', `${this.url}/rest/v1/rpc/${name}`, { headers: { apikey: this.key, authorization: `Bearer ${tok}` }, body: args || {} });
+  }
+
+  // ---- leaderboard (docs/supabase-leaderboard.sql)
+  lbReport(r) {
+    return this.rpc('halyra_lb_report', {
+      p_name: r.name, p_emoji: r.emoji, p_public: Boolean(r.public), p_week_start: r.weekStart,
+      p_week_minutes: Math.round(r.weekMinutes), p_total: Math.round(r.totalMinutes), p_level: r.level, p_streak: r.streak,
+    });
+  }
+  lbBoard(scope, groupId) { return this.rpc('halyra_lb_board', { p_scope: scope, p_group: groupId || null }); }
+  lbGroups() { return this.rpc('halyra_lb_groups_mine'); }
+  async lbCreateGroup(name) { const r = await this.rpc('halyra_lb_create_group', { p_name: name }); return Array.isArray(r) ? r[0] : r; }
+  async lbJoin(code) { const r = await this.rpc('halyra_lb_join', { p_code: code }); return Array.isArray(r) ? r[0] : r; }
+  lbLeave(groupId) { return this.rpc('halyra_lb_leave', { p_group: groupId }); }
+  lbDeleteMe() { return this.rpc('halyra_lb_delete_me'); }
+
+  /** Returns the updated_at it wrote, so the next poll knows it was us. */
   async push(data, device) {
     const tok = await this.token();
+    const at = new Date().toISOString();
     await req('POST', `${this.url}/rest/v1/halyra_sync?on_conflict=user_id`, {
       headers: { apikey: this.key, authorization: `Bearer ${tok}`, prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: [{ user_id: this.userId(), data, device, updated_at: new Date().toISOString() }],
+      body: [{ user_id: this.userId(), data, device, updated_at: at }],
     });
-    return true;
+    return at;
   }
 }
 

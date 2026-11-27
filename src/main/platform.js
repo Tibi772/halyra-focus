@@ -11,6 +11,7 @@ const proc = require('../core/procmatch');
 const webusage = require('../core/webusage');
 const hostsLib = require('../core/hosts');
 const helper = require('../core/helperScripts');
+const hider = require('./hider');
 
 const IS_MAC = process.platform === 'darwin';
 const IS_WIN = process.platform === 'win32';
@@ -320,4 +321,5 @@ module.exports = {
   IS_MAC, IS_WIN, findBlocked, activeWebPage, kill, listInstalledApps, appFromPath,
   helperInstalled, helperVersion, helperOutdated, writeRules, verifyHosts, installHelper, uninstallHelper, rulesPath, hostsPath,
   createBrowserGuard, startBlockServer, unfilterableBrowsers, openAutomationSettings, handlers,
+  makeHider: (onHidden) => new hider.Hider(onHidden), appAction: hider.actionFor,
 };
