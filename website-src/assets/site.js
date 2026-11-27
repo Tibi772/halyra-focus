@@ -101,6 +101,64 @@
     }, { passive: true });
   }
 
+  // ---------------------------------------------------------------- the gate
+  // The door the site opens on. It is only ever a layer on top of a page that is
+  // already complete, so every way of leaving it does the same thing, and any of
+  // them can be skipped entirely.
+  (function gate() {
+    const el = document.getElementById('gate');
+    if (!el) return;
+    const body = document.body;
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let open = false;
+
+    const enter = (instant) => {
+      if (open) return;
+      open = true;
+      body.classList.add('entered');
+      el.classList.add('going');
+      // Tell the scene someone came in: it answers with a push-in.
+      document.dispatchEvent(new CustomEvent('halyra:enter', { detail: { instant: Boolean(instant) } }));
+      try { sessionStorage.setItem('halyra-entered', '1'); } catch (_) { /* private mode */ }
+      setTimeout(() => el.classList.add('gone'), instant ? 0 : 1200);
+      off();
+    };
+
+    const onKey = (e) => { if (e.key !== 'Tab' && !e.metaKey && !e.ctrlKey && !e.altKey) enter(); };
+    const onWheel = () => enter();
+    const onTouch = () => enter();
+    function off() {
+      removeEventListener('keydown', onKey);
+      removeEventListener('wheel', onWheel);
+      removeEventListener('touchmove', onTouch);
+    }
+
+    // Anyone who asked for less motion, is coming back during this visit, or
+    // landed on a deep link does not get held at the door.
+    let been = false;
+    try { been = sessionStorage.getItem('halyra-entered') === '1'; } catch (_) { been = false; }
+    if (still || been || location.hash || /[?&](nointro|lighthouse)=/.test(location.search)) {
+      el.classList.add('gone');
+      body.classList.add('entered');
+      open = true;
+      document.dispatchEvent(new CustomEvent('halyra:enter', { detail: { instant: true } }));
+      return;
+    }
+
+    const btn = document.getElementById('gate-enter');
+    const skip = document.getElementById('gate-skip');
+    if (btn) btn.addEventListener('click', () => enter());
+    if (skip) skip.addEventListener('click', () => enter(true));
+    el.addEventListener('click', (e) => { if (e.target === el || e.target.classList.contains('gate-frost')) enter(); });
+    addEventListener('keydown', onKey);
+    addEventListener('wheel', onWheel, { passive: true });
+    addEventListener('touchmove', onTouch, { passive: true });
+    // Never trap anyone: if the scripts that run the scene fall over, the door
+    // opens by itself after a few seconds.
+    setTimeout(() => enter(true), 9000);
+    if (btn) setTimeout(() => btn.focus({ preventScroll: true }), 420);
+  }());
+
   // ---------------------------------------------------------------- Christmas look (auto in December, switchable, remembered)
   (function season() {
     const root = document.documentElement;

@@ -109,11 +109,37 @@
     const m = new Mesh();
     const L = Math.max(1, d.level || 1);
     const R = 3.0 + Math.min(L, 45) * 0.085;
-    m.seed = 11;
-    const SEG = 36;
-    const rr = []; for (let j = 0; j < SEG; j += 1) rr.push(R * (1 + (m.rand() - 0.5) * 0.12));
-    const ring = (y, k, jy) => rr.map((r, j) => { const a = (j / SEG) * Math.PI * 2; return [Math.cos(a) * r * k, y + (m.rand() - 0.5) * jy, Math.sin(a) * r * k]; });
-    const r0 = ring(0, 1, 0); const r1 = ring(-0.45, 0.97, 0.1); const r2 = ring(-1.6, 0.72, 0.4); const r3 = ring(-3.0, 0.38, 0.5);
+    // The coastline is drawn from the level, not from a fixed seed, so the
+    // island is a different place at every level instead of the same disc
+    // getting wider: two slow waves give it bays and headlands, a third adds
+    // smaller inlets, and a little noise keeps the edge from looking machined.
+    m.seed = 11 + L * 7919;
+    const SEG = 72;
+    const lobes = 3 + (L % 4);              // how many headlands
+    const inlets = 5 + ((L * 3) % 5);       // and how broken the edge between them is
+    const ph1 = m.rand() * Math.PI * 2;
+    const ph2 = m.rand() * Math.PI * 2;
+    const ph3 = m.rand() * Math.PI * 2;
+    const depth = 0.17 + (L % 3) * 0.035;
+    const rr = [];
+    for (let j = 0; j < SEG; j += 1) {
+      const a = (j / SEG) * Math.PI * 2;
+      const shape = 1
+        + Math.sin(a * lobes + ph1) * depth
+        + Math.sin(a * (lobes + 2) + ph2) * depth * 0.42
+        + Math.sin(a * inlets + ph3) * 0.055;
+      rr.push(R * shape * (1 + (m.rand() - 0.5) * 0.05));
+    }
+    // relief on the top surface: the ground is no longer a flat lid
+    const hh = rr.map((_, j) => {
+      const a = (j / SEG) * Math.PI * 2;
+      return Math.sin(a * lobes + ph2) * 0.16 + Math.sin(a * (inlets + 1) + ph1) * 0.07;
+    });
+    const ring = (y, k, jy, lift) => rr.map((r, j) => {
+      const a = (j / SEG) * Math.PI * 2;
+      return [Math.cos(a) * r * k, y + (lift ? hh[j] : 0) + (m.rand() - 0.5) * jy, Math.sin(a) * r * k];
+    });
+    const r0 = ring(0, 1, 0, true); const r1 = ring(-0.45, 0.97, 0.1, true); const r2 = ring(-1.6, 0.72, 0.4); const r3 = ring(-3.0, 0.38, 0.5);
     const tip = [0.2, -4.6 - R * 0.25, -0.1];
     const grass = hex(d.season ? '#dfe8f2' : '#2f6a4c');
     for (let j = 0; j < SEG; j += 1) m.tri([0, 0.02, 0], r0[j], r0[(j + 1) % SEG], grass, 3, [0, 1, 0]);
@@ -176,15 +202,33 @@
 uniform mat4 uVP; uniform mat4 uM; varying vec3 vN; varying vec3 vC; varying float vF; varying vec3 vW;
 void main() { vec4 w = uM * vec4(aP, 1.0); vW = w.xyz; vN = (uM * vec4(aN, 0.0)).xyz; vC = aC; vF = aF; gl_Position = uVP * w; }`;
   const FS = `precision mediump float;
-uniform vec3 uCam; uniform float uSnow; uniform float uGlow; varying vec3 vN; varying vec3 vC; varying float vF; varying vec3 vW;
+uniform vec3 uCam; uniform float uSnow; uniform float uGlow; uniform float uR; varying vec3 vN; varying vec3 vC; varying float vF; varying vec3 vW;
 void main() {
   vec3 n = normalize(vN);
   float dif = max(dot(n, normalize(vec3(-0.4, 0.85, 0.35))), 0.0);
   vec3 light = mix(vec3(0.12, 0.11, 0.2), vec3(0.36, 0.4, 0.6), n.y * 0.5 + 0.5) + dif * vec3(0.62, 0.64, 0.82);
   vec3 col = vC * light;
-  if (vF > 0.5 && vF < 1.5) col = vC * (0.95 + 0.25 * uGlow) + vC * light * 0.2;
+  if (vF > 0.5 && vF < 1.5) {
+    // A gem is a cut stone, not a painted blob: facets catch the light at
+    // different angles, the edges go bright where they turn away from you, and
+    // the whole thing lifts a little when the island celebrates.
+    vec3 v = normalize(uCam - vW);
+    float facet = 0.55 + 0.45 * abs(dot(n, normalize(vec3(-0.3, 0.9, 0.45))));
+    float edge = pow(1.0 - abs(dot(n, v)), 2.4);
+    float spark = pow(max(dot(reflect(-v, n), normalize(vec3(-0.4, 0.85, 0.35))), 0.0), 28.0);
+    col = vC * (0.52 + 0.62 * facet + 0.3 * uGlow) + vC * edge * 1.1 + vec3(1.0) * spark * 0.65;
+  }
   if (vF > 1.5 && vF < 2.5) col = mix(col, vec3(0.76, 0.82, 0.94) * min(light, vec3(1.05)), smoothstep(0.35, 0.9, n.y) * uSnow);
-  if (vF > 2.5) { float r = length(vW.xz); col *= 0.85 + 0.15 * sin(r * 6.0); }
+  if (vF > 2.5) {
+    // Ground. It used to be concentric rings, which read as a radar screen.
+    // Now it is uneven the way ground is: broad patches, a little grain, and
+    // the edge of the island falling away into shadow.
+    float r = length(vW.xz);
+    float patch = sin(vW.x * 0.9 + 1.7) * sin(vW.z * 1.1 - 0.6) * 0.5 + sin(vW.x * 2.3 - vW.z * 1.9) * 0.22;
+    col *= 0.90 + patch * 0.12;
+    col *= 1.0 - smoothstep(0.55, 1.0, r / max(uR, 0.001)) * 0.22;
+    col += vec3(0.05, 0.06, 0.09) * max(0.0, patch);
+  }
   float rim = pow(1.0 - abs(dot(n, normalize(uCam - vW))), 3.0);
   col += vec3(0.2, 0.12, 0.32) * rim * step(vW.y, -0.2);
   float fog = smoothstep(-2.5, -9.0, vW.y) * 0.6;
@@ -257,12 +301,13 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
 }`;
   const GL_VS = `attribute vec3 aC; attribute vec2 aQ; attribute vec4 aK;
-uniform mat4 uVP; uniform vec3 uR; uniform vec3 uU; uniform float uT; varying vec2 vQ; varying vec3 vK;
+uniform mat4 uVP; uniform vec3 uR; uniform vec3 uU; uniform float uT; uniform vec3 uOff; uniform vec3 uTint; uniform float uScale;
+varying vec2 vQ; varying vec3 vK;
 void main() {
   float sz = max(abs(aQ.x), abs(aQ.y));
   vQ = aQ / sz;
-  vK = aK.rgb * (0.65 + 0.35 * sin(uT * 2.0 + aK.w * 30.0));
-  vec3 p = aC + (uR * aQ.x + uU * aQ.y) * 0.5;
+  vK = aK.rgb * uTint * (0.65 + 0.35 * sin(uT * 2.0 + aK.w * 30.0));
+  vec3 p = aC + uOff + (uR * aQ.x + uU * aQ.y) * 0.5 * uScale;
   gl_Position = uVP * vec4(p, 1.0);
 }`;
   const GL_FS = 'precision mediump float; varying vec2 vQ; varying vec3 vK; void main() { float d = dot(vQ, vQ); gl_FragColor = vec4(vK * max(0.0, exp(-d * 4.0) - 0.02), 1.0); }';
@@ -309,6 +354,14 @@ void main() {
     // season may be a flag (old callers) or an amount 0..1 (off / a little / full)
     const snowAmt = () => (typeof D.season === 'number' ? Math.max(0, Math.min(1, D.season)) : (D.season ? 1 : 0));
     let W; let worldN = 0; let gemBufs = []; let glowB; let glowN = 0; let ptB; let ptN = 0; const sky = buf([-1, -1, 3, -1, -1, 3]);
+    // One sprite, reused for every gem's halo: centre at the origin, moved and
+    // tinted per gem by uniforms rather than rebuilt every frame.
+    const haloB = (() => {
+      const q = [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]];
+      const out = [];
+      for (const [x, y] of q) out.push(0, 0, 0, x * 2.6, y * 2.6, 1, 1, 1, 0.35);
+      return buf(out);
+    })();
     let R = 4; let H = 2;
     const popAt = {}; let seenGot = null; let lastLevel = null; let growAt = -1e9;
     function rebuild() {
@@ -326,7 +379,7 @@ void main() {
       const gems = (D.gems || []);
       gemBufs = gems.map((g, i) => {
         const mm = gemMesh(g.shape, g.got ? g.color : '#3b3f55');
-        return { b: buf(mm.v), n: mm.v.length / 10, gem: g, i, got: g.got };
+        return { b: buf(mm.v), n: mm.v.length / 10, gem: g, i, got: g.got, rgb: hex(g.got ? g.color : '#6a76a0'), pos: null };
       });
       // glows: spire top, gems, festive lights
       const gl2 = [];
@@ -464,7 +517,7 @@ void main() {
       // world
       gl.disable(gl.BLEND); gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
       gl.useProgram(P.lit.p);
-      gl.uniformMatrix4fv(P.lit.u.uVP, false, VP); gl.uniform3fv(P.lit.u.uCam, eye); gl.uniform1f(P.lit.u.uSnow, snowAmt()); gl.uniform1f(P.lit.u.uGlow, burst);
+      gl.uniformMatrix4fv(P.lit.u.uVP, false, VP); gl.uniform3fv(P.lit.u.uCam, eye); gl.uniform1f(P.lit.u.uSnow, snowAmt()); gl.uniform1f(P.lit.u.uGlow, burst); gl.uniform1f(P.lit.u.uR, R);
       const bob = reduce ? 0 : Math.sin(t * 0.6) * 0.1;
       const ga = (now - growAt) / 1000;
       const grow = ga < 0.9 ? 1 + Math.sin(Math.min(1, ga / 0.9) * Math.PI) * 0.045 : 1;
@@ -484,6 +537,7 @@ void main() {
         gl.uniformMatrix4fv(P.lit.u.uM, false, trs(M, p[0], p[1], p[2], t * (0.6 + g.i * 0.03), 0.25, sc));
         bind(P.lit, g.b, [['aP', 3], ['aN', 3], ['aC', 3], ['aF', 1]], 10);
         gl.drawArrays(gl.TRIANGLES, 0, g.n);
+        g.pos = p;
         const s = project(p);
         if (s) gemPos.push({ s, gem: g.gem });
       }
@@ -493,8 +547,22 @@ void main() {
       gl.useProgram(P.glow.p);
       gl.uniformMatrix4fv(P.glow.u.uVP, false, VP);
       gl.uniform3f(P.glow.u.uR, VW[0], VW[4], VW[8]); gl.uniform3f(P.glow.u.uU, VW[1], VW[5], VW[9]); gl.uniform1f(P.glow.u.uT, t);
+      gl.uniform3f(P.glow.u.uOff, 0, 0, 0); gl.uniform3f(P.glow.u.uTint, 1, 1, 1); gl.uniform1f(P.glow.u.uScale, 1);
       bind(P.glow, glowB, [['aC', 3], ['aQ', 2], ['aK', 4]], 9);
       gl.drawArrays(gl.TRIANGLES, 0, glowN); unbind(P.glow);
+      // every gem gets its own halo in its own colour — earned ones burn, the
+      // ones still to come only glimmer
+      bind(P.glow, haloB, [['aC', 3], ['aQ', 2], ['aK', 4]], 9);
+      for (const g of gemBufs) {
+        const p = g.pos;
+        if (!p) continue;
+        const k = (g.got ? 0.62 : 0.14) * (hover === g.gem ? 1.7 : 1) * (1 + burst * 0.8);
+        gl.uniform3f(P.glow.u.uOff, p[0], p[1], p[2]);
+        gl.uniform3f(P.glow.u.uTint, g.rgb[0] * k, g.rgb[1] * k, g.rgb[2] * k);
+        gl.uniform1f(P.glow.u.uScale, g.got ? 1 : 0.7);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      }
+      unbind(P.glow);
       pts(380, ptN - 380);
       gl.depthMask(true);
 

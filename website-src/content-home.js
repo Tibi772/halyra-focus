@@ -192,6 +192,14 @@ const en = {
     board: { title: 'This week · Study crew', rows: [['🦉', 'Bence', '13 h 32′', 14], ['🦊', 'Anna', '12 h 25′', 12], ['🐙', 'Marci', '11 h 30′', 11], ['🐼', 'You', '8 h 35′', 9]] },
   },
   xmas: { note: '🎄 The Christmas look is on.', off: 'Switch it off', btnOn: 'Turn on the Christmas look', btnOff: 'Turn off the Christmas look' },
+  gate: {
+    eyebrow: 'Winter 2026',
+    line1: 'It is quiet out here.',
+    line2: 'Everything that wants you is on the other side of that door.',
+    enter: 'Enter',
+    skip: 'Skip the intro',
+    hint: 'Click, scroll or press any key',
+  },
   feedback: {
     eyebrow: 'Built with you',
     h2: 'Tell us what to <em>change, add or remove.</em>',
@@ -402,6 +410,14 @@ const hu = {
     board: { title: 'Ez a hét · Suli banda', rows: [['🦉', 'Bence', '13 ó 32′', 14], ['🦊', 'Anna', '12 ó 25′', 12], ['🐙', 'Marci', '11 ó 30′', 11], ['🐼', 'Te', '8 ó 35′', 9]] },
   },
   xmas: { note: '🎄 Bekapcsolt a karácsonyi kinézet.', off: 'Kikapcsolom', btnOn: 'Karácsonyi kinézet be', btnOff: 'Karácsonyi kinézet ki' },
+  gate: {
+    eyebrow: 'Tél 2026',
+    line1: 'Idekint csend van.',
+    line2: 'Minden, ami el akar vinni, az ajtó túloldalán van.',
+    enter: 'Belépés',
+    skip: 'Átugrom',
+    hint: 'Kattints, görgess vagy nyomj egy billentyűt',
+  },
   feedback: {
     eyebrow: 'Veled együtt építjük',
     h2: 'Mondd meg, mit <em>változtassunk, tegyünk bele vagy vegyünk ki.</em>',

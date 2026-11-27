@@ -22,6 +22,14 @@
   // flipping it reads as the weather turning rather than a setting toggling.
   const wantWinter = () => (document.documentElement.classList.contains('xmas') ? 1 : 0.12);
   let winter = wantWinter();
+  // The gate: until someone comes in, the island is held far back and the camera
+  // drifts. Entering pulls it in, which is the whole point of the door.
+  let entry = document.body.classList.contains('entered') ? 1 : 0;
+  let entryTarget = entry;
+  document.addEventListener('halyra:enter', (e) => {
+    entryTarget = 1;
+    if (e && e.detail && e.detail.instant) entry = 1;
+  });
   const L = JSON.parse(stage.dataset.labels || '{}');
   const egg = (id) => document.dispatchEvent(new CustomEvent('halyra:egg', { detail: { id } }));
 
@@ -843,6 +851,7 @@ void main() {
     const ease = (cur, target, k) => cur + (target - cur) * Math.min(1, dt * k);
     focus = ease(focus, focusOn ? 1 : 0, 1.6);
     winter = ease(winter, wantWinter(), 1.1);
+    entry = ease(entry, entryTarget, 0.85);
     shield = ease(shield, focusOn ? 1 : 0, 2.2);
     if (pulse < 1.2) pulse += dt * 0.55;
     grow = ease(grow, focusOn ? 1 : 0.34, focusOn ? 0.55 : 1.2);
@@ -883,6 +892,8 @@ void main() {
     // The canvas is the whole hero on a wide screen, so the island needs more
     // room around it: cropped edges read as a bug, space reads as a photograph.
     dist = aspect >= 0.95 ? 38 / Math.min(1.05, aspect * 0.86) : 26.5 / Math.sqrt(Math.max(0.5, aspect));
+    // behind the door the island sits further out and lower in frame
+    dist *= 1 + (1 - entry) * 0.62;
     eye = [Math.sin(yw) * Math.cos(pt) * dist, Math.sin(pt) * dist + 1.2, Math.cos(yw) * Math.cos(pt) * dist];
     persp(PR, 0.72, aspect, 0.5, 300);
     const wide = aspect > 0.95 ? 1 : 0;
@@ -890,9 +901,10 @@ void main() {
     // pushed off-centre to the right and leaves the left side to the words.
     // This shifts the lens rather than the camera, so the scene keeps looking
     // straight at you instead of being seen from the side.
-    PR[8] = -0.34 * wide;
+    PR[8] = -0.34 * wide * entry;
     const tx = -Math.cos(yw) * 1.2 * wide; const tz = Math.sin(yw) * 1.2 * wide;
-    lookAt(VW, eye, [tx, -0.6 - scrollK * 2.5, tz], [0, 1, 0]);
+    // behind the door the island sits lower in frame, under the words
+    lookAt(VW, eye, [tx, -0.6 - scrollK * 2.5 + (1 - entry) * 3.4, tz], [0, 1, 0]);
     mul(VP, PR, VW);
     RIGHT[0] = VW[0]; RIGHT[1] = VW[4]; RIGHT[2] = VW[8];
     UP[0] = VW[1]; UP[1] = VW[5]; UP[2] = VW[9];

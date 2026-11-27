@@ -220,6 +220,33 @@ function feedbackSection(page, t) {
 
 // ------------------------------------------------------------------ pages
 
+/**
+ * The way in. Every reference the brief pointed at opens on a closed door with
+ * one word on it, and the site only begins once you push it. This is that door:
+ * a frosted pane over the scene that is already running behind it, so pressing
+ * Enter is a camera move rather than a page load. It is purely visual — the
+ * page under it is complete, in the markup, for anything that does not run
+ * scripts (a crawler, a reader) — and it takes itself away for anyone who asked
+ * for less motion, or who has already been through it this visit.
+ */
+function gate(t) {
+  const g = t.gate;
+  return `<div class="gate" id="gate" aria-hidden="true">
+  <div class="gate-frost"></div>
+  <div class="gate-in">
+    <div class="gate-mark">${ICON.logo}</div>
+    <div class="gate-eyebrow">${esc(g.eyebrow)}</div>
+    <p class="gate-line">${esc(g.line1)}<br><span>${esc(g.line2)}</span></p>
+    <button class="gate-btn" type="button" id="gate-enter">
+      <span class="gate-btn-word">${esc(g.enter)}</span>
+      <span class="gate-btn-glow" aria-hidden="true"></span>
+    </button>
+    <div class="gate-hint">${esc(g.hint)}</div>
+    <button class="gate-skip" type="button" id="gate-skip">${esc(g.skip)}</button>
+  </div>
+</div>`;
+}
+
 function homePage(page) {
   const t = T[page.lang];
   const softwareLd = {
@@ -236,7 +263,8 @@ function homePage(page) {
   const themeShots = { midnight: 'focus', daylight: 'theme-daylight', crt: 'theme-crt', onebit: 'theme-onebit', vapor: 'theme-vapor', custom: 'theme-custom' };
 
   return `${head(page, t, { title: t.meta.title, desc: t.meta.desc, jsonld: [softwareLd, faqLd, siteLd] })}
-<body>
+<body class="has-gate">
+${gate(t)}
 ${nav(page, t)}
 <main id="main">
 <section class="hero">

@@ -88,6 +88,19 @@ async function head(url) {
     }));
     const short = url.replace(BASE, '/');
     check(`${short} loads (200)`, res && res.status() === 200, res && res.status());
+    // The home page opens on the gate. Everything behind it has to be real, so
+    // check it is there, that it lets you in, and then carry on with the page.
+    if (await page.$('#gate:not(.gone)')) {
+      const g = await page.evaluate(() => {
+        const el = document.getElementById('gate');
+        return { enter: Boolean(document.getElementById('gate-enter')), skip: Boolean(document.getElementById('gate-skip')), shown: getComputedStyle(el).display !== 'none' };
+      });
+      check(`${short} opens on the gate`, g.enter && g.skip && g.shown, JSON.stringify(g));
+      await page.click('#gate-enter');
+      await page.waitForTimeout(1500);
+      const open = await page.evaluate(() => document.body.classList.contains('entered'));
+      check(`${short} the gate lets you in`, open);
+    }
     check(`${short} has title, description, canonical, one h1`, info.title && info.desc.length > 50 && info.canonical && info.h1 === 1, `${info.title} | h1=${info.h1}`);
     check(`${short} has no console errors or missing files`, errors.length === 0, errors.join(' ; '));
     check(`${short} all images load`, info.brokenImgs.length === 0, info.brokenImgs.join(' '));
