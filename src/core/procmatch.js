@@ -45,9 +45,15 @@ function parseTasklist(text) {
 const MAC_PROTECTED = ['/System/Library/CoreServices/Finder.app/', '/System/Library/CoreServices/Dock.app/', '/loginwindow', '/WindowServer', '/SystemUIServer.app/'];
 const WIN_PROTECTED = new Set(['explorer.exe', 'csrss.exe', 'winlogon.exe', 'dwm.exe', 'svchost.exe', 'system', 'smss.exe', 'lsass.exe', 'services.exe', 'wininit.exe', 'fontdrvhost.exe', 'sihost.exe', 'ctfmon.exe', 'conhost.exe', 'tasklist.exe', 'powershell.exe']);
 
+const baseName = (p) => String(p).split('/').pop();
+
 /**
  * macOS matching: an app named "Discord" matches any process whose executable
  * lives inside a bundle called "Discord.app" (main app + its helpers).
+ *
+ * Renaming the bundle is the oldest way around a blocker ("Discord.app" ->
+ * "D.app"), so the binary inside Contents/MacOS counts too: that name is baked
+ * into the app and renaming it breaks the app instead of freeing it.
  */
 function matchMac(procs, apps, { selfPath = '' } = {}) {
   const hits = [];
@@ -55,9 +61,12 @@ function matchMac(procs, apps, { selfPath = '' } = {}) {
     const lower = p.path.toLowerCase();
     if (selfPath && lower.startsWith(selfPath.toLowerCase())) continue;
     if (MAC_PROTECTED.some((x) => p.path.includes(x))) continue;
+    const binary = baseName(lower);
     for (const app of apps) {
-      const names = app.mac || [];
-      if (names.some((n) => lower.includes(`/${n.toLowerCase()}.app/`))) {
+      const names = (app.mac || []).map((n) => String(n).toLowerCase());
+      const inBundle = names.some((n) => lower.includes(`/${n}.app/`));
+      const isBinary = names.includes(binary) && lower.includes('/contents/macos/');
+      if (inBundle || isBinary) {
         hits.push({ pid: p.pid, app });
         break;
       }
@@ -66,14 +75,25 @@ function matchMac(procs, apps, { selfPath = '' } = {}) {
   return hits;
 }
 
+/**
+ * Windows matching. `exe` is the image name from tasklist; `orig` is the
+ * OriginalFilename baked into the executable by its publisher and `path` the
+ * file it was started from — both survive a rename, which is how people walk
+ * around blockers that only look at the visible name.
+ */
 function matchWin(procs, apps, { selfExe = '' } = {}) {
   const hits = [];
   const self = selfExe.toLowerCase();
   for (const p of procs) {
-    const exe = p.exe.toLowerCase();
+    const exe = String(p.exe || '').toLowerCase();
     if (WIN_PROTECTED.has(exe) || exe === self) continue;
+    const orig = String(p.orig || '').toLowerCase();
+    const fromPath = p.path ? String(p.path).replace(/\\/g, '/').split('/').pop().toLowerCase() : '';
+    if ((orig && WIN_PROTECTED.has(orig)) || (fromPath && WIN_PROTECTED.has(fromPath))) continue;
+    if (self && (orig === self || fromPath === self)) continue;
     for (const app of apps) {
-      if ((app.win || []).some((n) => n.toLowerCase() === exe)) {
+      const names = (app.win || []).map((n) => String(n).toLowerCase());
+      if (names.includes(exe) || (orig && names.includes(orig)) || (fromPath && names.includes(fromPath))) {
         hits.push({ pid: p.pid, app });
         break;
       }
@@ -88,4 +108,23 @@ const TAMPER_TOOLS = [
   { name: 'Terminal', mac: ['Terminal', 'iTerm', 'Warp', 'Ghostty'], win: [] },
 ];
 
-module.exports = { parseMacPs, parseTasklist, parseCsvLine, matchMac, matchWin, TAMPER_TOOLS };
+/** Windows: output of the PowerShell deep scan -> [{pid, exe, orig, path}] */
+function parseWinDeep(text) {
+  let rows;
+  try { rows = JSON.parse(String(text || '').trim() || '[]'); } catch (_) { return []; }
+  if (!Array.isArray(rows)) rows = [rows];
+  const out = [];
+  for (const r of rows) {
+    const pid = Number(r && r.Id);
+    if (!Number.isInteger(pid)) continue;
+    out.push({
+      pid,
+      exe: r.Name ? `${r.Name}.exe` : '',
+      orig: r.Orig || '',
+      path: r.Path || '',
+    });
+  }
+  return out;
+}
+
+module.exports = { parseMacPs, parseTasklist, parseCsvLine, parseWinDeep, matchMac, matchWin, TAMPER_TOOLS };

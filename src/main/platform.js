@@ -34,6 +34,32 @@ function selfInfo() {
   return { selfExe: path.basename(process.execPath) };
 }
 
+// Windows: tasklist is fast but only knows the visible image name, so a renamed
+// copy walks straight past it. Every so often we ask PowerShell for the real
+// file and the OriginalFilename the publisher baked in, which a rename cannot
+// change, and keep that alongside the fast list.
+const WIN_DEEP = `$ErrorActionPreference='SilentlyContinue'
+Get-Process | ForEach-Object {
+  $p=$null; $o=$null
+  try { $p=$_.MainModule.FileName; $o=$_.MainModule.FileVersionInfo.OriginalFilename } catch {}
+  [pscustomobject]@{ Id=$_.Id; Name=$_.ProcessName; Path=$p; Orig=$o }
+} | ConvertTo-Json -Compress`;
+const deep = { at: 0, byPid: new Map(), running: false };
+const DEEP_EVERY = 20000;
+
+function refreshWinDeep() {
+  if (deep.running || Date.now() - deep.at < DEEP_EVERY) return;
+  deep.running = true;
+  run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', WIN_DEEP], { timeout: 15000 })
+    .then((r) => {
+      const rows = proc.parseWinDeep(r.stdout);
+      if (rows.length) deep.byPid = new Map(rows.map((x) => [x.pid, x]));
+      deep.at = Date.now();
+    })
+    .catch(() => { deep.at = Date.now(); })
+    .finally(() => { deep.running = false; });
+}
+
 async function listProcesses() {
   if (IS_MAC) {
     const r = await run('/bin/ps', ['-x', '-o', 'pid=,comm=']);
@@ -41,7 +67,13 @@ async function listProcesses() {
   }
   if (IS_WIN) {
     const r = await run('tasklist.exe', ['/fo', 'csv', '/nh']);
-    return proc.parseTasklist(r.stdout);
+    const fast = proc.parseTasklist(r.stdout);
+    refreshWinDeep(); // fills in for the next round; never blocks this one
+    if (!deep.byPid.size) return fast;
+    return fast.map((p) => {
+      const d = deep.byPid.get(p.pid);
+      return d ? { ...p, orig: d.orig, path: d.path } : p;
+    });
   }
   return [];
 }
