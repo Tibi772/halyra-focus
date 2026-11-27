@@ -437,3 +437,37 @@ html.xmas .hero h1 em { background-image: linear-gradient(120deg, #ffd27a, var(-
 .art-back { margin-top: 44px; }
 .art-back .btn span { font-size: 19px; line-height: 1; margin-right: 4px; }
 @media (max-width: 560px) { .nav-back { padding: 7px 10px; } .nav-back span + * { display: none; } }
+
+/* ---------- Full-bleed hero (wide screens)
+   The scene stops being a picture next to the text and becomes the room the
+   text is standing in: the canvas fills the whole first screen, the copy sits
+   on a soft scrim over it. Phones keep the stacked layout, where a full-bleed
+   scene would just eat the words. */
+@media (min-width: 900px) {
+  .hero { min-height: 100vh; padding: 132px 0 56px; }
+  .hero-grid { grid-template-columns: minmax(0, 600px); position: static; z-index: auto; }
+  .hero .stage {
+    position: absolute; inset: 0; height: auto; min-height: 0; margin: 0; z-index: 0;
+  }
+  .hero .stage canvas,
+  .hero .stage.is-3d canvas {
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 12%, #000 78%, transparent 99%);
+    mask-image: linear-gradient(180deg, transparent 0, #000 12%, #000 78%, transparent 99%);
+  }
+  /* reads the light off the scene without hiding it */
+  .hero::before {
+    content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background:
+      radial-gradient(90% 120% at -8% 42%, rgba(5, 7, 12, .95) 0%, rgba(5, 7, 12, .86) 32%, rgba(5, 7, 12, .40) 56%, transparent 76%),
+      linear-gradient(180deg, rgba(5, 7, 12, .8) 0%, transparent 20%);
+  }
+  /* the canvas sits against the section, the words float above it */
+  .hero .wrap { position: static; }
+  .hero-grid > div:first-child { position: relative; z-index: 2; }
+  /* the scene reaches the bottom of the section, the controls must not */
+  .hero .stage-hint { top: auto; bottom: 186px; right: 30px; }
+  .hero .stage-ui { left: auto; right: 42px; bottom: 222px; transform: none; }
+  .hero .city-overlay { left: auto; right: 42px; bottom: 300px; top: auto; transform: translateY(12px); }
+  .hero .city-overlay.show { transform: translateY(0); }
+  .stats { margin-top: auto; padding-top: 26px; }
+}

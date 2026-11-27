@@ -18,6 +18,10 @@
   const overlay = document.getElementById('city-overlay');
   const timerEl = document.getElementById('city-timer');
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // How wintry the scene is. Follows the season switch in the header, eased so
+  // flipping it reads as the weather turning rather than a setting toggling.
+  const wantWinter = () => (document.documentElement.classList.contains('xmas') ? 1 : 0.12);
+  let winter = wantWinter();
   const L = JSON.parse(stage.dataset.labels || '{}');
   const egg = (id) => document.dispatchEvent(new CustomEvent('halyra:egg', { detail: { id } }));
 
@@ -473,6 +477,101 @@ void main() {
   gl_FragColor = vec4(uColor * (fr * 0.85 + line * 0.16 * shimmer + ripple * 0.9) * uAlpha, 1.0);
 }`;
 
+  // ---------------------------------------------------------------- post
+  // Everything above is drawn into a texture; these three passes turn it from
+  // "a WebGL scene" into something that looks lit and shot: the bright parts
+  // bleed, the whole frame gets a filmic curve, snow falls in front of it.
+  const QUAD_VS = `
+attribute vec2 aPos; varying vec2 vUv;
+void main() { vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+  // Bright pass + downsample in one go (the quad is drawn at half size).
+  const BRIGHT_FS = `${HP}
+uniform sampler2D uTex; uniform vec2 uTexel; varying vec2 vUv;
+void main() {
+  vec3 c = texture2D(uTex, vUv).rgb;
+  c += texture2D(uTex, vUv + vec2( uTexel.x,  uTexel.y)).rgb;
+  c += texture2D(uTex, vUv + vec2(-uTexel.x,  uTexel.y)).rgb;
+  c += texture2D(uTex, vUv + vec2( uTexel.x, -uTexel.y)).rgb;
+  c += texture2D(uTex, vUv + vec2(-uTexel.x, -uTexel.y)).rgb;
+  c /= 5.0;
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  float k = smoothstep(0.42, 0.95, l);
+  gl_FragColor = vec4(c * k, 1.0);
+}`;
+
+  // Separable gaussian, run once across and once down.
+  const BLUR_FS = `${HP}
+uniform sampler2D uTex; uniform vec2 uDir; varying vec2 vUv;
+void main() {
+  vec3 c = texture2D(uTex, vUv).rgb * 0.2270270270;
+  c += (texture2D(uTex, vUv + uDir * 1.3846153846).rgb + texture2D(uTex, vUv - uDir * 1.3846153846).rgb) * 0.3162162162;
+  c += (texture2D(uTex, vUv + uDir * 3.2307692308).rgb + texture2D(uTex, vUv - uDir * 3.2307692308).rgb) * 0.0702702703;
+  gl_FragColor = vec4(c, 1.0);
+}`;
+
+  // Composite: bloom, winter grade, filmic curve, snow, vignette, grain.
+  const POST_FS = `${HP}
+uniform sampler2D uTex; uniform sampler2D uBloom;
+uniform vec2 uRes; uniform float uTime; uniform float uFocus; uniform float uWinter; uniform float uAberr;
+varying vec2 vUv;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+
+// One drifting layer of flakes. Cheap: a scrolling grid, one flake per cell.
+float snowLayer(vec2 uv, float scale, float speed, float seed, float blur) {
+  vec2 g = uv * scale;
+  g.y += uTime * speed;
+  g.x += sin((g.y + seed) * 0.55) * 0.35 + uTime * speed * 0.22;
+  vec2 id = floor(g);
+  vec2 f = fract(g) - 0.5;
+  float r = hash(id + seed);
+  if (r < 0.86) return 0.0;                       // most cells stay empty
+  vec2 o = (vec2(hash(id + 3.1 + seed), hash(id + 7.7 + seed)) - 0.5) * 0.7;
+  float d = length((f - o) * vec2(1.0, 1.0));
+  return smoothstep(blur, 0.0, d) * (0.45 + 0.55 * hash(id + 11.3));
+}
+
+// Rodrigo Setti / Narkowicz ACES approximation — keeps highlights from going flat.
+vec3 aces(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
+void main() {
+  vec2 uv = vUv;
+  vec2 d = uv - 0.5;
+  float r2 = dot(d, d);
+
+  // the lens is never perfect at the edges
+  float ab = uAberr * (0.0012 + r2 * 0.0065);
+  vec3 col;
+  col.r = texture2D(uTex, uv + d * ab).r;
+  col.g = texture2D(uTex, uv).g;
+  col.b = texture2D(uTex, uv - d * ab).b;
+
+  col += texture2D(uBloom, uv).rgb * (0.72 + 0.35 * uFocus);
+
+  // winter grade: shadows go blue, the warm window light is left alone
+  float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  vec3 cold = vec3(0.72, 0.86, 1.08);
+  col = mix(col, col * cold, uWinter * (1.0 - smoothstep(0.18, 0.75, l)) * 0.85);
+
+  // snow, three layers so it has depth; the near one is big and soft
+  vec2 su = uv * vec2(uRes.x / uRes.y, 1.0);
+  float sn = snowLayer(su, 34.0, 0.050, 1.0, 0.34) * 0.26
+           + snowLayer(su, 20.0, 0.082, 5.0, 0.30) * 0.42
+           + snowLayer(su, 12.0, 0.125, 9.0, 0.26) * 0.60;
+  col += vec3(0.86, 0.92, 1.0) * sn * uWinter * (0.42 - 0.14 * r2);
+
+  col = aces(col * 1.06);
+
+  // vignette and a little grain, so flat areas do not band
+  col *= 1.0 - smoothstep(0.22, 0.95, r2) * 0.55;
+  col += (hash(uv * uRes + fract(uTime)) - 0.5) * 0.022;
+
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
   function compile(vs, fs) {
     const mk = (type, src) => {
       const s = gl.createShader(type);
@@ -516,6 +615,7 @@ void main() {
     P = {
       lit: compile(LIT_VS, LIT_FS), sky: compile(SKY_VS, SKY_FS), glow: compile(GLOW_VS, GLOW_FS),
       pt: compile(PT_VS, PT_FS), dome: compile(DOME_VS, DOME_FS),
+      bright: compile(QUAD_VS, BRIGHT_FS), blur: compile(QUAD_VS, BLUR_FS), post: compile(QUAD_VS, POST_FS),
     };
   } catch (e) {
     console.warn('[halyra] 3D off:', e && e.message);
@@ -568,12 +668,66 @@ void main() {
     labels.set(b, el);
   }
 
+  // ---- offscreen targets for the post chain. If anything here is unsupported
+  // the whole chain is skipped and the scene is drawn straight to the canvas,
+  // which still looks like it did before.
+  const FB = { scene: null, a: null, b: null, w: 0, h: 0, ok: true };
+
+  function makeTarget(w, h, depth) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    let rb = null;
+    if (depth) {
+      rb = gl.createRenderbuffer();
+      gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rb);
+    }
+    const done = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (!done) return null;
+    return { fb, tex, rb, w, h };
+  }
+
+  function dropTarget(t) {
+    if (!t) return;
+    gl.deleteFramebuffer(t.fb); gl.deleteTexture(t.tex);
+    if (t.rb) gl.deleteRenderbuffer(t.rb);
+  }
+
+  function sizeTargets() {
+    const w = cv.width; const h = cv.height;
+    if (!FB.ok || (FB.w === w && FB.h === h)) return;
+    dropTarget(FB.scene); dropTarget(FB.a); dropTarget(FB.b);
+    const hw = Math.max(1, w >> 1); const hh = Math.max(1, h >> 1);
+    FB.scene = makeTarget(w, h, true);
+    FB.a = makeTarget(hw, hh, false);
+    FB.b = makeTarget(hw, hh, false);
+    FB.ok = Boolean(FB.scene && FB.a && FB.b);
+    FB.w = w; FB.h = h;
+  }
+
+  function fullQuad(prog) {
+    attribs(prog, B.sky, [['aPos', 2]], 2);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    off(prog);
+  }
+
   function resize() {
     const r = stage.getBoundingClientRect();
     dpr = Math.min(window.devicePixelRatio || 1, r.width < 700 ? 1.5 : 1.75);
     W = Math.max(1, r.width); H = Math.max(1, r.height);
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     cv.style.width = `${W}px`; cv.style.height = `${H}px`;
+    sizeTargets();
   }
 
   function project(p) {
@@ -688,6 +842,7 @@ void main() {
     if (auto && now - lastAuto > (focusOn ? 7000 : 4200)) { lastAuto = now; setFocus(!focusOn, false); }
     const ease = (cur, target, k) => cur + (target - cur) * Math.min(1, dt * k);
     focus = ease(focus, focusOn ? 1 : 0, 1.6);
+    winter = ease(winter, wantWinter(), 1.1);
     shield = ease(shield, focusOn ? 1 : 0, 2.2);
     if (pulse < 1.2) pulse += dt * 0.55;
     grow = ease(grow, focusOn ? 1 : 0.34, focusOn ? 0.55 : 1.2);
@@ -725,10 +880,17 @@ void main() {
     const aspect = W / H;
     const yw = yaw + mx * 0.35;
     const pt = pitch + my * 0.12 - scrollK * 0.18;
-    dist = aspect >= 0.95 ? 29 / Math.min(1.05, aspect * 0.86) : 26.5 / Math.sqrt(Math.max(0.5, aspect));
+    // The canvas is the whole hero on a wide screen, so the island needs more
+    // room around it: cropped edges read as a bug, space reads as a photograph.
+    dist = aspect >= 0.95 ? 38 / Math.min(1.05, aspect * 0.86) : 26.5 / Math.sqrt(Math.max(0.5, aspect));
     eye = [Math.sin(yw) * Math.cos(pt) * dist, Math.sin(pt) * dist + 1.2, Math.cos(yw) * Math.cos(pt) * dist];
     persp(PR, 0.72, aspect, 0.5, 300);
     const wide = aspect > 0.95 ? 1 : 0;
+    // On a wide screen the canvas now covers the whole hero, so the island is
+    // pushed off-centre to the right and leaves the left side to the words.
+    // This shifts the lens rather than the camera, so the scene keeps looking
+    // straight at you instead of being seen from the side.
+    PR[8] = -0.34 * wide;
     const tx = -Math.cos(yw) * 1.2 * wide; const tz = Math.sin(yw) * 1.2 * wide;
     lookAt(VW, eye, [tx, -0.6 - scrollK * 2.5, tz], [0, 1, 0]);
     mul(VP, PR, VW);
@@ -736,12 +898,15 @@ void main() {
     UP[0] = VW[1]; UP[1] = VW[5]; UP[2] = VW[9];
     {
       const fx = -VW[2]; const fy = -VW[6]; const fz = -VW[10];
-      const th = Math.tan(0.36); const mxs = (wide ? -0.62 : -0.5) * th * aspect; const mys = (wide ? 0.66 : 0.72) * th;
+      // The moon used to hang over the left half, which is now where the
+      // headline lives. On a wide screen it moves across to the open sky.
+      const th = Math.tan(0.36); const mxs = (wide ? 0.78 : -0.5) * th * aspect; const mys = (wide ? 0.72 : 0.72) * th;
       MOON[0] = eye[0] + (fx + RIGHT[0] * mxs + UP[0] * mys) * 110;
       MOON[1] = eye[1] + (fy + RIGHT[1] * mxs + UP[1] * mys) * 110;
       MOON[2] = eye[2] + (fz + RIGHT[2] * mxs + UP[2] * mys) * 110;
     }
 
+    if (FB.ok) gl.bindFramebuffer(gl.FRAMEBUFFER, FB.scene.fb);
     gl.viewport(0, 0, cv.width, cv.height);
     gl.clearColor(0.03, 0.03, 0.06, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -846,8 +1011,8 @@ void main() {
     if (shield > 0.01) {
       gl.uniformMatrix4fv(P.dome.u.uM, false, trs(M, 0, bob - 0.05, 0, t * 0.02, 9.2, 7.4, 9.2));
       gl.uniform3f(P.dome.u.uScale, 9.2, 7.4, 9.2);
-      gl.uniform3f(P.dome.u.uColor, 1.0, 0.62, 0.26);
-      gl.uniform1f(P.dome.u.uAlpha, shield * 0.5);
+      gl.uniform3f(P.dome.u.uColor, 1.0, 0.66, 0.3);
+      gl.uniform1f(P.dome.u.uAlpha, shield * 0.26);
       gl.uniform1f(P.dome.u.uPulse, pulse);
       gl.uniform1f(P.dome.u.uHex, 9);
       gl.drawArrays(gl.TRIANGLES, 0, B.domeN);
@@ -856,6 +1021,53 @@ void main() {
 
     drawPoints(t, false);
     gl.depthMask(true);
+
+    // ---- post: bloom, grade, snow, grain
+    if (FB.ok) {
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.BLEND);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, FB.a.fb);
+      gl.viewport(0, 0, FB.a.w, FB.a.h);
+      gl.useProgram(P.bright.p);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, FB.scene.tex);
+      gl.uniform1i(P.bright.u.uTex, 0);
+      gl.uniform2f(P.bright.u.uTexel, 1 / cv.width, 1 / cv.height);
+      fullQuad(P.bright);
+
+      gl.useProgram(P.blur.p);
+      gl.uniform1i(P.blur.u.uTex, 0);
+      for (let i = 0; i < 2; i += 1) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, FB.b.fb);
+        gl.bindTexture(gl.TEXTURE_2D, FB.a.tex);
+        gl.uniform2f(P.blur.u.uDir, 1 / FB.a.w, 0);
+        fullQuad(P.blur);
+        gl.useProgram(P.blur.p);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, FB.a.fb);
+        gl.bindTexture(gl.TEXTURE_2D, FB.b.tex);
+        gl.uniform2f(P.blur.u.uDir, 0, 1 / FB.a.h);
+        fullQuad(P.blur);
+        gl.useProgram(P.blur.p);
+      }
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, cv.width, cv.height);
+      gl.useProgram(P.post.p);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, FB.scene.tex);
+      gl.uniform1i(P.post.u.uTex, 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, FB.a.tex);
+      gl.uniform1i(P.post.u.uBloom, 1);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform2f(P.post.u.uRes, cv.width, cv.height);
+      gl.uniform1f(P.post.u.uTime, t);
+      gl.uniform1f(P.post.u.uFocus, focus);
+      gl.uniform1f(P.post.u.uWinter, winter);
+      gl.uniform1f(P.post.u.uAberr, reduce ? 0 : 1);
+      fullQuad(P.post);
+    }
 
     // labels
     for (const [b, el] of labels) {
