@@ -1007,9 +1007,16 @@ function renderFocus() {
         icon('plus'), S.session && S.session.pomodoro ? `+1 ${t('focus.cycles').toLowerCase()}` : t('focus.extend', { m: 15 })) : null,
       h('button', { class: 'btn danger', onclick: openUnlock }, icon(modeIcon(ev.mode)), t('focus.stop'))));
     if (S.helper.installed && ev.blocking && ev.sitesCount) {
+      // Honest status. A blocker that says "blocking" while nothing is blocked
+      // is worse than one that admits it, so after half a minute of the rules
+      // not showing up we stop calling it "applying" and offer to re-apply.
+      const stuck = !S.helper.verified && S.helper.failingSince && S.now - S.helper.failingSince > 30000;
       right.append(S.helper.verified
         ? h('span', { class: 'okline' }, icon('check'), t('helper.ok'))
-        : h('span', { class: 'muted small' }, t('helper.unverified')));
+        : stuck
+          ? h('div', { class: 'warnline' }, icon('shield'), h('span', null, t('helper.notWorking')),
+            h('button', { class: 'btn sm', onclick: installHelper }, t('helper.reapply')))
+          : h('span', { class: 'muted small' }, t('helper.unverified')));
     }
   }
 

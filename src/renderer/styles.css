@@ -772,3 +772,14 @@ body[data-theme='crt'].xmas .view-title::after { content: '_'; }
 
 /* The mark picks up a cold glow while the winter look is on. */
 .logo-winter { filter: drop-shadow(0 0 7px rgba(150, 196, 255, .40)); }
+
+/* Honest status when website blocking says it is on but isn't landing. */
+.warnline {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  margin-top: 10px; padding: 9px 12px; border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 36%, transparent);
+  color: var(--text); font-size: 13px; line-height: 1.4;
+}
+.warnline svg { width: 16px; height: 16px; flex: none; color: var(--danger); }
+.warnline .btn { margin-left: auto; }

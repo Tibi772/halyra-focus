@@ -54,7 +54,10 @@ let lastGrown = null;
 let chatLog = null; // Halyra AI conversation [{role, text, sources?, actions?, at}] (kept on this device only)
 let chatBusy = false; // the latest finished / withered grow item, for the UI's celebration
 let blockPage = null; // local block page server { url, port }
-let hostsState = { installed: false, verified: false, expected: 0 };
+// `failingSince` is when website blocking last started looking inactive while a
+// block was running. Competing blockers get the worst reviews for exactly this:
+// the session says "on" while nothing is actually blocked. Better to say so.
+let hostsState = { installed: false, verified: false, expected: 0, failingSince: 0 };
 let installedAppsCache = null;
 let statsDirty = false;
 let statsSyncDirty = false; // stats changed since the last cloud push
@@ -736,8 +739,14 @@ function tick() {
   if (tickCount % 150 === 7) lbReportNow().catch(() => {});
   if (tickCount % 60 === 5) weeklyReport(now);
   if (tickCount % 30 === 0) { statsLib.prune(stats, now); saveStats(); }
-  if (tickCount % 10 === 0 && hostsState.installed && !hostsState.verified) {
-    hostsState.verified = platform.verifyHosts(sitesFor(ev)).ok;
+  // Re-check while a block is running, not only when something changes: an
+  // update, another tool or a crash can quietly undo the rules mid-session.
+  const recheck = hostsState.installed && (!hostsState.verified ? tickCount % 10 === 0 : ev.blocking && tickCount % 120 === 3);
+  if (recheck) hostsState.verified = platform.verifyHosts(sitesFor(ev)).ok;
+  if (hostsState.installed && ev.blocking && ev.sites.length && !hostsState.verified) {
+    if (!hostsState.failingSince) hostsState.failingSince = now;
+  } else {
+    hostsState.failingSince = 0;
   }
 
   updateTray(ev, blockingChanged || changed);
