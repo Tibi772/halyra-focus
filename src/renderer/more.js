@@ -10,8 +10,13 @@
 
 const season = { canvas: null, raf: 0, flakes: [], on: false };
 
+/** 0 = no winter, 1 = full. Older states carry a boolean, which still works. */
+function seasonAmount() {
+  if (!S || !S.season) return 0;
+  return typeof S.season === 'number' ? Math.max(0, Math.min(1, S.season)) : 1;
+}
 function seasonActive() {
-  return Boolean(S && S.season);
+  return seasonAmount() > 0;
 }
 
 function applySeason() {
@@ -31,7 +36,7 @@ function startSnow() {
   const fit = () => { const d = Math.min(2, window.devicePixelRatio || 1); cv.width = innerWidth * d; cv.height = innerHeight * d; ctx.setTransform(d, 0, 0, d, 0, 0); };
   fit();
   window.addEventListener('resize', fit);
-  const n = isMobile() ? 18 : 34;
+  const n = Math.max(4, Math.round((isMobile() ? 18 : 34) * seasonAmount()));
   season.flakes = Array.from({ length: n }, () => ({ x: Math.random() * innerWidth, y: Math.random() * innerHeight, r: 0.8 + Math.random() * 2.2, v: 0.25 + Math.random() * 0.6, w: Math.random() * 6.28 }));
   let last = 0;
   const frame = (now) => {
@@ -67,7 +72,7 @@ function garland() {
 function seasonToggle() {
   const on = seasonActive();
   return h('button', { class: `season-btn${on ? ' on' : ''}`, title: t(on ? 'season.off' : 'season.on'), 'aria-label': t(on ? 'season.off' : 'season.on'),
-    onclick: () => patchConfig({ settings: { season: on ? 'off' : 'on' } }) }, on ? '❄️' : '🎄');
+    onclick: () => patchConfig({ settings: { season: on ? 'off' : 'full' } }) }, on ? '❄️' : '🎄');
 }
 
 // ------------------------------------------------------------------ levels & the 3D island
@@ -84,7 +89,7 @@ function levelChip() {
 
 function islandData() {
   const L = S.levels || { level: 1, pct: 0, gems: [] };
-  return { level: L.level, pct: L.pct, gems: L.gems, items: (S.stats && S.stats.garden && S.stats.garden.items) || [], season: seasonActive() };
+  return { level: L.level, pct: L.pct, gems: L.gems, items: (S.stats && S.stats.garden && S.stats.garden.items) || [], season: seasonAmount() };
 }
 
 function gemIcon(g) {
@@ -310,7 +315,7 @@ function personalizeCard() {
         ['smart', 'hide', 'close'].map((v) => h('option', { value: v, selected: (s.appAction || 'smart') === v }, t(`per.apps.${v}`))))),
     h('div', { class: 'set-row' }, h('div', { class: 'label' }, t('per.season'), h('small', null, t('per.seasonSub'))),
       h('select', { class: 'select', style: { width: 'auto' }, onchange: (e) => patchConfig({ settings: { season: e.target.value } }) },
-        ['auto', 'on', 'off'].map((v) => h('option', { value: v, selected: (s.season || 'auto') === v }, t(`per.season.${v}`))))));
+        ['auto', 'full', 'subtle', 'off'].map((v) => h('option', { value: v, selected: (s.season === 'on' ? 'full' : s.season || 'auto') === v }, t(`per.season.${v}`))))));
 }
 
 function aiPersonaCard() {

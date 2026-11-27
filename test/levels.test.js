@@ -111,12 +111,15 @@ test('blocked apps: chat apps are hidden (not closed) in smart mode', () => {
 });
 
 test('Christmas look: automatic in December until 6 January, can be forced on/off', () => {
-  assert.equal(seasonOn('auto', at(2026, 12, 1)), true);
-  assert.equal(seasonOn('auto', at(2027, 1, 6, 20)), true);
-  assert.equal(seasonOn('auto', at(2027, 1, 7)), false);
-  assert.equal(seasonOn('auto', at(2026, 11, 27)), false);
-  assert.equal(seasonOn('on', at(2026, 7, 1)), true);
-  assert.equal(seasonOn('off', at(2026, 12, 24)), false);
+  // seasonOn answers "how much winter", 0 to 1, not just yes/no
+  assert.equal(seasonOn('auto', at(2026, 12, 1)), 1);
+  assert.equal(seasonOn('auto', at(2027, 1, 6, 20)), 1);
+  assert.equal(seasonOn('auto', at(2027, 1, 7)), 0);
+  assert.equal(seasonOn('auto', at(2026, 11, 27)), 0);
+  assert.equal(seasonOn('on', at(2026, 7, 1)), 1, 'settings saved by an older version still mean full');
+  assert.equal(seasonOn('full', at(2026, 7, 1)), 1);
+  assert.equal(seasonOn('subtle', at(2026, 7, 1)), 0.35);
+  assert.equal(seasonOn('off', at(2026, 12, 24)), 0);
   const cfg = cfgLib.defaults('hu');
   const b = blockInfo({ lang: 'hu', theme: null, config: cfg, now: at(2026, 12, 20) });
   assert.equal(b.festive, true);

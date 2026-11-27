@@ -241,7 +241,8 @@ function sanitizeSettings(input, base) {
     // Blocked apps: 'smart' hides chat apps and closes the rest; 'hide' / 'close' for all.
     appAction: pick(i.appAction, b.appAction, ['smart', 'hide', 'close'], 'smart'),
     // Christmas look: 'auto' = December to 6 January.
-    season: pick(i.season, b.season, ['auto', 'on', 'off'], 'auto'),
+    // 'on' is kept so settings saved by an older version still mean "full"
+    season: pick(i.season, b.season, ['auto', 'full', 'subtle', 'off', 'on'], 'auto'),
     // Menu items the user doesn't want to see (focus and settings always stay).
     hiddenNav: Array.isArray(i.hiddenNav) ? [...new Set(i.hiddenNav.filter((x) => NAV_HIDEABLE.includes(x)))] : (Array.isArray(b.hiddenNav) ? b.hiddenNav : []),
     // How Halyra AI talks to you.

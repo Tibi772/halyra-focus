@@ -190,6 +190,61 @@ void main() {
   float fog = smoothstep(-2.5, -9.0, vW.y) * 0.6;
   gl_FragColor = vec4(mix(col, vec3(0.04, 0.04, 0.09), fog), 1.0);
 }`;
+  // ---- post chain: the island is drawn into a texture first, then lit, graded
+  // and snowed on the way to the screen. Same treatment as the website hero.
+  const QUAD_VS = 'attribute vec2 aQ; varying vec2 vUv; void main() { vUv = aQ * 0.5 + 0.5; gl_Position = vec4(aQ, 0.0, 1.0); }';
+  const BRIGHT_FS = `precision mediump float;
+uniform sampler2D uTex; uniform vec2 uTexel; varying vec2 vUv;
+void main() {
+  vec3 c = texture2D(uTex, vUv).rgb;
+  c += texture2D(uTex, vUv + uTexel).rgb;
+  c += texture2D(uTex, vUv - uTexel).rgb;
+  c += texture2D(uTex, vUv + vec2(uTexel.x, -uTexel.y)).rgb;
+  c += texture2D(uTex, vUv + vec2(-uTexel.x, uTexel.y)).rgb;
+  c /= 5.0;
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  gl_FragColor = vec4(c * smoothstep(0.40, 0.92, l), 1.0);
+}`;
+  const BLUR_FS = `precision mediump float;
+uniform sampler2D uTex; uniform vec2 uDir; varying vec2 vUv;
+void main() {
+  vec3 c = texture2D(uTex, vUv).rgb * 0.227027;
+  c += (texture2D(uTex, vUv + uDir * 1.3846154).rgb + texture2D(uTex, vUv - uDir * 1.3846154).rgb) * 0.3162162;
+  c += (texture2D(uTex, vUv + uDir * 3.2307692).rgb + texture2D(uTex, vUv - uDir * 3.2307692).rgb) * 0.0702703;
+  gl_FragColor = vec4(c, 1.0);
+}`;
+  const POST_FS = `precision mediump float;
+uniform sampler2D uTex; uniform sampler2D uBloom;
+uniform vec2 uRes; uniform float uT; uniform float uSnow; uniform float uBurst;
+varying vec2 vUv;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+float flakes(vec2 uv, float scale, float speed, float seed, float blur) {
+  vec2 g = uv * scale;
+  g.y += uT * speed;
+  g.x += sin((g.y + seed) * 0.5) * 0.3;
+  vec2 id = floor(g); vec2 f = fract(g) - 0.5;
+  if (hash(id + seed) < 0.88) return 0.0;
+  vec2 o = (vec2(hash(id + 3.1 + seed), hash(id + 7.7 + seed)) - 0.5) * 0.7;
+  return smoothstep(blur, 0.0, length(f - o)) * (0.5 + 0.5 * hash(id + 11.3));
+}
+vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+void main() {
+  vec2 d = vUv - 0.5; float r2 = dot(d, d);
+  vec3 col = texture2D(uTex, vUv).rgb;
+  col += texture2D(uBloom, vUv).rgb * (0.66 + 0.5 * uBurst);
+  float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col = mix(col, col * vec3(0.74, 0.87, 1.08), uSnow * (1.0 - smoothstep(0.2, 0.8, l)) * 0.8);
+  vec2 su = vUv * vec2(uRes.x / uRes.y, 1.0);
+  float sn = flakes(su, 30.0, 0.05, 1.0, 0.32) * 0.26
+           + flakes(su, 18.0, 0.085, 5.0, 0.28) * 0.42
+           + flakes(su, 11.0, 0.13, 9.0, 0.24) * 0.58;
+  col += vec3(0.86, 0.92, 1.0) * sn * uSnow * 0.45;
+  col = aces(col * 1.05);
+  col *= 1.0 - smoothstep(0.24, 0.98, r2) * 0.5;
+  col += (hash(vUv * uRes + fract(uT)) - 0.5) * 0.02;
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
   const SKY_VS = 'attribute vec2 aQ; varying vec2 vQ; void main() { vQ = aQ; gl_Position = vec4(aQ, 0.9999, 1.0); }';
   const SKY_FS = `precision mediump float; uniform float uT; uniform float uSnow; varying vec2 vQ;
 void main() {
@@ -237,7 +292,12 @@ void main() {
       return { p, u, a };
     }
     let P;
-    try { P = { lit: prog(VS, FS), sky: prog(SKY_VS, SKY_FS), glow: prog(GL_VS, GL_FS), pt: prog(PT_VS, PT_FS) }; } catch (e) { console.warn('[island]', e && e.message); return null; }
+    try {
+      P = {
+        lit: prog(VS, FS), sky: prog(SKY_VS, SKY_FS), glow: prog(GL_VS, GL_FS), pt: prog(PT_VS, PT_FS),
+        bright: prog(QUAD_VS, BRIGHT_FS), blur: prog(QUAD_VS, BLUR_FS), post: prog(QUAD_VS, POST_FS),
+      };
+    } catch (e) { console.warn('[island]', e && e.message); return null; }
     const buf = (arr) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.STATIC_DRAW); return b; };
     const bind = (pr, b, layout, stride) => {
       gl.bindBuffer(gl.ARRAY_BUFFER, b); let o = 0;
@@ -246,6 +306,8 @@ void main() {
     const unbind = (pr) => { for (const k of Object.keys(pr.a)) gl.disableVertexAttribArray(pr.a[k]); };
 
     let D = data || {};
+    // season may be a flag (old callers) or an amount 0..1 (off / a little / full)
+    const snowAmt = () => (typeof D.season === 'number' ? Math.max(0, Math.min(1, D.season)) : (D.season ? 1 : 0));
     let W; let worldN = 0; let gemBufs = []; let glowB; let glowN = 0; let ptB; let ptN = 0; const sky = buf([-1, -1, 3, -1, -1, 3]);
     let R = 4; let H = 2;
     const popAt = {}; let seenGot = null; let lastLevel = null; let growAt = -1e9;
@@ -291,11 +353,51 @@ void main() {
     const VP = mat(); const PR = mat(); const VW = mat(); const M = mat(); const ID = trs(mat(), 0, 0, 0, 0, 0, 1);
     let yaw = 0.7; let target = 0.7; let drag = null; let view = null; let userOff = 0; let raf = 0; let alive = true; let visible = true; let W2 = 1; let H2 = 1; let dpr = 1;
     let burst = 0; let hover = null; const gemPos = [];
+    // Offscreen targets for the post chain. If the device cannot give us one,
+    // FB.ok stays false and the island draws straight to the canvas as before.
+    const FB = { scene: null, a: null, b: null, w: 0, h: 0, ok: true };
+    function makeFB(w, h, depth) {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const fb = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      let rb = null;
+      if (depth) {
+        rb = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rb);
+      }
+      const done = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      if (!done) return null;
+      return { fb, tex, rb, w, h };
+    }
+    function dropFB(x) { if (!x) return; gl.deleteFramebuffer(x.fb); gl.deleteTexture(x.tex); if (x.rb) gl.deleteRenderbuffer(x.rb); }
+    function sizeFB() {
+      const w = canvas.width; const h = canvas.height;
+      if (!FB.ok || (FB.w === w && FB.h === h)) return;
+      dropFB(FB.scene); dropFB(FB.a); dropFB(FB.b);
+      FB.scene = makeFB(w, h, true);
+      FB.a = makeFB(Math.max(1, w >> 1), Math.max(1, h >> 1), false);
+      FB.b = makeFB(Math.max(1, w >> 1), Math.max(1, h >> 1), false);
+      FB.ok = Boolean(FB.scene && FB.a && FB.b);
+      FB.w = w; FB.h = h;
+    }
+    const quad = (pr) => { bind(pr, sky, [['aQ', 2]], 2); gl.drawArrays(gl.TRIANGLES, 0, 3); unbind(pr); };
+
     function resize() {
       const r = canvas.getBoundingClientRect();
       dpr = Math.min(window.devicePixelRatio || 1, 1.75);
       W2 = Math.max(1, r.width); H2 = Math.max(1, r.height);
       canvas.width = Math.round(W2 * dpr); canvas.height = Math.round(H2 * dpr);
+      sizeFB();
     }
     resize();
     const ro = window.ResizeObserver ? new ResizeObserver(resize) : null;
@@ -345,23 +447,24 @@ void main() {
       persp(PR, 0.7, aspect, 0.3, 300);
       lookAt(VW, eye, [0, H * 0.35 - 0.6, 0], [0, 1, 0]);
       mul(VP, PR, VW);
+      if (FB.ok) gl.bindFramebuffer(gl.FRAMEBUFFER, FB.scene.fb);
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.clearColor(0.03, 0.03, 0.07, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       // sky
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
-      gl.useProgram(P.sky.p); bind(P.sky, sky, [['aQ', 2]], 2); gl.uniform1f(P.sky.u.uT, t); gl.uniform1f(P.sky.u.uSnow, D.season ? 1 : 0); gl.drawArrays(gl.TRIANGLES, 0, 3); unbind(P.sky);
+      gl.useProgram(P.sky.p); bind(P.sky, sky, [['aQ', 2]], 2); gl.uniform1f(P.sky.u.uT, t); gl.uniform1f(P.sky.u.uSnow, snowAmt()); gl.drawArrays(gl.TRIANGLES, 0, 3); unbind(P.sky);
       // stars (before the world)
       gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
       const pts = (from, count) => {
         gl.useProgram(P.pt.p); bind(P.pt, ptB, [['aP', 4]], 4);
-        gl.uniformMatrix4fv(P.pt.u.uVP, false, VP); gl.uniform1f(P.pt.u.uT, t); gl.uniform1f(P.pt.u.uDpr, dpr); gl.uniform1f(P.pt.u.uSnow, D.season ? 1 : 0);
+        gl.uniformMatrix4fv(P.pt.u.uVP, false, VP); gl.uniform1f(P.pt.u.uT, t); gl.uniform1f(P.pt.u.uDpr, dpr); gl.uniform1f(P.pt.u.uSnow, snowAmt());
         gl.drawArrays(gl.POINTS, from, count); unbind(P.pt);
       };
       pts(0, 380);
       // world
       gl.disable(gl.BLEND); gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
       gl.useProgram(P.lit.p);
-      gl.uniformMatrix4fv(P.lit.u.uVP, false, VP); gl.uniform3fv(P.lit.u.uCam, eye); gl.uniform1f(P.lit.u.uSnow, D.season ? 1 : 0); gl.uniform1f(P.lit.u.uGlow, burst);
+      gl.uniformMatrix4fv(P.lit.u.uVP, false, VP); gl.uniform3fv(P.lit.u.uCam, eye); gl.uniform1f(P.lit.u.uSnow, snowAmt()); gl.uniform1f(P.lit.u.uGlow, burst);
       const bob = reduce ? 0 : Math.sin(t * 0.6) * 0.1;
       const ga = (now - growAt) / 1000;
       const grow = ga < 0.9 ? 1 + Math.sin(Math.min(1, ga / 0.9) * Math.PI) * 0.045 : 1;
@@ -394,6 +497,42 @@ void main() {
       gl.drawArrays(gl.TRIANGLES, 0, glowN); unbind(P.glow);
       pts(380, ptN - 380);
       gl.depthMask(true);
+
+      if (FB.ok) {
+        gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, FB.a.fb);
+        gl.viewport(0, 0, FB.a.w, FB.a.h);
+        gl.useProgram(P.bright.p);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, FB.scene.tex);
+        gl.uniform1i(P.bright.u.uTex, 0);
+        gl.uniform2f(P.bright.u.uTexel, 1 / canvas.width, 1 / canvas.height);
+        quad(P.bright);
+
+        for (let i = 0; i < 2; i += 1) {
+          gl.useProgram(P.blur.p); gl.uniform1i(P.blur.u.uTex, 0);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, FB.b.fb);
+          gl.bindTexture(gl.TEXTURE_2D, FB.a.tex);
+          gl.uniform2f(P.blur.u.uDir, 1 / FB.a.w, 0);
+          quad(P.blur);
+          gl.useProgram(P.blur.p); gl.uniform1i(P.blur.u.uTex, 0);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, FB.a.fb);
+          gl.bindTexture(gl.TEXTURE_2D, FB.b.tex);
+          gl.uniform2f(P.blur.u.uDir, 0, 1 / FB.a.h);
+          quad(P.blur);
+        }
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.useProgram(P.post.p);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, FB.scene.tex); gl.uniform1i(P.post.u.uTex, 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, FB.a.tex); gl.uniform1i(P.post.u.uBloom, 1);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.uniform2f(P.post.u.uRes, canvas.width, canvas.height);
+        gl.uniform1f(P.post.u.uT, t);
+        gl.uniform1f(P.post.u.uSnow, snowAmt());
+        gl.uniform1f(P.post.u.uBurst, burst);
+        quad(P.post);
+      }
       if (opts.onFrame) opts.onFrame(gemPos);
     }
     raf = requestAnimationFrame(frame);
