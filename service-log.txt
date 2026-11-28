@@ -1,0 +1,23 @@
+--------- beginning of main
+11-28 12:16:19.558  2645  2645 I HalyraFocus: service up; never blocked: [com.halyra.focus, com.google.android.dialer, com.android.emergency, com.android.systemui, com.samsung.android.dialer, com.android.incallui, com.google.android.apps.safetyhub, com.android.dialer, com.android.phone]
+11-28 12:16:24.729  2645  2645 I HalyraFocus: service up; never blocked: [com.halyra.focus, com.google.android.dialer, com.android.emergency, com.android.systemui, com.samsung.android.dialer, com.android.incallui, com.google.android.apps.safetyhub, com.android.dialer, com.android.phone]
+11-28 12:16:44.254  2645  2645 I HalyraFocus: service up; never blocked: [com.halyra.focus, com.google.android.dialer, com.android.emergency, com.android.systemui, com.samsung.android.dialer, com.android.incallui, com.google.android.apps.safetyhub, com.android.dialer, com.android.phone]
+11-28 12:16:44.289  2645  2645 D HalyraFocus: front app: com.halyra.focus (blocked: false)
+11-28 12:16:49.113  2645  2645 D HalyraFocus: front app: com.android.settings (blocked: true)
+11-28 12:16:49.125  2645  2645 I HalyraFocus: blocking com.android.settings
+11-28 12:16:49.628  2645  2645 D HalyraFocus: front app: com.halyra.focus (blocked: false)
+11-28 12:16:57.349  2645  2645 D HalyraFocus: front app: com.google.android.apps.nexuslauncher (blocked: false)
+11-28 12:16:58.323  2645  2645 D HalyraFocus: front app: com.halyra.focus (blocked: false)
+11-28 12:16:59.230  2645  2645 D HalyraFocus: front app: com.google.android.apps.nexuslauncher (blocked: false)
+11-28 12:17:00.335  2645  2645 D HalyraFocus: front app: com.android.settings (blocked: true)
+11-28 12:17:00.347  2645  2645 I HalyraFocus: blocking com.android.settings
+11-28 12:17:00.912  2645  2645 D HalyraFocus: front app: com.halyra.focus (blocked: false)
+11-28 12:17:23.164  2645  2645 I HalyraFocus: service up; never blocked: [com.halyra.focus, com.google.android.dialer, com.android.emergency, com.android.systemui, com.samsung.android.dialer, com.android.incallui, com.google.android.apps.safetyhub, com.android.dialer, com.android.phone]
+11-28 12:18:20.302  2645  2645 D HalyraFocus: front app: com.android.settings (blocked: true)
+11-28 12:18:20.305  2645  2645 I HalyraFocus: blocking com.android.settings
+11-28 12:18:20.928  2645  2645 D HalyraFocus: front app: com.halyra.focus (blocked: false)
+11-28 12:18:25.273  2645  2645 I HalyraFocus: service up; never blocked: [com.halyra.focus, com.google.android.dialer, com.android.emergency, com.android.systemui, com.samsung.android.dialer, com.android.incallui, com.google.android.apps.safetyhub, com.android.dialer, com.android.phone]
+11-28 12:18:25.284  2645  2645 D HalyraFocus: front app: com.halyra.focus (blocked: false)
+11-28 12:18:38.713  2645  2645 D HalyraFocus: front app: com.android.settings (blocked: true)
+11-28 12:18:38.719  2645  2645 I HalyraFocus: blocking com.android.settings
+11-28 12:18:39.181  2645  2645 D HalyraFocus: front app: com.halyra.focus (blocked: false)
