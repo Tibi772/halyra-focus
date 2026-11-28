@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://tibi772.github.io/halyra-focus/sitemap.xml

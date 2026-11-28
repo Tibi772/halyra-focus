@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>How to Block Websites on Windows 10 &amp; 11 (Free, Every Browser)</title>
+<meta name="description" content="Block websites on Windows 10 and 11 in every browser for free: the hosts-file method step by step, browser extensions, and an automatic free blocker with schedules.">
+<link rel="canonical" href="https://tibi772.github.io/halyra-focus/guides/block-websites-on-windows/">
+<meta name="theme-color" content="#07090f">
+<meta name="color-scheme" content="dark">
+<script>(function(){try{var s=localStorage.getItem('halyra-season'),d=new Date(),a=d.getMonth()===11||(d.getMonth()===0&&d.getDate()<=6);if(s==='on'||(s!=='off'&&a))document.documentElement.classList.add('xmas')}catch(e){}})()</script>
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Halyra Focus">
+<meta property="og:title" content="How to Block Websites on Windows 10 &amp; 11 (Free, Every Browser)">
+<meta property="og:description" content="Block websites on Windows 10 and 11 in every browser for free: the hosts-file method step by step, browser extensions, and an automatic free blocker with schedules.">
+<meta property="og:url" content="https://tibi772.github.io/halyra-focus/guides/block-websites-on-windows/">
+<meta property="og:image" content="https://tibi772.github.io/halyra-focus/assets/og-en.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Halyra Focus blocking social media, video and games during a focus session">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="How to Block Websites on Windows 10 &amp; 11 (Free, Every Browser)">
+<meta name="twitter:description" content="Block websites on Windows 10 and 11 in every browser for free: the hosts-file method step by step, browser extensions, and an automatic free blocker with schedules.">
+<meta name="twitter:image" content="https://tibi772.github.io/halyra-focus/assets/og-en.png">
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../../assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="../../assets/apple-touch-icon.png">
+<link rel="manifest" href="../../site.webmanifest">
+<link rel="preload" href="../../assets/fonts/Inter-SemiBold.woff" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="../../assets/site.css?v=1.6.1">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"How to block websites on Windows — in every browser","description":"Block websites on Windows 10 and 11 in every browser for free: the hosts-file method step by step, browser extensions, and an automatic free blocker with schedules.","inLanguage":"en","url":"https://tibi772.github.io/halyra-focus/guides/block-websites-on-windows/","dateModified":"2026-11-28","publisher":{"@type":"Organization","name":"Halyra"},"image":"https://tibi772.github.io/halyra-focus/assets/og-en.png","author":{"@type":"Organization","name":"Halyra"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Halyra Focus","item":"https://tibi772.github.io/halyra-focus/"},{"@type":"ListItem","position":2,"name":"How to block websites on Windows — in every browser","item":"https://tibi772.github.io/halyra-focus/guides/block-websites-on-windows/"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav solid" id="nav">
+  <div class="wrap nav-in">
+    <a class="nav-back" href="../../" aria-label="Back"><span aria-hidden="true">&#8249;</span> Back</a><a class="logo" href="../../" aria-label="Halyra Focus"><svg viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lgx" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffc85e"/><stop offset="1" stop-color="#ff6a2f"/></linearGradient></defs><circle cx="16" cy="16" r="11" fill="none" stroke="url(#lgx)" stroke-width="4" stroke-dasharray="52 80" stroke-linecap="round" transform="rotate(-45 16 16)"/><circle cx="16" cy="16" r="4.2" fill="url(#lgx)"/></svg><span>Halyra Focus<small>App &amp; site blocker</small></span></a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="../../#story">Levels</a><a href="../../#features">Features</a><a href="../../#shield">Shield</a><a href="../../#modes">Modes</a><a href="../../#themes">Themes</a><a href="../../#faq">FAQ</a>
+    </nav>
+    <div class="nav-right">
+      <button class="season-btn" type="button" id="season-btn" data-on="Turn off the Christmas look" data-off="Turn on the Christmas look" aria-label="Turn on the Christmas look" title="Turn on the Christmas look"><span class="s-on" aria-hidden="true">❄️</span><span class="s-off" aria-hidden="true">🎄</span></button>
+      <a class="btn sm ghost signin" href="../../app/">Sign in</a>
+      <a class="btn pill sm" href="../../#download">Download</a>
+    </div>
+  </div>
+</header>
+<main id="main" class="article">
+  <div class="wrap">
+    <div class="crumbs"><a href="../../">Halyra Focus</a> / Guides</div>
+    <h1>How to block websites on Windows — in every browser</h1>
+    <p class="meta">6 min read · Windows 10 and 11</p>
+<p>Browser extensions only block sites inside one browser. To block a site in <i>every</i> browser on Windows, you need to block it at the system level. Here’s how — by hand, and automatically.</p>
+<h2>Option 1: Edit the hosts file by hand</h2>
+<ol>
+<li>Open the Start menu, type <b>Notepad</b>, right-click it and choose <b>Run as administrator</b>.</li>
+<li>In Notepad, choose <b>File → Open</b> and open <code>C:\Windows\System32\drivers\etc\hosts</code> (switch the file filter to “All files”).</li>
+<li>At the end of the file add one line per address, for example:<br><code>0.0.0.0 youtube.com</code><br><code>0.0.0.0 www.youtube.com</code></li>
+<li>Save the file, then open Command Prompt and run <code>ipconfig /flushdns</code>.</li>
+<li>Restart your browser.</li>
+</ol>
+<p><b>Downsides:</b> it’s all-or-nothing, there’s no timer or schedule, you need to add every subdomain yourself, and it’s easy to forget to remove the lines later.</p>
+<h2>Option 2: A browser extension</h2>
+<p>Quick to set up, but it only works in the browser it’s installed in — open another browser and the site is right there. It also can’t block desktop apps like Steam or Discord.</p>
+<h2>Option 3: Halyra Focus (free, automatic)</h2>
+<p>Halyra Focus does the hosts-file method for you — with timers, schedules and automatic cleanup — and also blocks desktop apps.</p>
+<ol>
+<li><a href="../../">Download Halyra Focus</a> for Windows and run the installer.</li>
+<li>When asked, allow website blocking once (one admin prompt).</li>
+<li>Pick a ready-made list or add your own sites — www. and m. versions are included automatically.</li>
+<li>Start a focus session or set a schedule.</li>
+</ol>
+<div class="callout"><p><b>Blocks clean up after themselves.</b> When the timer ends, the sites are unblocked automatically — even if the app was closed or uninstalled in the meantime.</p><a class="btn pill sm" href="../../#download">Download free</a></div>
+<h2>Troubleshooting</h2>
+<ul>
+<li><b>The site still opens:</b> reload the tab or restart the browser — open tabs can keep an existing connection for a short while.</li>
+<li><b>Antivirus warning about the hosts file:</b> some security tools watch hosts-file changes; Halyra Focus only adds lines that point blocked sites to 0.0.0.0.</li>
+</ul>
+    <p class="art-back"><a class="btn pill" href="../../"><span aria-hidden="true">&#8249;</span> Back</a></p>
+  </div>
+</main>
+<footer>
+  <div class="wrap foot">
+    <div style="max-width:320px">
+      <a class="logo" href="../../"><svg viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lgx" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffc85e"/><stop offset="1" stop-color="#ff6a2f"/></linearGradient></defs><circle cx="16" cy="16" r="11" fill="none" stroke="url(#lgx)" stroke-width="4" stroke-dasharray="52 80" stroke-linecap="round" transform="rotate(-45 16 16)"/><circle cx="16" cy="16" r="4.2" fill="url(#lgx)"/></svg><span>Halyra Focus</span></a>
+      <p style="margin:14px 0 0">Free app & website blocker for Mac, Windows and Android. Made by Halyra.</p>
+      <p style="margin:10px 0 0;color:var(--faint)">v1.6.1 · MIT</p>
+      
+    </div>
+    <nav aria-label="Footer">
+      <div><b>Product</b><a href="../../#features">Features</a><a href="../../#shield">Shield</a><a href="../../#themes">Themes</a><a href="../../#faq">FAQ</a><a href="../../#download">Download</a></div>
+      <div><b>Guides</b><a href="../../guides/block-apps-on-mac/">How to block apps on Mac — for free</a><a href="../../guides/block-websites-on-windows/">How to block websites on Windows — in every browser</a></div>
+      <div><b>Legal</b><a href="../../privacy/">Privacy</a><a href="https://github.com/Tibi772/halyra-focus" rel="noopener">Source code</a></div>
+    </nav>
+  </div>
+</footer>
+<script>(function(){var n=document.getElementById('nav');function f(){n.classList.toggle('scrolled',scrollY>20)}addEventListener('scroll',f,{passive:true});f();}());</script>
+<script src="../../assets/site.js?v=1.6.1" defer></script>
+</body>
+</html>
