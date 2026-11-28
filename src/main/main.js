@@ -849,6 +849,21 @@ function quitAllowed() {
   return !(ev.blocking && (ev.mode !== 'flexible' || config.settings.pinHash));
 }
 
+/**
+ * Everyone gets a Christmas tree while the winter look is on — it is standing on
+ * the island the first time they open the app in December, not something to
+ * unlock. One per season, and it never counts as a tree they grew.
+ */
+function seasonalGift() {
+  if (!stats) return;
+  const now = Date.now();
+  if (seasonOn(config.settings.season || 'auto', now) <= 0) return;
+  const year = new Date(now).getMonth() === 0 ? new Date(now).getFullYear() - 1 : new Date(now).getFullYear();
+  if (!statsLib.gift(stats, `gift-xmas-${year}`, 'xmas', now)) return;
+  statsDirty = statsSyncDirty = true;
+  notify(t('gift.title'), t('gift.body'), 'important');
+}
+
 // The app icon wears the season too: snow settles on the mark in the dock and
 // on the taskbar while the winter look is on, and melts off when it is not.
 let iconIsWinter = null;
@@ -1460,6 +1475,7 @@ function boot() {
   buildAppMenu();
   applyLoginItem();
   applyAppIcon();
+  seasonalGift();
   tray = new Tray(trayIcon());
   tray.on('click', () => { if (!platform.IS_MAC) showWindow(); });
   createWindow();

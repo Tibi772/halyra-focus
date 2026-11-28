@@ -158,6 +158,36 @@
 
     // grown items on a spiral around the spire
     const items = (d.items || []).filter((x) => x.ok).slice(-60);
+    // Nothing sells "this is standing on something" like a shadow under it.
+    // They are collected here and drawn in a multiply pass, so they darken the
+    // ground they fall on instead of being grey discs painted over it.
+    const shadows = new Mesh();
+    // The ground is not flat, so a shadow at a fixed height sinks into the hill
+    // it is supposed to be lying on. This is the same height the top surface has
+    // at that point, plus a hair.
+    const groundY = (ax, az) => {
+      const ang = (Math.atan2(az, ax) + Math.PI * 2) % (Math.PI * 2);
+      const j = Math.round((ang / (Math.PI * 2)) * SEG) % SEG;
+      const k = Math.min(1, Math.hypot(ax, az) / (rr[j] || 1));
+      return 0.02 + (hh[j] - 0.02) * k;
+    };
+    const shadow = (cx, cz, r) => {
+      const SEGS = 10;
+      const y = groundY(cx, cz) + 0.07;
+      for (let j = 0; j < SEGS; j += 1) {
+        const a0 = (j / SEGS) * Math.PI * 2; const a1 = ((j + 1) / SEGS) * Math.PI * 2;
+        shadows.tri(
+          [cx, y, cz],
+          [cx + Math.cos(a0) * r, groundY(cx + Math.cos(a0) * r, cz + Math.sin(a0) * r) + 0.07, cz + Math.sin(a0) * r],
+          [cx + Math.cos(a1) * r, groundY(cx + Math.cos(a1) * r, cz + Math.sin(a1) * r) + 0.07, cz + Math.sin(a1) * r],
+          [0, 0, 0], 0, [0, 1, 0],
+        );
+        // the rim vertices carry white, so the disc fades out instead of ending
+        const n0 = shadows.v.length - 30;
+        for (let k = 1; k <= 2; k += 1) { shadows.v[n0 + k * 10 + 6] = 1; shadows.v[n0 + k * 10 + 7] = 1; shadows.v[n0 + k * 10 + 8] = 1; }
+        shadows.v[n0 + 6] = 0.18; shadows.v[n0 + 7] = 0.20; shadows.v[n0 + 8] = 0.30;
+      }
+    };
     const g = 2.39996; // golden angle
     items.forEach((it, n) => {
       const t = (n + 0.5) / Math.max(items.length, 8);
@@ -167,6 +197,7 @@
       const s = 0.55 + m.rand() * 0.25;
       const id = it.i || 'oak';
       const snow = d.season ? 2 : 0;
+      shadow(x, z, (TREE[id] ? 0.6 : 0.52) * s);
       if (TREE[id]) {
         const col = hex(TREE[id]);
         m.cone(x, 0, z, 0.05 * s, 0.35 * s, 0.035 * s, 4, hex('#6b4a35'), 0);
@@ -194,16 +225,44 @@
         else { m.box(x, 0, z, 0.42 * s, 0.34 * s, 0.36 * s, wall, 0); m.cone(x, 0.34 * s, z, 0.33 * s, 0.6 * s, 0, 4, d.season ? hex('#f4f7fb') : roof, 0, Math.PI / 4); m.box(x + 0.21 * s, 0.1 * s, z, 0.01, 0.1 * s, 0.1 * s, hex('#ffd36b'), 1); }
       }
     });
+    // The sea the island sits on: one wide disc, shaded and animated in the
+    // fragment shader rather than built out of geometry.
+    const SEA = 30;
+    for (let j = 0; j < 48; j += 1) {
+      const a0 = (j / 48) * Math.PI * 2; const a1 = ((j + 1) / 48) * Math.PI * 2;
+      m.tri(
+        [0, -3.6, 0],
+        [Math.cos(a0) * SEA, -3.6, Math.sin(a0) * SEA],
+        [Math.cos(a1) * SEA, -3.6, Math.sin(a1) * SEA],
+        [0.05, 0.1, 0.18], 4, [0, 1, 0],
+      );
+    }
     // Christmas lights around the edge (as glow points) are added in buildGlows
-    return { m, R, H };
+    return { m, R, H, shadows };
   }
 
-  const VS = `attribute vec3 aP; attribute vec3 aN; attribute vec3 aC; attribute float aF;
-uniform mat4 uVP; uniform mat4 uM; varying vec3 vN; varying vec3 vC; varying float vF; varying vec3 vW;
-void main() { vec4 w = uM * vec4(aP, 1.0); vW = w.xyz; vN = (uM * vec4(aN, 0.0)).xyz; vC = aC; vF = aF; gl_Position = uVP * w; }`;
-  const FS = `precision mediump float;
-uniform vec3 uCam; uniform float uSnow; uniform float uGlow; uniform float uR; varying vec3 vN; varying vec3 vC; varying float vF; varying vec3 vW;
+  const VS = `precision mediump float;
+attribute vec3 aP; attribute vec3 aN; attribute vec3 aC; attribute float aF;
+uniform mat4 uVP; uniform mat4 uM; uniform float uT; uniform float uWind;
+varying vec3 vN; varying vec3 vC; varying float vF; varying vec3 vW;
 void main() {
+  vec3 p = aP;
+  // Leaves move. Everything above the ground that is foliage leans with the
+  // wind, more the higher it is, each tree on its own phase so the island
+  // breathes instead of ticking in unison.
+  if (aF > 1.5 && aF < 2.5) {
+    float h = max(p.y, 0.0);
+    float ph = p.x * 1.7 + p.z * 2.3;
+    p.x += sin(uT * 1.1 + ph) * h * 0.045 * uWind;
+    p.z += cos(uT * 0.9 + ph * 1.3) * h * 0.035 * uWind;
+  }
+  vec4 w = uM * vec4(p, 1.0);
+  vW = w.xyz; vN = (uM * vec4(aN, 0.0)).xyz; vC = aC; vF = aF; gl_Position = uVP * w;
+}`;
+  const FS = `precision mediump float;
+uniform vec3 uCam; uniform float uSnow; uniform float uGlow; uniform float uR; uniform float uFlat; uniform float uT; varying vec3 vN; varying vec3 vC; varying float vF; varying vec3 vW;
+void main() {
+  if (uFlat > 0.5) { gl_FragColor = vec4(vC, 1.0); return; }
   vec3 n = normalize(vN);
   float dif = max(dot(n, normalize(vec3(-0.4, 0.85, 0.35))), 0.0);
   vec3 light = mix(vec3(0.12, 0.11, 0.2), vec3(0.36, 0.4, 0.6), n.y * 0.5 + 0.5) + dif * vec3(0.62, 0.64, 0.82);
@@ -229,7 +288,26 @@ void main() {
     col *= 1.0 - smoothstep(0.55, 1.0, r / max(uR, 0.001)) * 0.22;
     col += vec3(0.05, 0.06, 0.09) * max(0.0, patch);
   }
+  // Water: the island floats on it, so it has to move. Ripples, and a path of
+  // moonlight that breaks up across them.
+  if (vF > 3.5) {
+    // Dark water. The temptation is to make it sparkle everywhere, which turns
+    // it into a target pattern; almost all of it stays near-black and only the
+    // narrow path under the moon catches anything.
+    float d = length(vW.xz);
+    float ripple = sin(vW.x * 2.6 + uT * 0.7) * sin(vW.z * 2.2 - uT * 0.5)
+                 + sin((vW.x + vW.z) * 1.4 - uT * 0.35) * 0.6;
+    col = mix(vec3(0.016, 0.03, 0.062), vec3(0.035, 0.06, 0.105), smoothstep(22.0, 3.0, d));
+    col += vec3(0.05, 0.07, 0.11) * max(ripple, 0.0) * 0.12;
+    float path = exp(-pow((vW.x * 0.82 + vW.z * 0.45 + 3.0) * 0.30, 2.0));
+    col += vec3(0.42, 0.50, 0.70) * path * pow(max(ripple, 0.0) * 0.55, 3.0) * 0.5;
+    // a soft shadow where the island sits on the water, and no hard outer edge
+    col *= 0.45 + 0.55 * smoothstep(uR * 0.75, uR * 1.9, d);
+    col *= 1.0 - smoothstep(12.0, 27.0, d);
+  }
+  // A cool edge light so shapes do not melt into the background.
   float rim = pow(1.0 - abs(dot(n, normalize(uCam - vW))), 3.0);
+  col += vec3(0.22, 0.30, 0.52) * rim * 0.45 * step(vF, 3.4);
   col += vec3(0.2, 0.12, 0.32) * rim * step(vW.y, -0.2);
   float fog = smoothstep(-2.5, -9.0, vW.y) * 0.6;
   gl_FragColor = vec4(mix(col, vec3(0.04, 0.04, 0.09), fog), 1.0);
@@ -297,6 +375,22 @@ void main() {
   float a = exp(-pow((y - 0.78 - sin(vQ.x * 2.2 + uT * 0.2) * 0.05) * 9.0, 2.0));
   col += vec3(0.1, 0.45, 0.35) * a * 0.28;
   col += vec3(0.25, 0.08, 0.2) * exp(-pow((y - 0.35) * 3.5, 2.0)) * 0.25;
+
+  // Stars. A sparse grid, one star per cell at a random spot, dimmer towards
+  // the horizon and slowly twinkling — and the moon the key light comes from.
+  vec2 g = vQ * vec2(38.0, 22.0);
+  vec2 id = floor(g); vec2 f = fract(g) - 0.5;
+  float r = fract(sin(dot(id, vec2(127.1, 311.7))) * 43758.5453123);
+  if (r > 0.90) {
+    vec2 o = (vec2(fract(r * 71.3), fract(r * 157.7)) - 0.5) * 0.7;
+    float d = length(f - o);
+    float tw = 0.55 + 0.45 * sin(uT * (1.2 + r * 3.0) + r * 20.0);
+    col += vec3(0.85, 0.9, 1.0) * smoothstep(0.09, 0.0, d) * tw * smoothstep(0.1, 0.8, y) * 0.7;
+  }
+  float md = length((vQ - vec2(-0.52, 0.46)) * vec2(1.0, 1.25));
+  col += vec3(0.95, 0.96, 1.0) * smoothstep(0.075, 0.055, md) * 0.85;
+  col += vec3(0.5, 0.58, 0.8) * exp(-md * 7.0) * 0.28;
+
   col = mix(col, col + vec3(0.03, 0.04, 0.07), uSnow * 0.5);
   gl_FragColor = vec4(col, 1.0);
 }`;
@@ -353,7 +447,7 @@ void main() {
     let D = data || {};
     // season may be a flag (old callers) or an amount 0..1 (off / a little / full)
     const snowAmt = () => (typeof D.season === 'number' ? Math.max(0, Math.min(1, D.season)) : (D.season ? 1 : 0));
-    let W; let worldN = 0; let gemBufs = []; let glowB; let glowN = 0; let ptB; let ptN = 0; const sky = buf([-1, -1, 3, -1, -1, 3]);
+    let W; let worldN = 0; let shadowB = null; let shadowN = 0; let gemBufs = []; let glowB; let glowN = 0; let ptB; let ptN = 0; const sky = buf([-1, -1, 3, -1, -1, 3]);
     // One sprite, reused for every gem's halo: centre at the origin, moved and
     // tinted per gem by uniforms rather than rebuilt every frame.
     const haloB = (() => {
@@ -375,6 +469,9 @@ void main() {
       R = w.R; H = w.H;
       if (W) gl.deleteBuffer(W);
       W = buf(w.m.v); worldN = w.m.v.length / 10;
+      if (shadowB) gl.deleteBuffer(shadowB);
+      shadowB = w.shadows.v.length ? buf(w.shadows.v) : null;
+      shadowN = w.shadows.v.length / 10;
       for (const g of gemBufs) gl.deleteBuffer(g.b);
       const gems = (D.gems || []);
       gemBufs = gems.map((g, i) => {
@@ -518,12 +615,25 @@ void main() {
       gl.disable(gl.BLEND); gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
       gl.useProgram(P.lit.p);
       gl.uniformMatrix4fv(P.lit.u.uVP, false, VP); gl.uniform3fv(P.lit.u.uCam, eye); gl.uniform1f(P.lit.u.uSnow, snowAmt()); gl.uniform1f(P.lit.u.uGlow, burst); gl.uniform1f(P.lit.u.uR, R);
+      gl.uniform1f(P.lit.u.uT, t); gl.uniform1f(P.lit.u.uWind, reduce ? 0 : 1); gl.uniform1f(P.lit.u.uFlat, 0);
       const bob = reduce ? 0 : Math.sin(t * 0.6) * 0.1;
       const ga = (now - growAt) / 1000;
       const grow = ga < 0.9 ? 1 + Math.sin(Math.min(1, ga / 0.9) * Math.PI) * 0.045 : 1;
       gl.uniformMatrix4fv(P.lit.u.uM, false, trs(M, 0, bob, 0, 0, 0, grow));
       bind(P.lit, W, [['aP', 3], ['aN', 3], ['aC', 3], ['aF', 1]], 10);
       gl.drawArrays(gl.TRIANGLES, 0, worldN);
+      // the shadows multiply into the ground that is already there
+      if (shadowB) {
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ZERO, gl.SRC_COLOR);
+        gl.depthMask(false);
+        gl.uniform1f(P.lit.u.uFlat, 1);
+        bind(P.lit, shadowB, [['aP', 3], ['aN', 3], ['aC', 3], ['aF', 1]], 10);
+        gl.drawArrays(gl.TRIANGLES, 0, shadowN);
+        gl.uniform1f(P.lit.u.uFlat, 0);
+        gl.depthMask(true);
+        gl.disable(gl.BLEND);
+      }
       gemPos.length = 0;
       const n = gemBufs.length;
       for (const g of gemBufs) {

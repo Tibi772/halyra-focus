@@ -1,6 +1,9 @@
-/* Halyra Focus website — the scroll story: a sticky 3D island (the same engine as the
-   app's "Your island") that grows as you scroll. Chapters fade through in 3D, gems pop
-   in, the camera circles the island, and a small leaderboard flies in at the end.
+/* Halyra Focus website — "your island", shown once.
+   The same engine as the app's own island, mounted in its own section: it turns
+   slowly, the gems can be poked, and that is all. It used to be scrubbed through
+   five chapters by the scroll, which meant the island was never still long enough
+   to look at. The story the page tells lives in the film above this; the island is
+   a thing you look at, in one place.
    Without WebGL (or with reduced motion) it shows a still picture and plain text. */
 (function () {
   'use strict';
@@ -8,11 +11,7 @@
   if (!sec) return;
   const data = (() => { try { return JSON.parse(document.getElementById('story-data').textContent); } catch (_) { return null; } })();
   if (!data) return;
-  const track = sec.querySelector('.story-track');
   const cv = sec.querySelector('.story-canvas');
-  const chaps = [...sec.querySelectorAll('.chap')];
-  const dots = [...sec.querySelectorAll('.story-dots i')];
-  const tip = document.getElementById('story-tip');
   const hudN = document.getElementById('hud-n');
   const hudT = document.getElementById('hud-title');
   const hudX = document.getElementById('hud-xp');
@@ -25,66 +24,39 @@
   const egg = (id) => document.dispatchEvent(new CustomEvent('halyra:egg', { detail: { id } }));
 
   if (still) sec.classList.add('still');
+  const hint = sec.querySelector('.story-hint');
+  const hintText = hint ? hint.textContent : '';
+  let pokes = 0;
   const titleOf = (L) => { let t = data.titles[0][1]; for (const [n, name] of data.titles) if (L >= n) t = name; return t; };
 
-  // Scroll progress → what the island looks like.
-  function model(p) {
-    const [L0, L1] = data.levels;
-    const lf = L0 + (L1 - L0) * smooth(clamp(p / 0.92));
-    const level = Math.max(1, Math.floor(lf));
-    const items = data.items.slice(0, Math.round(data.items.length * clamp((p - 0.04) / 0.8))).map((i) => ({ i, ok: true }));
-    // gems arrive from chapter 3 on, one by one
-    const gotN = Math.round(data.gems.length * clamp((p - 0.4) / 0.48));
+  // One island, one state: far enough along to be worth looking at.
+  function model() {
+    const level = data.level || 24;
+    const items = data.items.map((i) => ({ i, ok: true }));
+    const gotN = Math.round(data.gems.length * 0.62);
     const gems = data.gems.map((g, k) => ({ ...g, got: k < gotN }));
-    return { level, pct: lf - level, items, gems, gotN, season: xmas() };
+    return { level, pct: 0.45, items, gems, gotN, season: xmas() ? 1 : 0 };
   }
 
   let inst = null;
   let key = '';
-  let p = still ? 1 : 0;
-  let shown = -1;
-  let pokes = 0;
 
   function apply() {
-    const m = model(p);
+    const m = model();
     const k = `${m.level}|${m.items.length}|${m.gotN}|${m.season}`;
     if (inst && k !== key) { key = k; inst.update(m); }
-    if (inst && !still) inst.setView({ yaw: 0.55 + p * Math.PI * 1.55, zoom: 0.8 + 0.28 * smooth(clamp(p)), lift: 1.6 - 2.2 * p });
     hudN.textContent = String(m.level);
     hudT.textContent = titleOf(m.level);
     hudX.style.width = `${Math.round(m.pct * 100)}%`;
     hudG.textContent = String(m.gotN);
-    const ci = Math.min(chaps.length - 1, Math.floor(p * chaps.length * 0.999));
-    if (ci !== shown) {
-      chaps.forEach((c, i) => { c.classList.toggle('on', i === ci); c.classList.toggle('past', i < ci); });
-      dots.forEach((d, i) => d.classList.toggle('on', i === ci));
-      sec.dataset.chapter = String(ci);
-      if (shown >= 0 && ci > shown && inst && ci === chaps.length - 1) inst.celebrate();
-      shown = ci;
-    }
-  }
-
-  function onScroll() {
-    if (still) return;
-    const r = track.getBoundingClientRect();
-    const span = Math.max(1, r.height - window.innerHeight);
-    const np = clamp(-r.top / span);
-    if (Math.abs(np - p) < 0.0005 && shown >= 0) return;
-    p = np;
-    apply();
   }
 
   function start() {
     if (!window.Island3D) { sec.classList.add('no3d'); apply(); return; }
-    inst = window.Island3D.mount(cv, model(p), {
-      onHover: (g) => {
-        if (!g) { tip.hidden = true; return; }
-        tip.hidden = false;
-        tip.textContent = `${g.got ? '💎' : '🔒'} ${g.name} — ${g.desc}`;
-      },
+    inst = window.Island3D.mount(cv, model(), {
+      onHover: (g) => { hint.textContent = g ? `${g.got ? '💎' : '🔒'} ${g.name} — ${g.desc}` : hintText; },
       onPick: (g) => {
-        tip.hidden = false;
-        tip.textContent = `${g.got ? '💎' : '🔒'} ${g.name} — ${g.desc}`;
+        hint.textContent = `${g.got ? '💎' : '🔒'} ${g.name} — ${g.desc}`;
         pokes += 1;
         if (pokes === 1) egg('gem');
       },
@@ -100,10 +72,7 @@
     const io = new IntersectionObserver((es) => { if (es[0].isIntersecting) { io.disconnect(); start(); } }, { rootMargin: '600px 0px' });
     io.observe(sec);
   } else start();
-  addEventListener('scroll', onScroll, { passive: true });
-  addEventListener('resize', onScroll);
   // The Christmas look also snows on the island.
   new MutationObserver(() => { key = ''; apply(); }).observe(root, { attributes: true, attributeFilter: ['class'] });
-  onScroll();
   apply();
 }());

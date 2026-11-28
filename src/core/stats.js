@@ -68,17 +68,31 @@ function addGrown(stats, rec) {
   return true;
 }
 
+/**
+ * A present rather than something earned — the Christmas tree everyone gets in
+ * December. It stands on the island like anything else, but it is not counted
+ * as a tree you grew, because you did not: the focus numbers stay honest.
+ */
+function gift(stats, id, item, ms) {
+  stats.garden = Array.isArray(stats.garden) ? stats.garden : [];
+  if (stats.garden.some((g) => g.id === id)) return false;
+  stats.garden.push({ id, t: ms, i: item, m: 0, ok: true, gift: true });
+  stats.garden.sort((a, b) => a.t - b.t);
+  return true;
+}
+
 function gardenSummary(stats, ms) {
   const g = Array.isArray(stats.garden) ? stats.garden : [];
   const today = dayKey(ms);
   const weekAgo = ms - 7 * 86400000;
-  const grown = g.filter((x) => x.ok).length;
+  const grown = g.filter((x) => x.ok && !x.gift).length;
   return {
     items: g.slice(-240),
     grown,
-    withered: g.length - grown,
-    today: g.filter((x) => x.ok && dayKey(x.t) === today).length,
-    week: g.filter((x) => x.ok && x.t >= weekAgo).length,
+    withered: g.filter((x) => !x.ok).length,
+    today: g.filter((x) => x.ok && !x.gift && dayKey(x.t) === today).length,
+    week: g.filter((x) => x.ok && !x.gift && x.t >= weekAgo).length,
+    gifts: g.filter((x) => x.gift).length,
   };
 }
 
@@ -111,7 +125,7 @@ function lastWeek(stats, ms) {
     if (m && (!best || m > best.minutes)) best = { weekday: day.getDay(), minutes: m };
   }
   const from = monday.getTime() - 7 * 86400000;
-  const grown = (stats.garden || []).filter((g) => g.ok && g.t >= from && g.t < monday.getTime() - 12 * 3600000).length;
+  const grown = (stats.garden || []).filter((g) => g.ok && !g.gift && g.t >= from && g.t < monday.getTime() - 12 * 3600000).length;
   return { key, minutes, sessions, grown, bestDay: best };
 }
 
@@ -166,8 +180,8 @@ function levelInputs(stats, ms, streakMinMinutes = 25) {
     if (d.getDay() === 0 && run >= 7) perfectWeek = true;
   }
   const garden = Array.isArray(stats.garden) ? stats.garden : [];
-  const grown = garden.filter((g) => g.ok).length;
-  for (const g of garden) if (g.ok) longest = Math.max(longest, g.m || 0);
+  const grown = garden.filter((g) => g.ok && !g.gift).length;
+  for (const g of garden) if (g.ok && !g.gift) longest = Math.max(longest, g.m || 0);
   return { focusMin: Math.floor(focusSec / 60), sessions: done, grown, bestStreak: best, longestMin: longest, early, night, perfectWeek, xmas };
 }
 
@@ -230,4 +244,5 @@ function summarize(stats, ms, streakMinMinutes = 25, opts = {}) {
 }
 
 module.exports = {
+  gift,
   addGrown, gardenSummary, lastWeek, dayKey, emptyStats, addFocus, addBlock, addUsage, usageToday, addSession, addDone, prune, summarize, levelInputs, thisWeek };

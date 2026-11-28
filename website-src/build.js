@@ -176,30 +176,24 @@ function storySection(page, t) {
   const S = t.story;
   const gems = LEVELS.gems({}, page.lang).map((g) => ({ id: g.id, shape: g.shape, color: g.color, name: g.name, desc: g.desc }));
   const titles = LEVELS.TITLES.map((x) => [x[0], page.lang === 'hu' ? x[2] : x[1]]);
-  const data = { items: STORY_ITEMS, gems, titles, levels: [1, 34] };
-  return `<section class="story" id="story" aria-labelledby="story-h">
-  <div class="wrap story-intro">
-    <div class="sec-head center reveal"><div class="eyebrow">${S.eyebrow}</div><h2 id="story-h" data-scrub>${S.h2}</h2><p>${S.p}</p></div>
-  </div>
-  <div class="story-track">
-    <div class="story-sticky">
-      <canvas class="story-canvas" role="img" aria-label="${esc(S.canvasLabel)}"></canvas>
-      <img class="story-fallback" src="${asset(page.path, `shots/island-${page.lang}.webp`)}" alt="" width="1680" height="1140" loading="lazy" decoding="async">
-      <div class="story-hud" aria-hidden="true">
-        <div class="hud-lvl"><small>${S.level}</small><b id="hud-n">1</b></div>
-        <div class="hud-main"><div class="hud-title" id="hud-title">${esc(titles[0][1])}</div><div class="hud-xp"><i id="hud-xp"></i></div></div>
-        <div class="hud-gems">💎 <b id="hud-gems">0</b>/${gems.length}</div>
+  const data = { items: STORY_ITEMS, gems, titles, level: 24 };
+  return `<section class="sec island-sec" id="story" aria-labelledby="story-h">
+  <div class="wrap">
+    <div class="sec-head center reveal"><div class="eyebrow">${S.eyebrow}</div><h2 id="story-h">${S.h2}</h2><p>${S.p}</p></div>
+    <div class="island-grid">
+      <div class="island-stage reveal">
+        <canvas class="story-canvas" role="img" aria-label="${esc(S.canvasLabel)}"></canvas>
+        <img class="story-fallback" src="${asset(page.path, `shots/island-${page.lang}.webp`)}" alt="" width="1680" height="1140" loading="lazy" decoding="async">
+        <div class="story-hud" aria-hidden="true">
+          <div class="hud-lvl"><small>${S.level}</small><b id="hud-n">24</b></div>
+          <div class="hud-main"><div class="hud-title" id="hud-title">${esc(titles[0][1])}</div><div class="hud-xp"><i id="hud-xp"></i></div></div>
+          <div class="hud-gems">💎 <b id="hud-gems">0</b>/${gems.length}</div>
+        </div>
+        <div class="story-hint" aria-hidden="true">${S.hint} ✦</div>
       </div>
-      <div class="story-chaps">
-        ${S.chapters.map(([k, h, p], i) => `<article class="chap${i === 0 ? ' on' : ''}" data-i="${i}"><div class="k">${k}</div><h3>${h}</h3><p>${p}</p></article>`).join('\n        ')}
-      </div>
-      <div class="story-board" aria-hidden="true">
-        <div class="sb-title">🏆 ${S.board.title}</div>
-        ${S.board.rows.map(([e, n, m, l], i) => `<div class="sb-row${n === S.you ? ' me' : ''}" style="--i:${i}"><span class="sb-r">${['🥇', '🥈', '🥉'][i] || `#${i + 1}`}</span><span class="sb-e">${e}</span><span class="sb-n"><b>${n}</b><small>${S.level} ${l}</small></span><span class="sb-m">${m}</span></div>`).join('')}
-      </div>
-      <div class="story-tip" id="story-tip" hidden></div>
-      <div class="story-dots" aria-hidden="true">${S.chapters.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('')}</div>
-      <div class="story-hint" aria-hidden="true">${S.hint} ✦</div>
+      <ol class="island-steps">
+        ${S.chapters.map(([k, h, p]) => `<li class="reveal"><div class="k">${k}</div><h3>${h}</h3><p>${p}</p></li>`).join('\n        ')}
+      </ol>
     </div>
   </div>
   <script type="application/json" id="story-data">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>
@@ -220,33 +214,6 @@ function feedbackSection(page, t) {
 
 // ------------------------------------------------------------------ pages
 
-/**
- * The way in. Every reference the brief pointed at opens on a closed door with
- * one word on it, and the site only begins once you push it. This is that door:
- * a frosted pane over the scene that is already running behind it, so pressing
- * Enter is a camera move rather than a page load. It is purely visual — the
- * page under it is complete, in the markup, for anything that does not run
- * scripts (a crawler, a reader) — and it takes itself away for anyone who asked
- * for less motion, or who has already been through it this visit.
- */
-function gate(t) {
-  const g = t.gate;
-  return `<div class="gate" id="gate" aria-hidden="true">
-  <div class="gate-frost"></div>
-  <div class="gate-in">
-    <div class="gate-mark">${ICON.logo}</div>
-    <div class="gate-eyebrow">${esc(g.eyebrow)}</div>
-    <p class="gate-line">${esc(g.line1)}<br><span>${esc(g.line2)}</span></p>
-    <button class="gate-btn" type="button" id="gate-enter">
-      <span class="gate-btn-word">${esc(g.enter)}</span>
-      <span class="gate-btn-glow" aria-hidden="true"></span>
-    </button>
-    <div class="gate-hint">${esc(g.hint)}</div>
-    <button class="gate-skip" type="button" id="gate-skip">${esc(g.skip)}</button>
-  </div>
-</div>`;
-}
-
 function homePage(page) {
   const t = T[page.lang];
   const softwareLd = {
@@ -263,8 +230,7 @@ function homePage(page) {
   const themeShots = { midnight: 'focus', daylight: 'theme-daylight', crt: 'theme-crt', onebit: 'theme-onebit', vapor: 'theme-vapor', custom: 'theme-custom' };
 
   return `${head(page, t, { title: t.meta.title, desc: t.meta.desc, jsonld: [softwareLd, faqLd, siteLd] })}
-<body class="has-gate">
-${gate(t)}
+<body>
 ${nav(page, t)}
 <main id="main">
 <section class="hero">

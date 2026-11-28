@@ -124,18 +124,21 @@ async function head(url) {
         blocked = await page.evaluate(() => document.querySelectorAll('#city-labels .c-label.blocked').length);
       }
       check(`${short} focus mode locks the distraction buildings`, blocked >= 4, `${blocked} locked`);
-      // The scroll story: scrolling through it grows the 3D island to the last chapter.
+      // Your island: one section, one island, mounted when it comes into view.
       const story = await page.evaluate(async () => {
         const sec = document.getElementById('story');
         if (!sec) return { missing: true };
-        const tr = sec.querySelector('.story-track');
-        const top = tr.getBoundingClientRect().top + scrollY;
-        for (const f of [0.1, 0.4, 0.7, 0.97]) { scrollTo(0, top + (tr.offsetHeight - innerHeight) * f); await new Promise((r) => setTimeout(r, 700)); }
-        const r = { gl: sec.classList.contains('is-3d'), no3d: sec.classList.contains('no3d'), chapter: sec.dataset.chapter, level: document.getElementById('hud-n').textContent, gems: document.getElementById('hud-gems').textContent };
+        sec.scrollIntoView({ block: 'center' });
+        for (let i = 0; i < 20; i += 1) {
+          if (sec.classList.contains('is-3d') || sec.classList.contains('no3d')) break;
+          await new Promise((r) => setTimeout(r, 400));
+        }
+        await new Promise((r) => setTimeout(r, 900));
+        const r = { gl: sec.classList.contains('is-3d'), no3d: sec.classList.contains('no3d'), level: document.getElementById('hud-n').textContent, gems: document.getElementById('hud-gems').textContent };
         scrollTo(0, 0);
         return r;
       });
-      check(`${short} scroll story grows the island (${story.gl ? '3D' : 'still picture'})`, (story.gl || story.no3d) && story.chapter === '4' && Number(story.level) > 20, JSON.stringify(story));
+      check(`${short} your island renders (${story.gl ? '3D' : 'still picture'})`, (story.gl || story.no3d) && Number(story.level) > 20 && Number(story.gems) > 0, JSON.stringify(story));
       // The Christmas look switches both ways and is remembered.
       const xm = await page.evaluate(async () => {
         const b = document.getElementById('season-btn');

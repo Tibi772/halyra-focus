@@ -329,66 +329,42 @@ h2.scrub { transform: scale(calc(.9 + var(--s, 1) * .1)); transform-origin: 50% 
 .bg-orbs i:nth-child(3) { left: 25vw; top: 60vh; background: radial-gradient(circle, #b86bff, transparent 65%); animation-duration: 52s; --k: .7; opacity: .08; }
 @keyframes orb { to { transform: translate(12vmax, -8vmax) scale(1.12); } }
 
-/* ---------- the scroll story: a sticky 3D island that grows as you scroll */
-.story { position: relative; padding-top: 110px; }
-.story-intro .sec-head { margin-bottom: 10px; }
-.story-track { position: relative; height: 520vh; }
-.story-sticky { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; }
-.story-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 86%, transparent 100%); mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 86%, transparent 100%); }
-.story-fallback { display: none; position: absolute; left: 50%; top: 50%; width: min(860px, 86vw); height: auto; transform: translate(-50%, -50%); border-radius: 18px; border: 1px solid var(--border-2); }
-.story.no3d .story-canvas { display: none; }
-.story.no3d .story-fallback { display: block; opacity: .55; }
-.story-hud { position: absolute; top: 92px; right: max(28px, calc((100vw - 1200px) / 2 + 28px)); display: flex; gap: 12px; align-items: center; padding: 10px 16px 10px 10px; border-radius: 18px; background: rgba(12, 15, 26, .72); border: 1px solid var(--border); backdrop-filter: blur(12px); min-width: 260px; z-index: 2; }
-.hud-lvl { width: 52px; height: 52px; border-radius: 15px; display: grid; place-items: center; align-content: center; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #1b1206; flex: none; }
-.hud-lvl small { font-size: 8.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; opacity: .8; }
-.hud-lvl b { font-size: 21px; line-height: 1; font-variant-numeric: tabular-nums; }
+/* ---------- your island: one place, one island */
+.island-sec { padding-top: 40px; }
+.island-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: clamp(24px, 4vw, 56px); align-items: center; }
+.island-stage { position: relative; aspect-ratio: 4 / 3; min-height: 320px; border-radius: 26px; overflow: hidden; border: 1px solid var(--border); background: radial-gradient(120% 100% at 50% 0%, #0d1424, #06080f); }
+.story-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.story-fallback { display: none; position: absolute; left: 50%; top: 50%; width: 92%; height: auto; transform: translate(-50%, -50%); }
+.island-sec.no3d .story-canvas { display: none; }
+.island-sec.no3d .story-fallback { display: block; opacity: .7; }
+.story-hud { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; gap: 12px; align-items: center; padding: 9px 14px 9px 9px; border-radius: 16px; background: rgba(12, 15, 26, .72); border: 1px solid var(--border); backdrop-filter: blur(12px); z-index: 2; }
+.hud-lvl { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; align-content: center; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #1b1206; flex: none; }
+.hud-lvl small { font-size: 8px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; opacity: .8; }
+.hud-lvl b { font-size: 19px; line-height: 1; font-variant-numeric: tabular-nums; }
 .hud-main { flex: 1; min-width: 0; }
-.hud-title { font-weight: 600; font-size: 15px; margin-bottom: 6px; white-space: nowrap; }
+.hud-title { font-weight: 600; font-size: 14px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hud-xp { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
-.hud-xp i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .25s linear; }
-.hud-gems { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.hud-xp i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .4s var(--ease); }
+.hud-gems { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
 .hud-gems b { color: var(--text); font-variant-numeric: tabular-nums; }
-.story-chaps { position: absolute; left: max(28px, calc((100vw - 1200px) / 2 + 28px)); top: 50%; transform: translateY(-42%); width: min(430px, 40vw); height: 320px; perspective: 900px; z-index: 2; }
-.chap { position: absolute; left: 0; top: 0; right: 0; padding: 26px 26px 24px; border-radius: 22px; background: rgba(10, 13, 22, .64); border: 1px solid var(--border); backdrop-filter: blur(14px); opacity: 0; transform: translateY(80px) rotateX(-40deg) translateZ(-140px); transform-origin: 50% 100%; transition: opacity .7s var(--ease), transform 1s var(--ease); pointer-events: none; }
-.chap.past { transform: translateY(-80px) rotateX(40deg) translateZ(-140px); transform-origin: 50% 0; }
-.chap.on { opacity: 1; transform: none; pointer-events: auto; }
-.chap .k { font-family: var(--pixel); color: var(--accent); font-size: 13px; letter-spacing: .06em; }
-.chap h3 { font-size: clamp(24px, 2.5vw, 34px); line-height: 1.15; margin: 10px 0 10px; letter-spacing: -.02em; }
-.chap p { color: var(--muted); margin: 0; font-size: 16.5px; }
-.story-board { position: absolute; right: max(28px, calc((100vw - 1200px) / 2 + 28px)); bottom: 11vh; width: 310px; padding: 16px; border-radius: 20px; background: rgba(12, 15, 26, .8); border: 1px solid var(--border-2); backdrop-filter: blur(14px); opacity: 0; transform: perspective(900px) rotateY(-38deg) translateX(90px); transition: opacity .7s var(--ease), transform 1s var(--ease); z-index: 2; box-shadow: 0 30px 80px -30px rgba(0, 0, 0, .8); }
-.story[data-chapter='4'] .story-board { opacity: 1; transform: perspective(900px) rotateY(-10deg); }
-.sb-title { font-weight: 600; font-size: 14px; margin-bottom: 10px; }
-.sb-row { display: grid; grid-template-columns: 30px 26px 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--border); margin-top: 6px; opacity: 0; transform: translateX(30px); transition: opacity .5s var(--ease), transform .6s var(--ease); transition-delay: calc(var(--i) * 110ms + .25s); }
-.story[data-chapter='4'] .sb-row { opacity: 1; transform: none; }
-.sb-row.me { border-color: rgba(255, 181, 71, .55); background: rgba(255, 181, 71, .08); }
-.sb-r { text-align: center; font-size: 16px; }
-.sb-e { font-size: 18px; }
-.sb-n b { display: block; font-size: 13.5px; }
-.sb-n small { color: var(--faint); font-size: 11px; }
-.sb-m { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px; }
-.story-dots { position: absolute; right: 18px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 9px; z-index: 2; }
-.story-dots i { width: 6px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .2); transition: height .4s var(--ease), background .4s; }
-.story-dots i.on { height: 22px; background: var(--accent); }
-.story-tip { position: absolute; left: 50%; bottom: 9vh; transform: translateX(-50%); padding: 10px 16px; border-radius: 14px; background: rgba(12, 15, 26, .9); border: 1px solid var(--border-2); font-size: 13px; z-index: 3; max-width: min(420px, 86vw); text-align: center; }
-.story-hint { position: absolute; left: 50%; bottom: 3.5vh; transform: translateX(-50%); font-size: 12px; color: var(--faint); letter-spacing: .03em; z-index: 2; }
-.story.no3d .story-hint { display: none; }
-@media (max-width: 860px) {
-  .story-track { height: 480vh; }
-  .story-hud { top: 74px; right: 14px; left: 14px; min-width: 0; padding: 8px 12px 8px 8px; }
-  .hud-lvl { width: 44px; height: 44px; border-radius: 13px; }
-  .story-chaps { left: 14px; right: 14px; width: auto; top: auto; bottom: 4vh; transform: none; height: 220px; }
-  .chap { padding: 18px 18px 16px; }
-  .chap h3 { font-size: 21px; margin: 6px 0; }
-  .chap p { font-size: 14.5px; }
-  .story-board, .story-dots, .story-hint { display: none; }
-  .story-tip { bottom: auto; top: 150px; }
+.story-hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); font-size: 12.5px; color: var(--muted); text-align: center; max-width: 90%; z-index: 2; }
+.island-sec.no3d .story-hint { display: none; }
+.island-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px; counter-reset: s; }
+.island-steps li { padding-left: 46px; position: relative; counter-increment: s; }
+.island-steps li::before {
+  content: counter(s, decimal-leading-zero); position: absolute; left: 0; top: 2px;
+  font-family: var(--pixel); font-size: 13px; color: var(--accent);
+  width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
+  border: 1px solid var(--border-2); background: var(--panel);
 }
-.story.still .story-track { height: auto; }
-.story.still .story-sticky { position: relative; height: auto; overflow: visible; padding-bottom: 30px; }
-.story.still .story-canvas { position: relative; height: 70vh; -webkit-mask-image: none; mask-image: none; }
-.story.still .story-chaps { position: static; transform: none; width: auto; height: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; max-width: var(--max); margin: 20px auto 0; padding: 0 28px; }
-.story.still .chap { position: static; opacity: 1; transform: none; }
-.story.still .story-board, .story.still .story-dots, .story.still .story-hint { display: none; }
+.island-steps .k { display: none; }
+.island-steps h3 { font-size: clamp(17px, 1.5vw, 20px); margin: 0 0 6px; letter-spacing: -.02em; }
+.island-steps p { color: var(--muted); margin: 0; font-size: 15px; line-height: 1.5; }
+@media (max-width: 900px) {
+  .island-grid { grid-template-columns: minmax(0, 1fr); }
+  .island-stage { aspect-ratio: 1 / 1; min-height: 0; }
+  .story-hud { padding: 7px 11px 7px 7px; }
+}
 
 /* ---------- feedback */
 .fb-btns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; max-width: 980px; margin: 0 auto; }
@@ -472,116 +448,6 @@ html.xmas .hero h1 em { background-image: linear-gradient(120deg, #ffd27a, var(-
   .stats { margin-top: auto; padding-top: 26px; }
 }
 
-/* ======================================================================
-   The gate — the way into the site.
-   A pane of frosted glass over the scene that is already running behind it.
-   Pressing Enter does not load anything; it pulls the glass away and lets the
-   camera move in. Nothing here is load-bearing: the page underneath is whole.
-   ====================================================================== */
-.has-gate { overflow: hidden; }
-.has-gate.entered { overflow: visible; }
-
-.gate {
-  position: fixed; inset: 0; z-index: 90;
-  display: grid; place-items: center;
-  opacity: 1; transition: opacity 1.05s var(--ease);
-}
-.gate::before {
-  /* You can see where you are going. The island keeps running behind the glass,
-     dimmed and pushed back, the way the house is visible through the gate in the
-     references — a closed door you can see through, not a loading screen. */
-  content: ''; position: absolute; inset: 0;
-  background:
-    radial-gradient(58% 44% at 50% 50%, rgba(255, 168, 86, .10), transparent 72%),
-    radial-gradient(135% 120% at 50% 48%, rgba(5, 7, 12, .18) 28%, rgba(4, 6, 10, .72) 72%, rgba(3, 5, 9, .94) 100%);
-}
-.gate-frost {
-  position: absolute; inset: 0;
-  backdrop-filter: blur(7px) saturate(.9) brightness(.92);
-  -webkit-backdrop-filter: blur(7px) saturate(.9) brightness(.92);
-  mask-image: radial-gradient(64% 52% at 50% 50%, rgba(0, 0, 0, .18) 0%, #000 78%);
-  -webkit-mask-image: radial-gradient(64% 52% at 50% 50%, rgba(0, 0, 0, .18) 0%, #000 78%);
-}
-/* a thin pane of text-legibility right behind the words */
-.gate-in::before {
-  content: ''; position: absolute; inset: -40px -60px;
-  background: radial-gradient(60% 60% at 50% 50%, rgba(4, 6, 11, .78), transparent 75%);
-  z-index: -1; pointer-events: none;
-}
-.gate-in {
-  position: relative; text-align: center; padding: 0 24px;
-  max-width: 620px;
-  animation: gate-rise 1.3s var(--ease) both;
-}
-@keyframes gate-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
-
-.gate-mark { width: 54px; height: 54px; margin: 0 auto 26px; color: var(--accent); filter: drop-shadow(0 0 26px rgba(255, 170, 80, .45)); }
-.gate-mark svg { width: 100%; height: 100%; }
-.gate-eyebrow {
-  font-size: 11.5px; font-weight: 600; letter-spacing: .34em; text-transform: uppercase;
-  color: rgba(190, 212, 255, .72); margin-bottom: 20px;
-}
-.gate-line { font-size: clamp(17px, 2.1vw, 21px); line-height: 1.55; color: #e8eefc; margin: 0 0 40px; font-weight: 300; }
-.gate-line span { color: var(--muted); }
-
-.gate-btn {
-  position: relative; display: inline-flex; align-items: center; justify-content: center;
-  min-width: 232px; padding: 19px 44px; cursor: pointer;
-  background: rgba(255, 255, 255, .03);
-  border: 1px solid rgba(226, 236, 255, .30); border-radius: 2px;
-  color: #fff; font: inherit; font-size: 15px; font-weight: 600;
-  letter-spacing: .42em; text-indent: .42em; text-transform: uppercase;
-  transition: border-color .4s var(--ease), background .4s var(--ease), letter-spacing .5s var(--ease);
-}
-.gate-btn:hover, .gate-btn:focus-visible { border-color: rgba(255, 196, 120, .9); background: rgba(255, 170, 80, .09); letter-spacing: .56em; text-indent: .56em; }
-.gate-btn-glow {
-  position: absolute; inset: -1px; pointer-events: none; border-radius: inherit;
-  box-shadow: 0 0 0 0 rgba(255, 180, 90, .45);
-  animation: gate-pulse 3.4s var(--ease) infinite;
-}
-@keyframes gate-pulse {
-  0%, 100% { box-shadow: 0 0 22px -6px rgba(255, 180, 90, .35), inset 0 0 18px -10px rgba(255, 200, 140, .5); }
-  50% { box-shadow: 0 0 46px -4px rgba(255, 190, 110, .6), inset 0 0 26px -8px rgba(255, 210, 160, .7); }
-}
-.gate-hint { margin-top: 22px; font-size: 12px; letter-spacing: .06em; color: var(--faint); }
-.gate-skip {
-  position: absolute; left: 50%; bottom: -86px; transform: translateX(-50%);
-  background: none; border: 0; cursor: pointer; padding: 8px 12px;
-  color: var(--faint); font: inherit; font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px;
-}
-.gate-skip:hover { color: var(--muted); }
-
-/* leaving: the glass lifts and the scene takes over */
-.gate.going { opacity: 0; pointer-events: none; }
-.gate.going .gate-in { transform: translateY(-14px) scale(.985); opacity: 0; transition: all .7s var(--ease); }
-.gate.gone { display: none; }
-
-/* The page settles in behind the glass — everything except the scene itself,
-   which has to stay visible: seeing where you are going is the point. */
-.has-gate .nav,
-.has-gate .hero-grid > div:first-child,
-.has-gate .stats,
-.has-gate .stage-ui,
-.has-gate .stage-hint,
-.has-gate .city-overlay,
-.has-gate #city-labels { opacity: 0; }
-.has-gate.entered .nav,
-.has-gate.entered .hero-grid > div:first-child,
-.has-gate.entered .stats,
-.has-gate.entered .stage-ui,
-.has-gate.entered .stage-hint,
-.has-gate.entered #city-labels { opacity: 1; transition: opacity 1.1s var(--ease) .25s; }
-.has-gate.entered .city-overlay { transition: opacity .5s var(--ease); }
-
-@media (prefers-reduced-motion: reduce) {
-  .gate-in { animation: none; }
-  .gate-btn-glow { animation: none; }
-  .gate { transition: opacity .2s linear; }
-}
-@media (max-width: 560px) {
-  .gate-btn { min-width: 0; width: 100%; padding: 17px 20px; letter-spacing: .3em; text-indent: .3em; }
-  .gate-skip { bottom: -70px; }
-}
 
 /* ======================================================================
    Winter.
@@ -626,23 +492,6 @@ html.xmas body::after {
     radial-gradient(130% 100% at 50% 50%, transparent 56%, rgba(120, 170, 230, .07) 82%, rgba(140, 190, 240, .13) 100%);
 }
 
-/* snow settling on the top edge of every panel, drawn rather than drawn on */
-html.xmas .card,
-html.xmas .shot-frame,
-html.xmas .mode-card { border-top-color: rgba(226, 240, 255, .5); }
-html.xmas .card::after {
-  content: ''; position: absolute; left: -2%; right: -2%; top: -7px; height: 15px;
-  pointer-events: none; opacity: .9;
-  background:
-    radial-gradient(10px 8px at 12% 100%, #eaf3ff 60%, transparent 62%),
-    radial-gradient(14px 9px at 32% 100%, #eaf3ff 60%, transparent 62%),
-    radial-gradient(9px 7px at 52% 100%, #e3eeff 60%, transparent 62%),
-    radial-gradient(16px 10px at 73% 100%, #eaf3ff 60%, transparent 62%),
-    radial-gradient(11px 8px at 90% 100%, #e3eeff 60%, transparent 62%);
-  filter: drop-shadow(0 1px 0 rgba(170, 200, 240, .5));
-}
-/* the hover spotlight owns ::before, so the cap uses ::after and stays put */
-html.xmas .card:hover::after { opacity: 1; }
 
 /* frost creeping in from the corners of the bigger panels */
 html.xmas .shot-frame::before,
@@ -680,11 +529,6 @@ html.xmas .sec::after {
     radial-gradient(55% 100% at 92% 100%, rgba(226, 240, 255, .06), transparent 70%);
 }
 
-/* the gate wears it too */
-html.xmas .gate-eyebrow { color: #b9d6ff; }
-html.xmas .gate-btn { border-color: rgba(206, 232, 255, .42); }
-html.xmas .gate-btn:hover, html.xmas .gate-btn:focus-visible { border-color: rgba(190, 228, 255, .95); background: rgba(150, 205, 255, .10); }
-html.xmas .gate-mark { filter: drop-shadow(0 0 26px rgba(150, 200, 255, .5)); }
 
 @media (prefers-reduced-motion: reduce) {
   html.xmas body::before { animation: none; }
